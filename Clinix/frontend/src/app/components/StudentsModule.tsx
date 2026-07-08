@@ -1,12 +1,15 @@
 import { useState, useMemo, useRef } from 'react';
-import { Plus, Search, Pencil, Archive, Eye, Upload, CheckCircle2, Camera, User } from 'lucide-react';
+import { Plus, Search, Pencil, Archive, Eye, Upload, CheckCircle2, Camera, User, Folder, ChevronRight } from 'lucide-react';
 import { Student, normalizeStudent } from '../App';
 import { Modal } from './Modal';
 
-const COURSES = [
-  'BSCS', 'BSF', 'BSIT-Elect-Tech', 'BSIT-FPST', 'BSM',
-  'BSED-Math', 'BSED-English', 'BEED',
+const COLLEGES = [
+  { name: 'CTECH', courses: ['BSCS', 'BSIT-FPST', 'BSIT-ELECT'] },
+  { name: 'CTE', courses: ['BEED', 'BSED-ENGLISH', 'BSED-MATH'] },
+  { name: 'COM', courses: ['BSM'] },
+  { name: 'COF', courses: ['BSF'] },
 ];
+const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 
 type Props = {
   students: Student[];
@@ -17,6 +20,9 @@ type Props = {
 };
 
 type TabId = 'list' | 'form' | 'import';
+type FolderFilter = { college: string; course?: string; yearLevel?: string } | null;
+type FolderView = 'colleges' | 'courses' | 'years';
+type FolderLayout = 'list' | 'icon';
 
 const defaultForm = {
   studentId: '',
@@ -85,6 +91,30 @@ function StatusBadge({ status }: { status: Student['status'] }) {
   );
 }
 
+function normalizeCourseName(course: string) {
+  const key = course.trim().toUpperCase().replace(/\s+/g, '-');
+  return ({
+    'BSIT-ELECT-TECH': 'BSIT-ELECT',
+    'BSED-MATH': 'BSED-MATH',
+    'BSED-ENGLISH': 'BSED-ENGLISH',
+  } as Record<string, string>)[key] || key;
+}
+
+function collegeForCourse(course: string) {
+  const normalized = normalizeCourseName(course);
+  return COLLEGES.find((c) => c.courses.includes(normalized))?.name || 'Uncategorized';
+}
+
+function matchesFolderFilter(student: Student, filter: FolderFilter) {
+  if (!filter) return true;
+  const course = normalizeCourseName(student.course);
+  return (
+    collegeForCourse(student.course) === filter.college &&
+    (!filter.course || course === filter.course) &&
+    (!filter.yearLevel || student.yearLevel === filter.yearLevel)
+  );
+}
+
 function parseCsvLine(line: string) {
   const cells: string[] = [];
   let current = '';
@@ -142,8 +172,13 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewStudent, setViewStudent] = useState<Student | null>(null);
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [pendingCsv, setPendingCsv] = useState<Student[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
+  const [folderFilter, setFolderFilter] = useState<FolderFilter>(null);
+  const [folderView, setFolderView] = useState<FolderView>('years');
+  const [folderLayout, setFolderLayout] = useState<FolderLayout>('list');
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const query = (localSearch || globalSearch).trim().toLowerCase();
@@ -152,18 +187,55 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       students.filter(
         (s) =>
           s.status !== 'dropped' &&
+          matchesFolderFilter(s, folderFilter) &&
           [s.studentId, s.name, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions]
             .join(' ')
             .toLowerCase()
             .includes(query),
       ),
+    [students, query, folderFilter],
+  );
+
+  const folderRows = useMemo(
+    () =>
+      COLLEGES.map((college) => {
+        const collegeStudents = students.filter(
+          (s) => s.status !== 'dropped' && collegeForCourse(s.course) === college.name,
+        );
+        return {
+          ...college,
+          students: collegeStudents,
+          courses: college.courses.map((course) => {
+            const courseStudents = collegeStudents.filter((s) => normalizeCourseName(s.course) === course);
+            const years = [...new Set(courseStudents.map((s) => s.yearLevel).filter(Boolean))].sort();
+            return { name: course, students: courseStudents, years };
+          }),
+        };
+      }),
+    [students],
+  );
+
+  const searchMatches = useMemo(
+    () =>
+      query
+        ? students
+            .filter(
+              (s) =>
+                s.status !== 'dropped' &&
+                [s.studentId, s.name, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions]
+                  .join(' ')
+                  .toLowerCase()
+                  .includes(query),
+            )
+            .slice(0, 6)
+        : [],
     [students, query],
   );
 
-  function openAdd() {
-    setForm(defaultForm);
+  function openAdd(prefill: Partial<typeof defaultForm> = {}) {
+    setForm({ ...defaultForm, ...prefill });
     setEditingId(null);
-    setTab('form');
+    setShowFormModal(true);
   }
 
   function openEdit(s: Student) {
@@ -178,7 +250,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       photo: s.photo || '',
     });
     setEditingId(s.studentId);
-    setTab('form');
+    setShowFormModal(true);
   }
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -215,6 +287,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     }
     setForm(defaultForm);
     setEditingId(null);
+    setShowFormModal(false);
     setTab('list');
   }
 
@@ -256,7 +329,22 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     addActivity(`${pendingCsv.length} students imported from CSV`);
     setPendingCsv([]);
     setCsvFileName('');
-    setTab('list');
+    setShowImportModal(false);
+  }
+
+  function toggleFolderFilter(next: Exclude<FolderFilter, null>) {
+    setFolderFilter((current) =>
+      current?.college === next.college &&
+      current?.course === next.course &&
+      current?.yearLevel === next.yearLevel
+        ? null
+        : next,
+    );
+  }
+
+  function openYearAdd() {
+    if (!folderFilter?.course || !folderFilter.yearLevel) return;
+    openAdd({ course: folderFilter.course, yearLevel: folderFilter.yearLevel });
   }
 
   const fieldClass =
@@ -266,6 +354,124 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     'bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors';
   const btnSecondary =
     'bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors';
+
+  function studentTable(rows: Student[], title: string) {
+    return (
+      <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-slate-800" style={{ fontSize: 14, fontWeight: 600 }}>
+              {title}
+            </p>
+            <p className="text-slate-400" style={{ fontSize: 12 }}>
+              {rows.length} enrolled record{rows.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          {folderFilter?.yearLevel && (
+            <button
+              onClick={openYearAdd}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-white hover:bg-blue-700"
+              style={{ fontSize: 12, fontWeight: 600 }}
+            >
+              <Plus size={14} />
+              Add student
+            </button>
+          )}
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px]">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                {[
+                  'Photo', 'ID', 'Name', 'Course', 'Year', 'Contact',
+                  'Medical Conditions', 'Status', 'Actions',
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="text-left px-4 py-3 text-slate-500 uppercase tracking-wider whitespace-nowrap"
+                    style={{ fontSize: 11, fontWeight: 600 }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>
+                    No students match this folder
+                  </td>
+                </tr>
+              ) : (
+                rows.map((s) => (
+                  <tr key={s.studentId} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <StudentAvatar photo={s.photo} name={s.name} size="sm" />
+                    </td>
+                    <td className="px-4 py-3 text-slate-600" style={{ fontSize: 13 }}>
+                      {s.studentId}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="text-slate-800" style={{ fontSize: 13, fontWeight: 500 }}>
+                          {s.name}
+                        </p>
+                        <p className="text-slate-400" style={{ fontSize: 11 }}>
+                          {s.gender || '—'}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600" style={{ fontSize: 13 }}>
+                      {s.course || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap" style={{ fontSize: 13 }}>
+                      {s.yearLevel || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap" style={{ fontSize: 13 }}>
+                      {s.contactNumber || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 max-w-[160px] truncate" style={{ fontSize: 13 }}>
+                      {s.medicalConditions || 'None'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={s.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setViewStudent(s)}
+                          className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
+                          title="View profile"
+                        >
+                          <Eye size={14} />
+                        </button>
+                        <button
+                          onClick={() => openEdit(s)}
+                          className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                          title="Edit"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleArchive(s)}
+                          className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600 transition-colors"
+                          title="Archive"
+                        >
+                          <Archive size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 max-w-screen-xl">
@@ -277,165 +483,216 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
             Manage student records, profiles, and enrollment status
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          className={`${btnPrimary} flex items-center gap-2 shrink-0`}
-          style={{ fontSize: 13 }}
-        >
-          <Plus size={15} />
-          Add student
-        </button>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit border border-slate-200 dark:border-slate-700">
-        {(['list', 'form', 'import'] as TabId[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-md transition-colors ${
-              tab === t ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-            }`}
-            style={{ fontSize: 13, fontWeight: tab === t ? 500 : 400 }}
-          >
-            {t === 'list'
-              ? 'Student List'
-              : t === 'form'
-              ? editingId
-                ? 'Edit Student'
-                : 'Add Student'
-              : 'Import CSV'}
-          </button>
-        ))}
       </div>
 
       {/* ── LIST TAB ── */}
       {tab === 'list' && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700" >
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-4">
-            <div>
-              <p className="text-slate-800 dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>
-                Student List
-              </p>
-              <p className="text-slate-400" style={{ fontSize: 12 }}>
-                {visible.length} enrolled record{visible.length !== 1 ? 's' : ''}
-              </p>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
+          <div className="px-5 py-4 border-b border-slate-100 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-slate-800 dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>
+                  Student Folders
+                </p>
+                <p className="text-slate-400" style={{ fontSize: 12 }}>
+                  Browse by college, course, and year
+                </p>
+              </div>
+              {folderFilter && (
+                <button
+                  onClick={() => setFolderFilter(null)}
+                  className="text-blue-600 hover:text-blue-700"
+                  style={{ fontSize: 12, fontWeight: 600 }}
+                >
+                  Clear folder filter
+                </button>
+              )}
             </div>
-            <div className="relative ml-auto max-w-xs w-full">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="search"
-                value={localSearch}
-                onChange={(e) => setLocalSearch(e.target.value)}
-                placeholder="Search students…"
-                className={`${fieldClass} pl-9`}
-                style={{ fontSize: 13 }}
-              />
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[240px] flex-1">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  value={localSearch}
+                  onChange={(e) => setLocalSearch(e.target.value)}
+                  placeholder="Search students..."
+                  className={`${fieldClass} pl-9`}
+                  style={{ fontSize: 13 }}
+                />
+              </div>
+              <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
+                Folder filter
+                <select
+                  value={folderView}
+                  onChange={(e) => setFolderView(e.target.value as FolderView)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700"
+                  style={{ fontSize: 12 }}
+                >
+                  <option value="colleges">Colleges only</option>
+                  <option value="courses">Colleges + courses</option>
+                  <option value="years">Colleges + courses + years</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
+                View
+                <select
+                  value={folderLayout}
+                  onChange={(e) => setFolderLayout(e.target.value as FolderLayout)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700"
+                  style={{ fontSize: 12 }}
+                >
+                  <option value="list">List</option>
+                  <option value="icon">Icon</option>
+                </select>
+              </label>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                title="Import CSV"
+              >
+                <Upload size={16} />
+              </button>
             </div>
+
+            {searchMatches.length > 0 && (
+              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-2">
+                <p className="px-2 pb-1 text-blue-700" style={{ fontSize: 12, fontWeight: 600 }}>
+                  Matching student directories
+                </p>
+                <div className="grid gap-1">
+                  {searchMatches.map((s) => {
+                    const college = collegeForCourse(s.course);
+                    const course = normalizeCourseName(s.course);
+                    return (
+                      <button
+                        key={s.studentId}
+                        onClick={() => setFolderFilter({ college, course, yearLevel: s.yearLevel })}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-left hover:bg-blue-100"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-slate-800 truncate" style={{ fontSize: 13, fontWeight: 600 }}>
+                            {s.name}
+                          </span>
+                          <span className="block text-slate-500 truncate" style={{ fontSize: 12 }}>
+                            {college} / {course} / {s.yearLevel || 'No year'}
+                          </span>
+                        </span>
+                        <span className="text-slate-400 whitespace-nowrap" style={{ fontSize: 12 }}>
+                          {s.studentId}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  {[
-                    'Photo', 'ID', 'Name', 'Course', 'Year', 'Contact',
-                    'Medical Conditions', 'Status', 'Actions',
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="text-left px-4 py-3 text-slate-500 uppercase tracking-wider whitespace-nowrap"
-                      style={{ fontSize: 11, fontWeight: 600 }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {visible.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={9}
-                      className="text-center py-12 text-slate-400"
-                      style={{ fontSize: 13 }}
-                    >
-                      No students match your search
-                    </td>
-                  </tr>
-                ) : (
-                  visible.map((s) => (
-                    <tr key={s.studentId} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <StudentAvatar photo={s.photo} name={s.name} size="sm" />
-                      </td>
-                      <td className="px-4 py-3 text-slate-600" style={{ fontSize: 13 }}>
-                        {s.studentId}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="text-slate-800" style={{ fontSize: 13, fontWeight: 500 }}>
-                            {s.name}
-                          </p>
-                          <p className="text-slate-400" style={{ fontSize: 11 }}>
-                            {s.gender || '—'}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600" style={{ fontSize: 13 }}>
-                        {s.course || '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap" style={{ fontSize: 13 }}>
-                        {s.yearLevel || '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap" style={{ fontSize: 13 }}>
-                        {s.contactNumber || '—'}
-                      </td>
-                      <td
-                        className="px-4 py-3 text-slate-500 max-w-[160px] truncate"
-                        style={{ fontSize: 13 }}
-                      >
-                        {s.medicalConditions || 'None'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={s.status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => setViewStudent(s)}
-                            className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
-                            title="View profile"
-                          >
-                            <Eye size={14} />
-                          </button>
-                          <button
-                            onClick={() => openEdit(s)}
-                            className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
-                            title="Edit"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleArchive(s)}
-                            className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600 transition-colors"
-                            title="Archive"
-                          >
-                            <Archive size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          <div>
+            <div className="flex flex-wrap items-center gap-1 border-b border-slate-100 px-5 py-3 text-slate-600">
+              <button onClick={() => setFolderFilter(null)} className="hover:text-blue-700" style={{ fontSize: 13, fontWeight: 600 }}>
+                Students
+              </button>
+              {folderFilter?.college && (
+                <>
+                  <ChevronRight size={14} />
+                  <button onClick={() => setFolderFilter({ college: folderFilter.college })} className="hover:text-blue-700" style={{ fontSize: 13, fontWeight: 600 }}>
+                    {folderFilter.college}
+                  </button>
+                </>
+              )}
+              {folderFilter?.course && (
+                <>
+                  <ChevronRight size={14} />
+                  <button onClick={() => setFolderFilter({ college: folderFilter.college, course: folderFilter.course })} className="hover:text-blue-700" style={{ fontSize: 13, fontWeight: 600 }}>
+                    {folderFilter.course}
+                  </button>
+                </>
+              )}
+              {folderFilter?.yearLevel && (
+                <>
+                  <ChevronRight size={14} />
+                  <span className="text-blue-700" style={{ fontSize: 13, fontWeight: 700 }}>{folderFilter.yearLevel}</span>
+                </>
+              )}
+            </div>
+
+            <div className={folderLayout === 'icon' ? 'grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4' : 'divide-y divide-slate-100'}>
+              {(() => {
+                const itemClass = `w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors border-slate-200 hover:bg-slate-50 ${folderLayout === 'icon' ? 'min-h-32 flex-col items-start justify-center' : ''}`;
+                if (!folderFilter?.college) {
+                  return folderRows.map((college) => (
+                    <div key={college.name} className={folderLayout === 'icon' ? 'min-w-0' : 'px-4 py-3'}>
+                      <button onClick={() => setFolderFilter({ college: college.name })} className={itemClass}>
+                        <Folder size={folderLayout === 'icon' ? 34 : 24} className="text-blue-600 shrink-0" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-slate-800" style={{ fontSize: 14, fontWeight: 700 }}>{college.name}</span>
+                          <span className="block text-slate-500 truncate" style={{ fontSize: 12 }}>{college.courses.map((c) => c.name).join(', ')}</span>
+                        </span>
+                        <span className="text-slate-500 whitespace-nowrap" style={{ fontSize: 13 }}>{college.students.length} student{college.students.length !== 1 ? 's' : ''}</span>
+                      </button>
+                    </div>
+                  ));
+                }
+
+                const college = folderRows.find((row) => row.name === folderFilter.college);
+                if (!college) return null;
+
+                if (!folderFilter.course) {
+                  return college.courses.map((course) => (
+                    <div key={course.name} className={folderLayout === 'icon' ? 'min-w-0' : 'px-4 py-3'}>
+                      <button onClick={() => setFolderFilter({ college: college.name, course: course.name })} className={itemClass}>
+                        <Folder size={folderLayout === 'icon' ? 34 : 24} className="text-amber-500 shrink-0" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-slate-800" style={{ fontSize: 14, fontWeight: 700 }}>{course.name}</span>
+                          <span className="block text-slate-500" style={{ fontSize: 12 }}>{college.name}</span>
+                        </span>
+                        <span className="text-slate-500 whitespace-nowrap" style={{ fontSize: 13 }}>{course.students.length} student{course.students.length !== 1 ? 's' : ''}</span>
+                      </button>
+                    </div>
+                  ));
+                }
+
+                const course = college.courses.find((row) => row.name === folderFilter.course);
+                if (!course) return null;
+
+                if (!folderFilter.yearLevel) {
+                  return YEAR_LEVELS.map((year) => {
+                    const rows = course.students.filter((s) => s.yearLevel === year);
+                    return (
+                      <div key={year} className={folderLayout === 'icon' ? 'min-w-0' : 'px-4 py-3'}>
+                        <button onClick={() => setFolderFilter({ college: college.name, course: course.name, yearLevel: year })} className={itemClass}>
+                          <Folder size={folderLayout === 'icon' ? 34 : 24} className="text-emerald-600 shrink-0" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-slate-800" style={{ fontSize: 14, fontWeight: 700 }}>{year}</span>
+                            <span className="block text-slate-500" style={{ fontSize: 12 }}>{course.name}</span>
+                          </span>
+                          <span className="text-slate-500 whitespace-nowrap" style={{ fontSize: 13 }}>{rows.length} student{rows.length !== 1 ? 's' : ''}</span>
+                        </button>
+                      </div>
+                    );
+                  });
+                }
+
+                return (
+                  <div className={folderLayout === 'icon' ? 'md:col-span-2 xl:col-span-4' : 'px-4 py-3'}>
+                    {studentTable(visible, `${college.name} / ${course.name} / ${folderFilter.yearLevel}`)}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}
 
+
       {/* ── FORM TAB ── */}
-      {tab === 'form' && (
+      <Modal
+        isOpen={showFormModal}
+        title={editingId ? 'Edit Student' : 'Add Student'}
+        onClose={() => { setForm(defaultForm); setEditingId(null); setShowFormModal(false); }}
+      >
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 w-full">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -552,7 +809,11 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     required
                   >
                     <option value="">Select program</option>
-                    {COURSES.map((c) => <option key={c}>{c}</option>)}
+                    {COLLEGES.map((college) => (
+                      <optgroup key={college.name} label={college.name}>
+                        {college.courses.map((c) => <option key={c}>{c}</option>)}
+                      </optgroup>
+                    ))}
                   </select>
                 </label>
                 <label>
@@ -620,7 +881,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
             <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => { setForm(defaultForm); setEditingId(null); setTab('list'); }}
+                onClick={() => { setForm(defaultForm); setEditingId(null); setShowFormModal(false); }}
                 className={btnSecondary}
                 style={{ fontSize: 13 }}
               >
@@ -632,10 +893,14 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
             </div>
           </form>
         </div>
-      )}
+      </Modal>
 
       {/* ── IMPORT TAB ── */}
-      {tab === 'import' && (
+      <Modal
+        isOpen={showImportModal}
+        title="Import CSV"
+        onClose={() => setShowImportModal(false)}
+      >
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 w-full">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -673,7 +938,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
           )}
 
           <div className="flex justify-end gap-3 mt-5">
-            <button onClick={() => setTab('list')} className={btnSecondary} style={{ fontSize: 13 }}>
+            <button onClick={() => setShowImportModal(false)} className={btnSecondary} style={{ fontSize: 13 }}>
               Cancel
             </button>
             <button
@@ -686,7 +951,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
             </button>
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* ── VIEW PROFILE MODAL ── */}
       <Modal
