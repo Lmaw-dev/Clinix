@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { Plus, Search, Pencil, Archive, Eye, Upload, CheckCircle2, Camera, User, Folder, ChevronRight } from 'lucide-react';
+import { Plus, Search, Pencil, Archive, Eye, Upload, CheckCircle2, Camera, User, Folder, ChevronRight, Download, Printer, Filter, List } from 'lucide-react';
 import { Student, normalizeStudent } from '../App';
 import { Modal } from './Modal';
 
@@ -10,6 +10,7 @@ const COLLEGES = [
   { name: 'COF', courses: ['BSF'] },
 ];
 const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4001/api').replace(/\/$/, '');
 
 type Props = {
   students: Student[];
@@ -21,12 +22,14 @@ type Props = {
 
 type TabId = 'list' | 'form' | 'import';
 type FolderFilter = { college: string; course?: string; yearLevel?: string } | null;
-type FolderView = 'colleges' | 'courses' | 'years';
 type FolderLayout = 'list' | 'icon';
+type FolderSort = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
 
 const defaultForm = {
   studentId: '',
-  name: '',
+  lastName: '',
+  firstName: '',
+  middleInitial: '',
   course: '',
   yearLevel: '',
   gender: '',
@@ -139,9 +142,12 @@ function normalizeCsvHeader(h: string) {
 function parseCsv(text: string): Record<string, unknown>[] {
   const HEADER_MAP: Record<string, string> = {
     studentid: 'studentId', id: 'studentId', name: 'name', course: 'course',
-    yearlevel: 'yearLevel', year: 'yearLevel', gender: 'gender',
+    yearlevel: 'yearLevel', year: 'yearLevel', gender: 'gender', sex: 'gender',
     contactnumber: 'contactNumber', contact: 'contactNumber',
     medicalconditions: 'medicalConditions', conditions: 'medicalConditions',
+    lastname: 'lastName', surname: 'lastName',
+    firstname: 'firstName', fullname: 'name',
+    middleinitial: 'middleInitial', mi: 'middleInitial',
   };
   const lines = text.replace(/\r/g, '').split('\n').filter((l) => l.trim());
   if (!lines.length) return [];
@@ -166,6 +172,26 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+function csvCell(value: string) {
+  return `"${String(value || '').replace(/"/g, '""')}"`;
+}
+
+function htmlCell(value: string) {
+  return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
+}
+
+async function saveStudentApi(student: Student, editingId?: string | null) {
+  const res = await fetch(`${API_URL}/students${editingId ? `/${editingId}` : ''}`, {
+    method: editingId ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...student, course: normalizeCourseName(student.course) }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error || 'API request failed');
+  }
+}
+
 export function StudentsModule({ students, setStudents, globalSearch, showToast, addActivity }: Props) {
   const [tab, setTab] = useState<TabId>('list');
   const [localSearch, setLocalSearch] = useState('');
@@ -177,8 +203,8 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   const [pendingCsv, setPendingCsv] = useState<Student[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
   const [folderFilter, setFolderFilter] = useState<FolderFilter>(null);
-  const [folderView, setFolderView] = useState<FolderView>('years');
   const [folderLayout, setFolderLayout] = useState<FolderLayout>('list');
+  const [folderSort, setFolderSort] = useState<FolderSort>('name-asc');
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const query = (localSearch || globalSearch).trim().toLowerCase();
@@ -188,11 +214,11 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
         (s) =>
           s.status !== 'dropped' &&
           matchesFolderFilter(s, folderFilter) &&
-          [s.studentId, s.name, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions]
+          [s.studentId, s.name, s.lastName, s.firstName, s.middleInitial, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions]
             .join(' ')
             .toLowerCase()
             .includes(query),
-      ),
+      ).sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)),
     [students, query, folderFilter],
   );
 
@@ -222,7 +248,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
             .filter(
               (s) =>
                 s.status !== 'dropped' &&
-                [s.studentId, s.name, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions]
+                [s.studentId, s.name, s.lastName, s.firstName, s.middleInitial, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions]
                   .join(' ')
                   .toLowerCase()
                   .includes(query),
@@ -241,7 +267,9 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   function openEdit(s: Student) {
     setForm({
       studentId: s.studentId,
-      name: s.name,
+      lastName: s.lastName,
+      firstName: s.firstName,
+      middleInitial: s.middleInitial,
       course: s.course,
       yearLevel: s.yearLevel,
       gender: s.gender,
@@ -256,22 +284,37 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { showToast('Photo must be under 2 MB'); return; }
+    if (file.size > 2 * 1024 * 1024) { showToast('Profile image must be under 2 MB'); return; }
     const dataUrl = await readFileAsDataUrl(file);
     setForm((f) => ({ ...f, photo: dataUrl }));
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const record = normalizeStudent({ ...form, status: 'enrolled' } as Record<string, unknown>);
-    if (!record.studentId || !record.name) {
-      showToast('Student ID and name are required');
+    const current = editingId ? students.find((s) => s.studentId === editingId) : null;
+    const record = normalizeStudent({ ...form, status: current?.status || 'enrolled' } as Record<string, unknown>);
+    if (!record.studentId || !record.lastName || !record.firstName) {
+      showToast('Student ID, first name, and last name are required');
+      return;
+    }
+    if (!/^\d{6}$/.test(record.studentId)) {
+      showToast('Student ID must be exactly 6 digits');
+      return;
+    }
+    if (record.contactNumber && !/^\d{1,12}$/.test(record.contactNumber)) {
+      showToast('Contact number must be 12 digits or less');
       return;
     }
     if (editingId) {
+      try {
+        await saveStudentApi(record, editingId);
+      } catch (error) {
+        showToast(`${error instanceof Error ? error.message : 'API error'}. Student was not saved.`);
+        return;
+      }
       setStudents((prev) =>
         prev.map((s) =>
-          s.studentId === editingId ? { ...s, ...record, status: s.status } : s
+          s.studentId === editingId ? { ...s, ...record } : s
         ),
       );
       showToast(`${record.name} updated`);
@@ -279,6 +322,12 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     } else {
       if (students.find((s) => s.studentId === record.studentId)) {
         showToast('Student ID already exists');
+        return;
+      }
+      try {
+        await saveStudentApi(record);
+      } catch (error) {
+        showToast(`${error instanceof Error ? error.message : 'API error'}. Student was not saved.`);
         return;
       }
       setStudents((prev) => [...prev, record]);
@@ -291,10 +340,17 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     setTab('list');
   }
 
-  function handleArchive(s: Student) {
+  async function handleArchive(s: Student) {
     if (!confirm(`Archive ${s.name}?`)) return;
+    const archived = { ...s, status: 'dropped' as const };
+    try {
+      await saveStudentApi(archived, s.studentId);
+    } catch (error) {
+      showToast(`${error instanceof Error ? error.message : 'API error'}. Student was not archived.`);
+      return;
+    }
     setStudents((prev) =>
-      prev.map((x) => (x.studentId === s.studentId ? { ...x, status: 'dropped' } : x)),
+      prev.map((x) => (x.studentId === s.studentId ? archived : x)),
     );
     showToast(`${s.name} archived`);
     addActivity(`Student archived: ${s.name}`);
@@ -314,8 +370,18 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     reader.readAsText(file);
   }
 
-  function handleCsvImport() {
+  async function handleCsvImport() {
     if (!pendingCsv.length) { showToast('Choose a CSV file first'); return; }
+    try {
+      await Promise.all(
+        pendingCsv.map((rec) =>
+          saveStudentApi(rec, students.some((s) => s.studentId === rec.studentId) ? rec.studentId : null),
+        ),
+      );
+    } catch (error) {
+      showToast(`${error instanceof Error ? error.message : 'API error'}. CSV was not imported.`);
+      return;
+    }
     setStudents((prev) => {
       const updated = [...prev];
       pendingCsv.forEach((rec) => {
@@ -347,6 +413,51 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     openAdd({ course: folderFilter.course, yearLevel: folderFilter.yearLevel });
   }
 
+  function exportRows(rows: Student[], title: string) {
+    const headers = ['Student ID', 'Last Name', 'First Name', 'M.I.', 'Name', 'Course', 'Year Level', 'Sex', 'Contact Number', 'Medical Conditions', 'Status'];
+    const csv = [headers, ...rows.map((s) => [
+      s.studentId, s.lastName, s.firstName, s.middleInitial, s.name, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions, s.status,
+    ])].map((row) => row.map(csvCell).join(',')).join('\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    link.download = `${title.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'students'}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function sortFolderRows(rows: Student[]) {
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      switch (folderSort) {
+        case 'name-desc':
+          return `${b.lastName} ${b.firstName}`.localeCompare(`${a.lastName} ${a.firstName}`);
+        case 'id-asc':
+          return a.studentId.localeCompare(b.studentId, undefined, { numeric: true });
+        case 'id-desc':
+          return b.studentId.localeCompare(a.studentId, undefined, { numeric: true });
+        case 'name-asc':
+        default:
+          return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+      }
+    });
+    return sorted;
+  }
+
+  function printRows(rows: Student[], title: string) {
+    const html = `
+      <h2>${htmlCell(title)}</h2>
+      <p>${rows.length} record(s)</p>
+      <table border="1" cellspacing="0" cellpadding="6" style="width:100%;border-collapse:collapse;font-family:Arial;font-size:12px">
+        <thead><tr>${['ID', 'Last Name', 'First Name', 'M.I.', 'Course', 'Year', 'Sex', 'Contact', 'Medical Conditions', 'Status'].map((h) => `<th>${h}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map((s) => `<tr><td>${htmlCell(s.studentId)}</td><td>${htmlCell(s.lastName)}</td><td>${htmlCell(s.firstName)}</td><td>${htmlCell(s.middleInitial)}</td><td>${htmlCell(s.course)}</td><td>${htmlCell(s.yearLevel)}</td><td>${htmlCell(s.gender)}</td><td>${htmlCell(s.contactNumber)}</td><td>${htmlCell(s.medicalConditions)}</td><td>${htmlCell(s.status)}</td></tr>`).join('')}</tbody>
+      </table>`;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.print();
+  }
+
   const fieldClass =
     'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
   const labelClass = 'block text-slate-600 dark:text-slate-400 mb-1';
@@ -356,6 +467,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     'bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors';
 
   function studentTable(rows: Student[], title: string) {
+    const sortedRows = sortFolderRows(rows);
     return (
       <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
@@ -364,18 +476,53 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
               {title}
             </p>
             <p className="text-slate-400" style={{ fontSize: 12 }}>
-              {rows.length} enrolled record{rows.length !== 1 ? 's' : ''}
+              {sortedRows.length} enrolled record{sortedRows.length !== 1 ? 's' : ''}
             </p>
           </div>
           {folderFilter?.yearLevel && (
-            <button
-              onClick={openYearAdd}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-white hover:bg-blue-700"
-              style={{ fontSize: 12, fontWeight: 600 }}
-            >
-              <Plus size={14} />
-              Add student
-            </button>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600 }}>
+                <Filter size={14} />
+                Sort
+                <select
+                  value={folderSort}
+                  onChange={(e) => setFolderSort(e.target.value as FolderSort)}
+                  className="bg-transparent text-slate-700 outline-none"
+                  style={{ fontSize: 12 }}
+                >
+                  <option value="name-asc">Name A-Z</option>
+                  <option value="name-desc">Name Z-A</option>
+                  <option value="id-asc">ID Asc</option>
+                  <option value="id-desc">ID Desc</option>
+                </select>
+              </label>
+              <button
+                onClick={() => exportRows(sortedRows, title)}
+                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 hover:bg-slate-50"
+                style={{ fontSize: 12, fontWeight: 600 }}
+                title="Export CSV"
+              >
+                <Download size={14} />
+                CSV
+              </button>
+              <button
+                onClick={() => printRows(sortedRows, title)}
+                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 hover:bg-slate-50"
+                style={{ fontSize: 12, fontWeight: 600 }}
+                title="Print student list"
+              >
+                <Printer size={14} />
+                Print
+              </button>
+              <button
+                onClick={openYearAdd}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-white hover:bg-blue-700"
+                style={{ fontSize: 12, fontWeight: 600 }}
+              >
+                <Plus size={14} />
+                Add student
+              </button>
+            </div>
           )}
         </div>
 
@@ -384,7 +531,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
                 {[
-                  'Photo', 'ID', 'Name', 'Course', 'Year', 'Contact',
+                  'Profile', 'ID', 'Last Name', 'First Name', 'M.I.', 'Course', 'Year', 'Contact',
                   'Medical Conditions', 'Status', 'Actions',
                 ].map((h) => (
                   <th
@@ -400,12 +547,12 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
             <tbody className="divide-y divide-slate-100">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>
+                  <td colSpan={11} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>
                     No students match this folder
                   </td>
                 </tr>
               ) : (
-                rows.map((s) => (
+                sortedRows.map((s) => (
                   <tr key={s.studentId} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3">
                       <StudentAvatar photo={s.photo} name={s.name} size="sm" />
@@ -416,7 +563,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     <td className="px-4 py-3">
                       <div>
                         <p className="text-slate-800" style={{ fontSize: 13, fontWeight: 500 }}>
-                          {s.name}
+                          {s.lastName}
                         </p>
                         <p className="text-slate-400" style={{ fontSize: 11 }}>
                           {s.gender || '—'}
@@ -424,13 +571,19 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600" style={{ fontSize: 13 }}>
-                      {s.course || '—'}
+                      {s.firstName || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600" style={{ fontSize: 13 }}>
+                      {s.middleInitial || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600" style={{ fontSize: 13 }}>
+                      {s.course || '-'}
                     </td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap" style={{ fontSize: 13 }}>
-                      {s.yearLevel || '—'}
+                      {s.yearLevel || '-'}
                     </td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap" style={{ fontSize: 13 }}>
-                      {s.contactNumber || '—'}
+                      {s.contactNumber || '-'}
                     </td>
                     <td className="px-4 py-3 text-slate-500 max-w-[160px] truncate" style={{ fontSize: 13 }}>
                       {s.medicalConditions || 'None'}
@@ -522,19 +675,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 />
               </div>
               <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
-                Folder filter
-                <select
-                  value={folderView}
-                  onChange={(e) => setFolderView(e.target.value as FolderView)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700"
-                  style={{ fontSize: 12 }}
-                >
-                  <option value="colleges">Colleges only</option>
-                  <option value="courses">Colleges + courses</option>
-                  <option value="years">Colleges + courses + years</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
+                <List size={14} />
                 View
                 <select
                   value={folderLayout}
@@ -714,13 +855,13 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Photo upload */}
+            {/* Profile upload */}
             <div className="flex items-center gap-5">
               <div className="relative shrink-0">
                 {form.photo ? (
                   <img
                     src={form.photo}
-                    alt="Student photo"
+                    alt="Student profile"
                     className="w-20 h-20 rounded-full object-cover border-2 border-slate-200"
                   />
                 ) : (
@@ -732,7 +873,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   type="button"
                   onClick={() => photoInputRef.current?.click()}
                   className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md hover:bg-blue-700 transition-colors"
-                  title="Upload photo"
+                  title="Upload profile"
                 >
                   <Camera size={13} />
                 </button>
@@ -746,7 +887,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
               </div>
               <div>
                 <p className="text-slate-700" style={{ fontSize: 13, fontWeight: 500 }}>
-                  Student Photo
+                  Profile
                 </p>
                 <p className="text-slate-400 mt-0.5" style={{ fontSize: 12 }}>
                   Click the camera icon to upload. JPG, PNG up to 2 MB.
@@ -758,7 +899,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     className="mt-1.5 text-red-500 hover:text-red-600 transition-colors"
                     style={{ fontSize: 12 }}
                   >
-                    Remove photo
+                    Remove profile
                   </button>
                 )}
               </div>
@@ -772,9 +913,11 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   </span>
                   <input
                     value={form.studentId}
-                    onChange={(e) => setForm((f) => ({ ...f, studentId: e.target.value }))}
+                    onChange={(e) => setForm((f) => ({ ...f, studentId: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
                     placeholder="000001"
                     maxLength={6}
+                    inputMode="numeric"
+                    pattern="\d{6}"
                     className={fieldClass}
                     style={{ fontSize: 13 }}
                     required
@@ -783,15 +926,44 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 </label>
                 <label>
                   <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
-                    Full Name
+                    Last Name
                   </span>
                   <input
-                    value={form.name}
-                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    placeholder="Full name"
+                    value={form.lastName}
+                    onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                    placeholder="Last name"
                     className={fieldClass}
                     style={{ fontSize: 13 }}
                     required
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
+                    First Name
+                  </span>
+                  <input
+                    value={form.firstName}
+                    onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                    placeholder="First name"
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                    required
+                  />
+                </label>
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
+                    Middle Initial
+                  </span>
+                  <input
+                    value={form.middleInitial}
+                    onChange={(e) => setForm((f) => ({ ...f, middleInitial: e.target.value.slice(0, 1).toUpperCase() }))}
+                    placeholder="M"
+                    maxLength={1}
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
                   />
                 </label>
               </div>
@@ -834,7 +1006,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
               <div className="grid grid-cols-2 gap-4 mt-4">
                 <label>
                   <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
-                    Gender
+                    Sex
                   </span>
                   <select
                     value={form.gender}
@@ -843,7 +1015,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     style={{ fontSize: 13 }}
                     required
                   >
-                    <option value="">Select gender</option>
+                    <option value="">Select sex</option>
                     <option>Female</option>
                     <option>Male</option>
                     <option>Prefer not to say</option>
@@ -855,8 +1027,11 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   </span>
                   <input
                     value={form.contactNumber}
-                    onChange={(e) => setForm((f) => ({ ...f, contactNumber: e.target.value }))}
-                    placeholder="09XX XXX XXXX"
+                    onChange={(e) => setForm((f) => ({ ...f, contactNumber: e.target.value.replace(/\D/g, '').slice(0, 12) }))}
+                    placeholder="09XXXXXXXXX"
+                    maxLength={12}
+                    inputMode="numeric"
+                    pattern="\d{1,12}"
                     className={fieldClass}
                     style={{ fontSize: 13 }}
                   />
@@ -923,7 +1098,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
               {csvFileName || 'Click to select a CSV file'}
             </p>
             <p className="text-slate-400 mt-1" style={{ fontSize: 12 }}>
-              Columns: studentId, name, course, yearLevel, gender, contactNumber, medicalConditions
+              Columns: studentId, name, course, yearLevel, sex, contactNumber, medicalConditions
             </p>
             <input type="file" accept=".csv,text/csv" onChange={handleCsvFile} className="hidden" />
           </label>
@@ -981,7 +1156,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 <button
                   onClick={() => { openEdit(viewStudent); setViewStudent(null); }}
                   className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center shadow hover:bg-blue-700 transition-colors"
-                  title="Edit / change photo"
+                  title="Edit / change profile"
                 >
                   <Camera size={13} />
                 </button>
@@ -1001,7 +1176,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
             <div className="grid grid-cols-2 gap-2">
               {[
                 ['Year Level', viewStudent.yearLevel],
-                ['Gender', viewStudent.gender],
+                ['Sex', viewStudent.gender],
                 ['Contact', viewStudent.contactNumber],
                 ['Program', viewStudent.course],
               ].map(([k, v]) => (

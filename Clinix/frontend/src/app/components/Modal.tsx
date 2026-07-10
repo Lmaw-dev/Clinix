@@ -1,4 +1,3 @@
-import { X } from 'lucide-react';
 import { ReactNode } from 'react';
 
 type ModalProps = {
@@ -25,12 +24,6 @@ export function Modal({ isOpen, title, onClose, children }: ModalProps) {
           >
             {title}
           </h3>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          >
-            <X size={18} />
-          </button>
         </div>
         <div className="px-6 py-5">{children}</div>
       </div>
