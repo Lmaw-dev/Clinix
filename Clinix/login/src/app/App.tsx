@@ -36,9 +36,6 @@ export type AdminProfile = {
 export type Student = {
   studentId: string;
   name: string;
-  lastName: string;
-  firstName: string;
-  middleInitial: string;
   course: string;
   yearLevel: string;
   gender: string;
@@ -51,7 +48,6 @@ export type Student = {
 export type FacultyMember = {
   staffId: string;
   name: string;
-  college?: string;
   role: string;
   contact: string;
   medicalHistory: string;
@@ -104,8 +100,6 @@ export type Activity = {
   ts: string;
 };
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4001/api').replace(/\/$/, '');
-
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 export function normalizeStudent(s: Record<string, unknown>): Student {
@@ -115,18 +109,9 @@ export function normalizeStudent(s: Record<string, unknown>): Student {
     ? (rawStatus as Student['status'])
     : 'enrolled';
   const rawId = String(s.studentId ?? '').replace(/\D/g, '').slice(0, 6);
-  const fallbackName = String(s.name ?? '').trim();
-  const parts = fallbackName.split(/\s+/).filter(Boolean);
-  const firstName = String(s.firstName ?? parts[0] ?? '').trim();
-  const lastName = String(s.lastName ?? (parts.slice(1).join(' ') || parts[0] || '')).trim();
-  const middleInitial = String(s.middleInitial ?? s.middleName ?? '').trim().slice(0, 1).toUpperCase();
-  const name = [firstName, middleInitial ? `${middleInitial}.` : '', lastName].filter(Boolean).join(' ') || fallbackName;
   return {
     studentId: rawId.length ? rawId.padStart(6, '0') : '000000',
-    name,
-    lastName,
-    firstName,
-    middleInitial,
+    name: String(s.name ?? '').trim(),
     course: String(s.course ?? '').trim(),
     yearLevel: String(s.yearLevel ?? '').trim(),
     gender: String(s.gender ?? '').trim(),
@@ -139,10 +124,10 @@ export function normalizeStudent(s: Record<string, unknown>): Student {
 
 function seedStudents(): Student[] {
   return [
-    { studentId: '121451', firstName: 'Jessa', middleInitial: '', lastName: 'Salazar', course: 'BSCS', yearLevel: '3rd Year', gender: 'Female', contactNumber: '0917 555 0123', medicalConditions: 'Seasonal allergies', status: 'enrolled' },
-    { studentId: '432652', firstName: 'Ronaldo', middleInitial: '', lastName: 'Mendez', course: 'BSED-Math', yearLevel: '2nd Year', gender: 'Male', contactNumber: '0918 555 0148', medicalConditions: 'None recorded', status: 'enrolled' },
-    { studentId: '543293', firstName: 'Paula', middleInitial: '', lastName: 'Lazo', course: 'BSIT-FPST', yearLevel: '4th Year', gender: 'Female', contactNumber: '0991 555 0175', medicalConditions: 'Mild asthma', status: 'enrolled' },
-    { studentId: '324514', firstName: 'Arvin', middleInitial: '', lastName: 'dela Cruz', course: 'BSM', yearLevel: '1st Year', gender: 'Male', contactNumber: '0932 555 0199', medicalConditions: 'Migraines', status: 'enrolled' },
+    { studentId: '121451', name: 'Jessa Salazar', course: 'BSCS', yearLevel: '3rd Year', gender: 'Female', contactNumber: '0917 555 0123', medicalConditions: 'Seasonal allergies', status: 'enrolled' },
+    { studentId: '432652', name: 'Ronaldo Mendez', course: 'BSED-Math', yearLevel: '2nd Year', gender: 'Male', contactNumber: '0918 555 0148', medicalConditions: 'None recorded', status: 'enrolled' },
+    { studentId: '543293', name: 'Paula Lazo', course: 'BSIT-FPST', yearLevel: '4th Year', gender: 'Female', contactNumber: '0991 555 0175', medicalConditions: 'Mild asthma', status: 'enrolled' },
+    { studentId: '324514', name: 'Arvin dela Cruz', course: 'BSM', yearLevel: '1st Year', gender: 'Male', contactNumber: '0932 555 0199', medicalConditions: 'Migraines', status: 'enrolled' },
   ].map((s) => normalizeStudent(s as Record<string, unknown>));
 }
 
@@ -206,13 +191,6 @@ export default function App() {
   const [adminProfile, setAdminProfile] = useState<AdminProfile>(() =>
     loadFromStorage('clinixAdminProfile', { name: 'Clinic Admin', photo: '' })
   );
-
-  useEffect(() => {
-    fetch(`${API_URL}/students`)
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((rows: Record<string, unknown>[]) => setStudents(rows.map(normalizeStudent)))
-      .catch(() => {});
-  }, []);
 
   // Persist to localStorage
   useEffect(() => { localStorage.setItem('clinixStudents', JSON.stringify(students)); }, [students]);
