@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clinix Login</title>
+    <meta name="description" content="Clinix clinic records system login page." />
+    <meta name="robots" content="noindex, nofollow" />
+    <style>
+        :root {
+            --bg: #eef2fb;
+            --bg-deep: #dfe5f4;
+            --panel: #f7f9ff;
+            --surface: #ffffff;
+            --nav: #0d1630;
+            --nav-2: #172449;
+            --nav-soft: #27406f;
+            --blue-400: #73a7ff;
+            --blue-500: #4f86ff;
+            --blue-600: #2f6df6;
+            --blue-700: #1f57e0;
+            --text: #17213a;
+            --muted: #6880a7;
+            --line: #dfe6f3;
+            --shadow: 0 28px 70px rgba(20, 35, 74, 0.16);
+            --shadow-soft: 0 12px 34px rgba(20, 35, 74, 0.08);
+            --radius-xl: 30px;
+            --radius-lg: 22px;
+            --radius-md: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+        }
+
+        body {
+            font-family: Inter, "Segoe UI", system-ui, sans-serif;
+            background:
+                radial-gradient(circle at 16% 18%, rgba(79, 134, 255, 0.18), transparent 26%),
+                radial-gradient(circle at 88% 12%, rgba(56, 88, 194, 0.12), transparent 20%),
+                linear-gradient(180deg, var(--bg-deep) 0%, var(--bg) 52%, #f8faff 100%);
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .page {
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: 308px minmax(0, 1fr);
+            gap: 22px;
+            padding: 22px;
+        }
+
+        .sidebar {
+            position: relative;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 20px;
+            min-height: 0;
+            padding: 22px 18px 18px;
+            border-radius: 34px;
+            color: #fff;
+            background: linear-gradient(180deg, #111d3b 0%, #0b1124 100%);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .sidebar::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(circle at 50% 0%, rgba(83, 137, 255, 0.22), transparent 26%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 40%);
+            pointer-events: none;
+        }
+
+        .brand {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 6px 6px;
+        }
+
+        .brand-mark {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            display: grid;
+            place-items: center;
+            color: #fff;
+            background: linear-gradient(180deg, #5988ff 0%, #2d61f0 100%);
+            box-shadow: 0 12px 24px rgba(42, 90, 219, 0.28);
+            flex: 0 0 auto;
+        }
+
+        .brand-name {
+            margin: 0;
+            font-size: 1.55rem;
+            line-height: 1;
+            font-weight: 800;
+            letter-spacing: -0.05em;
+        }
+
+        .brand-subtitle {
+            margin: 4px 0 0;
+            font-size: 0.82rem;
+            color: rgba(235, 241, 255, 0.7);
+        }
+
+        .nav {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            gap: 8px;
+            align-content: start;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 44px;
+            padding: 0 14px;
+            border-radius: 14px;
+            color: rgba(236, 241, 255, 0.74);
+            font-size: 0.92rem;
+            border: 1px solid transparent;
+            transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+        }
+
+        .nav-item:hover,
+        .nav-item.is-active {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(118, 154, 255, 0.16);
+            color: #fff;
+        }
+
+        .nav-icon {
+            width: 18px;
+            display: grid;
+            place-items: center;
+            font-size: 1rem;
+            opacity: 0.95;
+        }
+
+        .sidebar-foot {
+            position: relative;
+            z-index: 1;
+            padding: 16px;
+            border-radius: 24px;
+            background: linear-gradient(180deg, rgba(86, 138, 255, 0.48), rgba(69, 182, 238, 0.9));
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 18px 36px rgba(31, 75, 186, 0.26);
+        }
+
+        .sidebar-foot h3 {
+            margin: 0 0 6px;
+            font-size: 1rem;
+            letter-spacing: -0.03em;
+        }
+
+        .sidebar-foot p {
+            margin: 0;
+            font-size: 0.84rem;
+            line-height: 1.5;
+            color: rgba(240, 246, 255, 0.9);
+        }
+
+        .sidebar-foot .pill {
+            margin-top: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 40px;
+            padding: 0 14px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+            font-weight: 700;
+            font-size: 0.84rem;
+        }
+
+        .shell {
+            position: relative;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 18px;
+            min-width: 0;
+            min-height: 0;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 8px 4px 0;
+        }
+
+        .topbar-title {
+            margin: 0;
+            font-size: clamp(1.8rem, 2.3vw, 2.8rem);
+            line-height: 1;
+            letter-spacing: -0.05em;
+            color: #10192d;
+        }
+
+        .topbar-subtitle {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .topbar-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .meta-pill,
+        .meta-icon,
+        .admin-chip {
+            border-radius: 16px;
+            border: 1px solid #d7dff0;
+            background: rgba(255, 255, 255, 0.82);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .meta-pill {
+            min-height: 42px;
+            padding: 0 18px;
+            display: inline-flex;
+            align-items: center;
+            color: #8d9ab7;
+            font-size: 0.9rem;
+        }
+
+        .meta-icon {
+            width: 42px;
+            height: 42px;
+            display: grid;
+            place-items: center;
+            color: #8b95ac;
+        }
+
+        .admin-chip {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 14px 8px 8px;
+        }
+
+        .admin-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 12px;
+            background: linear-gradient(180deg, #2d61f0, #1d4ed8);
+            color: #fff;
+            display: grid;
+            place-items: center;
+            font-weight: 800;
+            font-size: 0.92rem;
+        }
+
+        .admin-chip strong {
+            display: block;
+            font-size: 0.9rem;
+            line-height: 1.05;
+        }
+
+        .admin-chip span {
+            display: block;
+            margin-top: 2px;
+            color: var(--muted);
+            font-size: 0.76rem;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: minmax(0, 0.95fr) minmax(360px, 0.85fr);
+            gap: 22px;
+            min-height: 0;
+        }
+
+        .hero-card,
+        .login-card {
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(220, 229, 244, 0.96);
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(18px);
+        }
+
+        .hero-card {
+            padding: 24px;
+            display: grid;
+            grid-template-rows: auto auto 1fr;
+            gap: 18px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .hero-card::before {
+            content: "";
+            position: absolute;
+            inset: auto -120px -150px auto;
+            width: 340px;
+            height: 340px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(79, 134, 255, 0.2) 0%, rgba(79, 134, 255, 0.04) 62%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(47, 109, 246, 0.08);
+            color: var(--blue-700);
+            font-weight: 700;
+            font-size: 0.8rem;
+            letter-spacing: 0.01em;
+        }
+
+        .hero-headline h1 {
+            margin: 14px 0 10px;
+            font-size: clamp(2.6rem, 4vw, 4.2rem);
+            line-height: 0.96;
+            letter-spacing: -0.07em;
+            color: #10192d;
+        }
+
+        .hero-headline h1 span {
+            display: block;
+            color: var(--blue-700);
+        }
+
+        .hero-headline p {
+            margin: 0;
+            max-width: 540px;
+            color: var(--muted);
+            font-size: 0.98rem;
+            line-height: 1.72;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            align-content: start;
+        }
+
+        .feature {
+            min-height: 94px;
+            padding: 14px 16px;
+            border-radius: 18px;
+            background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
+            border: 1px solid #e1e8f4;
+            box-shadow: 0 10px 28px rgba(29, 47, 92, 0.05);
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .feature-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            display: grid;
+            place-items: center;
+            color: #fff;
+            flex: 0 0 auto;
+        }
+
+        .feature:nth-child(1) .feature-icon {
+            background: linear-gradient(135deg, #4f86ff, #245cf1);
+        }
+
+        .feature:nth-child(2) .feature-icon {
+            background: linear-gradient(135deg, #2dd4bf, #0ea5a4);
+        }
+
+        .feature:nth-child(3) .feature-icon {
+            background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+        }
+
+        .feature:nth-child(4) .feature-icon {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .feature strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 0.95rem;
+            color: #0f1a30;
+        }
+
+        .feature span {
+            display: block;
+            color: var(--muted);
+            font-size: 0.8rem;
+            line-height: 1.5;
+        }
+
+        .hero-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding-top: 4px;
+        }
+
+        .hero-note {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+
+        .hero-illustration {
+            position: absolute;
+            right: 10px;
+            bottom: -8px;
+            width: min(30vw, 300px);
+            min-width: 220px;
+            opacity: 0.96;
+            pointer-events: none;
+        }
+
+        .login-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 0;
+        }
+
+        .login-card {
+            width: min(100%, 474px);
+            padding: 28px 28px 24px;
+            color: var(--text);
+            display: grid;
+            gap: 18px;
+            align-content: start;
+        }
+
+        .login-badge {
+            width: 70px;
+            height: 70px;
+            margin: 0 auto;
+            border-radius: 24px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(180deg, #ecf3ff 0%, #dbe7ff 100%);
+            box-shadow: 0 0 0 12px rgba(47, 109, 246, 0.06);
+        }
+
+        .login-badge-inner {
+            width: 44px;
+            height: 44px;
+            border-radius: 16px;
+            display: grid;
+            place-items: center;
+            color: #fff;
+            background: linear-gradient(180deg, var(--blue-500), var(--blue-700));
+            box-shadow: 0 10px 20px rgba(31, 87, 224, 0.28);
+        }
+
+        .login-card h2 {
+            margin: 0;
+            text-align: center;
+            font-size: 2rem;
+            line-height: 1;
+            letter-spacing: -0.05em;
+        }
+
+        .login-card .subtext {
+            margin: 0 auto;
+            max-width: 330px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.94rem;
+            line-height: 1.6;
+        }
+
+        form {
+            display: grid;
+            gap: 14px;
+        }
+
+        label {
+            display: grid;
+            gap: 7px;
+            color: #31405f;
+            font-size: 0.86rem;
+            font-weight: 700;
+        }
+
+        .field {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 48px;
+            border: 1px solid #d9e2f2;
+            background: #fff;
+            border-radius: 14px;
+            padding: 0 14px;
+            transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+        }
+
+        .field:focus-within {
+            border-color: rgba(47, 109, 246, 0.5);
+            box-shadow: 0 0 0 4px rgba(47, 109, 246, 0.12);
+            transform: translateY(-1px);
+        }
+
+        .field-icon {
+            width: 18px;
+            height: 18px;
+            flex: 0 0 auto;
+            color: #7f8eab;
+        }
+
+        .field input {
+            width: 100%;
+            border: 0;
+            outline: 0;
+            padding: 0;
+            background: transparent;
+            color: var(--text);
+            font: inherit;
+            font-size: 0.96rem;
+        }
+
+        .field input::placeholder {
+            color: #9aa8c2;
+        }
+
+        .toggle {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            display: grid;
+            place-items: center;
+            color: #8292ad;
+            cursor: pointer;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            margin-top: -2px;
+        }
+
+        .remember {
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: #415270;
+        }
+
+        .remember input {
+            width: 14px;
+            height: 14px;
+            margin: 0;
+            accent-color: var(--blue-600);
+        }
+
+        .forgot {
+            color: var(--blue-700);
+            font-size: 0.84rem;
+            font-weight: 700;
+        }
+
+        .button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            min-height: 48px;
+            border: 0;
+            border-radius: 14px;
+            padding: 0 18px;
+            background: linear-gradient(180deg, var(--blue-500), var(--blue-700));
+            color: #fff;
+            font: inherit;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 16px 30px rgba(31, 87, 224, 0.24);
+            transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+        }
+
+        .button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 18px 34px rgba(31, 87, 224, 0.28);
+            filter: brightness(1.01);
+        }
+
+        .divider {
+            margin: 4px 0 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #8a96ad;
+            font-size: 0.82rem;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #d9e3f2, transparent);
+        }
+
+        .help-card {
+            border-radius: 18px;
+            border: 1px solid #dbe4f2;
+            background: linear-gradient(180deg, #fbfdff 0%, #f5f9ff 100%);
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .help-title {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            color: var(--blue-700);
+            font-size: 0.9rem;
+            font-weight: 800;
+            margin-bottom: 2px;
+        }
+
+        .help-subtext {
+            color: var(--muted);
+            font-size: 0.8rem;
+            line-height: 1.45;
+        }
+
+        .help-mail {
+            color: var(--blue-700);
+            font-size: 0.84rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .status {
+            min-height: 1.1em;
+            color: var(--blue-700);
+            font-size: 0.84rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .footer-note {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            color: #7f8ba7;
+            font-size: 0.8rem;
+            padding: 0 4px 2px;
+        }
+
+        .footer-note strong {
+            color: #24304d;
+        }
+
+        .footer-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            white-space: nowrap;
+        }
+
+        .secure {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #1aa864;
+            font-weight: 700;
+        }
+
+        @media (max-width: 1180px) {
+            body {
+                overflow: auto;
+            }
+
+            .page {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto;
+            }
+
+            .content {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-illustration {
+                width: min(38vw, 280px);
+            }
+        }
+
+        @media (max-width: 820px) {
+            .page {
+                padding: 14px;
+                gap: 14px;
+            }
+
+            .sidebar {
+                border-radius: 26px;
+                padding: 18px 16px 16px;
+            }
+
+            .topbar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .hero-card,
+            .login-card {
+                border-radius: 24px;
+            }
+
+            .hero-card {
+                padding: 20px;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-illustration {
+                display: none;
+            }
+
+            .help-card {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .footer-note {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .footer-right {
+                white-space: normal;
+                flex-wrap: wrap;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .page {
+                padding: 10px;
+                gap: 10px;
+            }
+
+            .sidebar,
+            .hero-card,
+            .login-card {
+                border-radius: 22px;
+            }
+
+            .brand-name {
+                font-size: 1.35rem;
+            }
+
+            .topbar-title {
+                font-size: 1.9rem;
+            }
+
+            .login-card {
+                padding: 20px 16px 18px;
+            }
+
+            .login-card h2 {
+                font-size: 1.7rem;
+            }
+
+            .button {
+                width: 100%;
+            }
+        }
+
+        .content,
+        .sidebar,
+        .hero-card,
+        .login-card {
+            min-height: 0;
+        }
+
+        .sidebar,
+        .hero-card,
+        .login-card,
+        .nav-item,
+        .button,
+        .field,
+        .help-card,
+        .meta-pill,
+        .meta-icon,
+        .admin-chip {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .hero-card>* {
+            position: relative;
+            z-index: 1;
+        }
+
+        .content {
+            align-items: stretch;
+        }
+
+        .sidebar .nav {
+            margin-top: 4px;
+        }
+
+        .sidebar .nav-item {
+            cursor: default;
+        }
+
+        .login-card form {
+            margin-top: 2px;
+        }
+
+        .hero-card .eyebrow {
+            margin-top: 2px;
+        }
+
+        .field button svg,
+        .button svg,
+        .help-title svg,
+        .secure svg,
+        .hero-note svg {
+            flex: 0 0 auto;
+        }
+
+        .hero-mark {
+            width: 44px;
+            height: 44px;
+            border-radius: 16px;
+            background: linear-gradient(180deg, #5988ff, #245cf1);
+            color: #fff;
+            display: grid;
+            place-items: center;
+            box-shadow: 0 14px 28px rgba(35, 83, 210, 0.22);
+        }
+
+        .hero-panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .hero-stats {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .stat-card {
+            padding: 14px 14px 16px;
+            border-radius: 18px;
+            border: 1px solid #e1e8f4;
+            background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
+            box-shadow: 0 10px 24px rgba(20, 35, 74, 0.05);
+            min-height: 92px;
+        }
+
+        .stat-card small {
+            display: block;
+            color: var(--muted);
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+        }
+
+        .stat-card strong {
+            display: block;
+            color: #0f1a30;
+            font-size: 1.7rem;
+            line-height: 1;
+            letter-spacing: -0.05em;
+        }
+
+        .stat-card .mini {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 0.78rem;
+            line-height: 1.4;
+        }
+
+        @media (max-width: 980px) {
+            .hero-stats {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 740px) {
+            .topbar-meta {
+                gap: 10px;
+            }
+
+            .meta-pill {
+                padding: 0 14px;
+                min-height: 40px;
+            }
+        }
+
+        @media (prefers-reduced-motion: no-preference) {
+
+            .sidebar,
+            .hero-card,
+            .login-card,
+            .stat-card,
+            .feature,
+            .button,
+            .field {
+                transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
+            }
+
+            .hero-card:hover,
+            .login-card:hover {
+                transform: translateY(-1px);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page">
+        <aside class="sidebar" aria-label="Clinix navigation preview">
+            <div class="brand">
+                <div class="brand-mark" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2v20" />
+                        <path d="M2 12h20" />
+                    </svg>
+                </div>
+                <div>
+                    <p class="brand-name">Clinix</p>
+                    <p class="brand-subtitle">BISU Calape Campus</p>
+                </div>
+            </div>
+
+            <nav class="nav" aria-label="Primary">
+                <div class="nav-item">
+                    <span class="nav-icon">⌂</span>
+                    <span>Dashboard</span>
+                </div>
+                <div class="nav-item is-active">
+                    <span class="nav-icon">⌁</span>
+                    <span>Login</span>
+                </div>
+                <div class="nav-item">
+                    <span class="nav-icon">◫</span>
+                    <span>Students</span>
+                </div>
+                <div class="nav-item">
+                    <span class="nav-icon">👥</span>
+                    <span>Faculty &amp; Staff</span>
+                </div>
+                <div class="nav-item">
+                    <span class="nav-icon">🩺</span>
+                    <span>Visits / History</span>
+                </div>
+                <div class="nav-item">
+                    <span class="nav-icon">⚙</span>
+                    <span>Settings</span>
+                </div>
+            </nav>
+
+            <div class="sidebar-foot">
+                <h3>Secure Access</h3>
+                <p>Encrypted sign-in for authorized clinic staff and administrators.</p>
+                <div class="pill">Protected portal</div>
+            </div>
+        </aside>
+
+        <main class="shell">
+            <header class="topbar">
+                <div>
+                    <div class="eyebrow">BISU Calape Campus Clinic</div>
+                    <h1 class="topbar-title">Welcome back</h1>
+                    <p class="topbar-subtitle">Use your authorized account to continue to the clinic system.</p>
+                </div>
+
+                <div class="topbar-meta" aria-label="Status and account preview">
+                    <div class="meta-pill" id="currentDate">Wednesday, July 8, 2026</div>
+                    <div class="meta-icon" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" />
+                            <path d="M9.5 21a2.5 2.5 0 0 0 5 0" />
+                        </svg>
+                    </div>
+                    <div class="admin-chip">
+                        <div class="admin-avatar">AD</div>
+                        <div>
+                            <strong>Clinic Admin</strong>
+                            <span>Administrator</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <section class="content" aria-label="Login layout">
+                <article class="hero-card" aria-label="Clinic portal summary">
+                    <div class="hero-panel-head">
+                        <div>
+                            <div class="eyebrow">Official clinic portal</div>
+                            <div class="hero-headline">
+                                <h1>Clinic records <span>managed cleanly</span></h1>
+                                <p>Track students, faculty, consultations, inventory, and certificates from one secure
+                                    clinic workspace.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="hero-stats" aria-label="Highlights">
+                        <div class="stat-card">
+                            <small>Last updated</small>
+                            <strong>July 8, 2026</strong>
+                            <div class="mini">9:37 AM</div>
+                        </div>
+                        <div class="stat-card">
+                            <small>Current time</small>
+                            <strong>09:37:28 AM</strong>
+                            <div class="mini">Wed, Jul 8, 2026</div>
+                        </div>
+                        <div class="stat-card">
+                            <small>System status</small>
+                            <strong>Online</strong>
+                            <div class="mini">Secure authentication enabled</div>
+                        </div>
+                    </div>
+
+                    <div class="feature-grid" aria-label="System features">
+                        <div class="feature">
+                            <div class="feature-icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M12 2v20" />
+                                    <path d="M2 12h20" />
+                                </svg>
+                            </div>
+                            <div>
+                                <strong>Patient profiles</strong>
+                                <span>Centralized student and staff health records</span>
+                            </div>
+                        </div>
+
+                        <div class="feature">
+                            <div class="feature-icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M20 7H4" />
+                                    <path d="M12 3v4" />
+                                    <path d="M6 11h12" />
+                                    <path d="M8 21h8" />
+                                    <path d="M12 11v10" />
+                                </svg>
+                            </div>
+                            <div>
+                                <strong>Inventory control</strong>
+                                <span>Monitor medicines and medical supplies</span>
+                            </div>
+                        </div>
+
+                        <div class="feature">
+                            <div class="feature-icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="3" width="7" height="18" rx="2" />
+                                    <rect x="14" y="9" width="7" height="12" rx="2" />
+                                </svg>
+                            </div>
+                            <div>
+                                <strong>Reports &amp; analytics</strong>
+                                <span>See monthly trends and operational summaries</span>
+                            </div>
+                        </div>
+
+                        <div class="feature">
+                            <div class="feature-icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M12 2v20" />
+                                    <path d="M17 6a5 5 0 0 0-10 0c0 7-3 8-3 8h16s-3-1-3-8" />
+                                    <path d="M9.5 21a2.5 2.5 0 0 0 5 0" />
+                                </svg>
+                            </div>
+                            <div>
+                                <strong>Protected access</strong>
+                                <span>Role-based security and encrypted sign-in</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="hero-footer">
+                        <div class="hero-note">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 2 3 6v6c0 5 3.5 9.7 9 10 5.5-.3 9-5 9-10V6z" />
+                                <path d="m9 12 2 2 4-4" />
+                            </svg>
+                            <span>Designed for authorized BISU Calape clinic staff.</span>
+                        </div>
+                    </div>
+
+                    <div class="hero-illustration" aria-hidden="true">
+                        <svg viewBox="0 0 420 320" width="100%" height="100%" fill="none"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <path d="M44 320c11-69 47-104 109-118 46-10 94-3 135 20 29 16 53 39 69 72H44Z"
+                                fill="rgba(79,134,255,0.18)" />
+                            <circle cx="312" cy="76" r="56" fill="rgba(79,134,255,0.12)" />
+                            <rect x="78" y="142" width="126" height="96" rx="16" fill="#ffffff" stroke="#dce5f4" />
+                            <rect x="90" y="154" width="58" height="8" rx="4" fill="#78a8ff" />
+                            <rect x="90" y="171" width="84" height="6" rx="3" fill="#d7e1f0" />
+                            <rect x="90" y="184" width="96" height="6" rx="3" fill="#d7e1f0" />
+                            <rect x="90" y="197" width="48" height="6" rx="3" fill="#d7e1f0" />
+                            <rect x="235" y="120" width="96" height="122" rx="18" fill="#2f6df6" opacity="0.14" />
+                            <rect x="246" y="132" width="74" height="98" rx="14" fill="#f4f8ff" />
+                            <path d="M269 170h28M283 156v28" stroke="#2f6df6" stroke-width="5" stroke-linecap="round" />
+                            <circle cx="170" cy="96" r="24" fill="#ffd4c2" />
+                            <path d="M144 95c6-19 23-30 43-28 8 1 15 4 21 10-6 3-10 8-11 14-11-6-27-7-53 4Z"
+                                fill="#202d53" />
+                            <path d="M138 132c7-14 18-22 30-23 10-1 21 2 30 11 8 8 13 20 13 34-20 10-48 10-73-22Z"
+                                fill="#183068" />
+                            <path d="M151 146c8 5 18 7 27 5 8-2 14-7 17-13" stroke="#ffd4c2" stroke-width="3"
+                                stroke-linecap="round" />
+                            <rect x="113" y="224" width="130" height="13" rx="6.5" fill="#9db7e8" opacity="0.6" />
+                        </svg>
+                    </div>
+                </article>
+
+                <section class="login-wrap" aria-label="Login form">
+                    <div class="login-card">
+                        <div class="login-badge" aria-hidden="true">
+                            <div class="login-badge-inner">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="11" width="18" height="10" rx="2" />
+                                    <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                                    <circle cx="12" cy="16" r="1" fill="currentColor" stroke="none" />
+                                </svg>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h2>Sign in</h2>
+                            <p class="subtext">Use your authorized clinic credentials to access the BISU Calape Campus
+                                system.</p>
+                        </div>
+
+                        <form id="loginForm">
+                            <label>
+                                Username
+                                <div class="field">
+                                    <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                        aria-hidden="true">
+                                        <path d="M20 21a8 8 0 1 0-16 0" />
+                                        <circle cx="12" cy="7" r="4" />
+                                    </svg>
+                                    <input type="text" name="username" placeholder="Enter your username"
+                                        autocomplete="username" />
+                                </div>
+                            </label>
+
+                            <label>
+                                Password
+                                <div class="field">
+                                    <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                        aria-hidden="true">
+                                        <rect x="3" y="11" width="18" height="10" rx="2" />
+                                        <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                                    </svg>
+                                    <input id="passwordInput" type="password" name="password"
+                                        placeholder="Enter your password" autocomplete="current-password" />
+                                    <button class="toggle" id="togglePassword" type="button" aria-label="Show password">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M2.1 12s3.6-7 9.9-7 9.9 7 9.9 7-3.6 7-9.9 7S2.1 12 2.1 12Z" />
+                                            <circle cx="12" cy="12" r="3" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </label>
+
+                            <div class="row">
+                                <label class="remember">
+                                    <input type="checkbox" name="remember" checked />
+                                    Remember me
+                                </label>
+                                <a class="forgot" href="#">Forgot Password?</a>
+                            </div>
+
+                            <button class="button" type="submit">
+                                <span>Access Dashboard</span>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                                    aria-hidden="true">
+                                    <path d="M5 12h14" />
+                                    <path d="m12 5 7 7-7 7" />
+                                </svg>
+                            </button>
+
+                            <div class="divider">Protected by encrypted authentication</div>
+
+                            <div class="help-card">
+                                <div>
+                                    <div class="help-title">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" aria-hidden="true">
+                                            <path
+                                                d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92Z" />
+                                        </svg>
+                                        Need help?
+                                    </div>
+                                    <div class="help-subtext">Contact the Clinic Administrator</div>
+                                </div>
+                                <a class="help-mail" href="mailto:clinic@bisu.edu.ph">clinic@bisu.edu.ph</a>
+                            </div>
+
+                            <div id="status" class="status" aria-live="polite"></div>
+                        </form>
+                    </div>
+                </section>
+            </section>
+
+            <div class="footer-note" aria-label="Page footer">
+                <div>
+                    <strong>BISU Calape Campus Clinic</strong> Student Health Services
+                </div>
+                <div class="footer-right">
+                    <span>Version 1.0.0</span>
+                    <span class="secure">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 22s8-4 8-10V6l-8-4-8 4v6c0 6 8 10 8 10Z" />
+                            <path d="m9 12 2 2 4-4" />
+                        </svg>
+                        System Secure
+                    </span>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const form = document.getElementById('loginForm');
+        const status = document.getElementById('status');
+        const passwordInput = document.getElementById('passwordInput');
+        const togglePassword = document.getElementById('togglePassword');
+        const currentDate = document.getElementById('currentDate');
+
+        const now = new Date();
+        currentDate.textContent = now.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+        });
+
+        togglePassword.addEventListener('click', () => {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            togglePassword.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+        });
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            status.textContent = 'Signing in...';
+            window.setTimeout(() => {
+                window.location.href = '/';
+            }, 350);
+        });
+    </script>
+</body>
+
+</html>

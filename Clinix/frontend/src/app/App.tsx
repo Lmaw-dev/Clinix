@@ -153,6 +153,17 @@ function seedFaculty(): FacultyMember[] {
   ];
 }
 
+export function normalizeFaculty(member: Record<string, unknown>): FacultyMember {
+  return {
+    staffId: String(member.staffId ?? member.staff_id ?? '').trim(),
+    name: String(member.name ?? '').trim(),
+    college: String(member.college ?? '').trim() || undefined,
+    role: String(member.role ?? '').trim(),
+    contact: String(member.contact ?? '').trim(),
+    medicalHistory: String(member.medicalHistory ?? member.medical_history ?? '').trim(),
+  };
+}
+
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -211,6 +222,13 @@ export default function App() {
     fetch(`${API_URL}/students`)
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((rows: Record<string, unknown>[]) => setStudents(rows.map(normalizeStudent)))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_URL}/faculty`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((rows: Record<string, unknown>[]) => setFaculty(rows.map(normalizeFaculty)))
       .catch(() => {});
   }, []);
 
