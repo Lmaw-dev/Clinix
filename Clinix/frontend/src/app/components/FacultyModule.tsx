@@ -1,7 +1,9 @@
-import { useState, useMemo } from 'react';
-import { Plus, Search, Pencil, Eye, Folder, ChevronRight, Filter, List } from 'lucide-react';
+import { useState, useMemo, useRef } from 'react';
+import { Plus, Search, Pencil, Eye, Folder, ChevronRight, Filter, List, Upload, Download, Printer, CheckCircle2 } from 'lucide-react';
 import { FacultyMember } from '../App';
 import { Modal } from './Modal';
+
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4001/api').replace(/\/$/, '');
 
 type Props = {
   faculty: FacultyMember[];
@@ -31,12 +33,14 @@ type FolderGroup = {
 
 const defaultForm = { staffId: '', name: '', college: '', role: '', contact: '', medicalHistory: '' };
 
+type CsvRecord = Record<string, string>;
+
 function avatarInitials(name: string) {
   return name.split(' ').filter(Boolean).slice(0, 2).map((s) => s[0]).join('').toUpperCase();
 }
 
-function normalizeCollegeName(college: string) {
-  const raw = college.trim();
+function normalizeCollegeName(college?: string) {
+  const raw = (college || '').trim();
   if (!raw) return '';
   return COLLEGES.find((c) => c.name.toLowerCase() === raw.toLowerCase())?.name || raw.toUpperCase();
 }
@@ -63,9 +67,105 @@ function sortFaculty(rows: FacultyMember[], sort: FolderSort) {
   return sorted;
 }
 
+function parseCsvLine(line: string) {
+  const cells: string[] = [];
+  let current = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (quoted && line[i + 1] === '"') { current += '"'; i++; } else { quoted = !quoted; }
+      continue;
+    }
+    if (ch === ',' && !quoted) { cells.push(current.trim()); current = ''; continue; }
+    current += ch;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function normalizeCsvHeader(h: string) {
+  return h.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function parseCsv(text: string): CsvRecord[] {
+  const headerMap: Record<string, string> = {
+    staffid: 'staffId',
+    id: 'staffId',
+    name: 'name',
+    college: 'college',
+    designation: 'role',
+    role: 'role',
+    contact: 'contact',
+    contactnumber: 'contact',
+    medicalhistory: 'medicalHistory',
+    history: 'medicalHistory',
+  };
+  const lines = text.replace(/\r/g, '').split('\n').filter((line) => line.trim());
+  if (!lines.length) return [];
+  const headers = parseCsvLine(lines.shift()!).map(normalizeCsvHeader);
+  return lines.map((line) => {
+    const values = parseCsvLine(line);
+    const record: CsvRecord = {};
+    headers.forEach((header, index) => {
+      const key = headerMap[header];
+      if (key) record[key] = values[index] ?? '';
+    });
+    return record;
+  });
+}
+
+function csvCell(value: string) {
+  return `"${String(value || '').replace(/"/g, '""')}"`;
+}
+
+function htmlCell(value: string) {
+  return String(value || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
+}
+
+function exportRows(rows: FacultyMember[], title: string) {
+  const headers = ['Staff ID', 'Name', 'College', 'Role', 'Contact', 'Medical History'];
+  const csv = [headers, ...rows.map((row) => [row.staffId, row.name, row.college || '', row.role, row.contact, row.medicalHistory])]
+    .map((row) => row.map(csvCell).join(','))
+    .join('\n');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  link.download = `${title.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'faculty'}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function printRows(rows: FacultyMember[], title: string) {
+  const html = `
+    <h2>${htmlCell(title)}</h2>
+    <p>${rows.length} record(s)</p>
+    <table border="1" cellspacing="0" cellpadding="6" style="width:100%;border-collapse:collapse;font-family:Arial;font-size:12px">
+      <thead><tr>${['ID', 'Name', 'College', 'Role', 'Contact', 'Medical History'].map((h) => `<th>${h}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map((row) => `<tr><td>${htmlCell(row.staffId)}</td><td>${htmlCell(row.name)}</td><td>${htmlCell(row.college || '')}</td><td>${htmlCell(row.role)}</td><td>${htmlCell(row.contact)}</td><td>${htmlCell(row.medicalHistory)}</td></tr>`).join('')}</tbody>
+    </table>`;
+  const win = window.open('', '_blank');
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.print();
+}
+
+async function saveFacultyApi(member: FacultyMember, editingId?: string | null) {
+  const res = await fetch(`${API_URL}/faculty${editingId ? `/${editingId}` : ''}`, {
+    method: editingId ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(member),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error || 'API request failed');
+  }
+}
+
 export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, addActivity }: Props) {
   const [localSearch, setLocalSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [viewMember, setViewMember] = useState<FacultyMember | null>(null);
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -73,6 +173,9 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
   const [folderLayout, setFolderLayout] = useState<FolderLayout>('list');
   const [folderSort, setFolderSort] = useState<FolderSort>('name-asc');
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
+  const [pendingCsv, setPendingCsv] = useState<FacultyMember[]>([]);
+  const [csvFileName, setCsvFileName] = useState('');
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   const query = (localSearch || globalSearch).trim().toLowerCase();
   const visible = useMemo(
@@ -164,7 +267,49 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
     setShowModal(true);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const records = parseCsv(String(reader.result || ''))
+        .map((rec) => normalizeFaculty(rec))
+        .filter((rec) => rec.staffId && rec.name);
+      setPendingCsv(records);
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleCsvImport() {
+    if (!pendingCsv.length) { showToast('Choose a CSV file first'); return; }
+    try {
+      await Promise.all(
+        pendingCsv.map((member) =>
+          saveFacultyApi(member, faculty.some((f) => f.staffId === member.staffId) ? member.staffId : null),
+        ),
+      );
+    } catch (error) {
+      showToast(`${error instanceof Error ? error.message : 'API error'}. CSV was not imported.`);
+      return;
+    }
+    setFaculty((prev) => {
+      const updated = [...prev];
+      pendingCsv.forEach((member) => {
+        const idx = updated.findIndex((f) => f.staffId === member.staffId);
+        if (idx >= 0) updated[idx] = { ...updated[idx], ...member };
+        else updated.push(member);
+      });
+      return updated;
+    });
+    showToast(`${pendingCsv.length} record(s) imported`);
+    addActivity(`${pendingCsv.length} faculty/staff records imported from CSV`);
+    setPendingCsv([]);
+    setCsvFileName('');
+    setShowImportModal(false);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const rec: FacultyMember = {
       staffId: form.staffId.trim(),
@@ -175,6 +320,13 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
       medicalHistory: form.medicalHistory.trim(),
     };
     if (!rec.staffId || !rec.name) { showToast('ID and name required'); return; }
+
+    try {
+      await saveFacultyApi(rec, editingId);
+    } catch (error) {
+      showToast(`${error instanceof Error ? error.message : 'API error'}. Record was not saved.`);
+      return;
+    }
 
     setFaculty((prev) => {
       const idx = prev.findIndex((f) => f.staffId === rec.staffId);
@@ -261,14 +413,43 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           <h1 className="text-slate-900 dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Faculty & Staff</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>Manage personnel records and medical history</p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
-          style={{ fontSize: 13 }}
-        >
-          <Plus size={15} />
-          Add Faculty/Staff
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => exportRows(faculty, 'faculty-staff')}
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            style={{ fontSize: 13 }}
+            title="Export CSV"
+          >
+            <Download size={15} />
+            CSV
+          </button>
+          <button
+            onClick={() => printRows(faculty, 'Faculty & Staff')}
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            style={{ fontSize: 13 }}
+            title="Print faculty list"
+          >
+            <Printer size={15} />
+            Print
+          </button>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            style={{ fontSize: 13 }}
+            title="Import CSV"
+          >
+            <Upload size={15} />
+            Import
+          </button>
+          <button
+            onClick={openAdd}
+            className="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
+            style={{ fontSize: 13 }}
+          >
+            <Plus size={15} />
+            Add Faculty/Staff
+          </button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
@@ -474,6 +655,40 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={showImportModal}
+        title="Import CSV"
+        onClose={() => setShowImportModal(false)}
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center dark:border-slate-700 dark:bg-slate-800/60">
+            <Upload size={28} className="mx-auto mb-3 text-slate-300" />
+            <p className="text-slate-900 dark:text-slate-100" style={{ fontSize: 15, fontWeight: 600 }}>Import CSV</p>
+            <p className="text-slate-500 dark:text-slate-400 mt-1" style={{ fontSize: 12 }}>Upload a CSV file to add or update personnel records.</p>
+            <input ref={csvInputRef} type="file" accept=".csv,text/csv" onChange={handleCsvFile} className="mt-4 block w-full text-sm text-slate-500 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-white hover:file:bg-blue-700" />
+            {csvFileName && <p className="mt-2 text-slate-500" style={{ fontSize: 12 }}>{csvFileName}</p>}
+          </div>
+
+          {pendingCsv.length > 0 && (
+            <div className="rounded-xl border border-green-100 bg-green-50 p-3 dark:border-green-900/40 dark:bg-green-900/20">
+              <div className="flex items-center gap-2 text-green-700 dark:text-green-300" style={{ fontSize: 12, fontWeight: 600 }}>
+                <CheckCircle2 size={16} />
+                {pendingCsv.length} valid record{pendingCsv.length !== 1 ? 's' : ''} ready to import
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => setShowImportModal(false)} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleCsvImport} className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700" style={{ fontSize: 13 }}>
+              Import {pendingCsv.length > 0 ? `${pendingCsv.length} records` : ''}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* View Modal */}
