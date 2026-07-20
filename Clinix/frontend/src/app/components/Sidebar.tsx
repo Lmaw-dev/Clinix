@@ -3,7 +3,6 @@ import {
   GraduationCap,
   Users,
   FileText,
-  Stethoscope,
   Pill,
   Award,
   MessageSquare,
@@ -13,6 +12,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { Page } from '../App';
+import { Role, canAccess } from '../auth';
 import { useTheme } from '../ThemeContext';
 
 const NAV_ITEMS: Array<{
@@ -23,8 +23,7 @@ const NAV_ITEMS: Array<{
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'Students', icon: GraduationCap },
   { id: 'faculty', label: 'Faculty & Staff', icon: Users },
-  { id: 'medical-records', label: 'Medical Records', icon: FileText },
-  { id: 'visits', label: 'Visit / History', icon: Stethoscope },
+  { id: 'medical-records', label: 'Medical Forms', icon: FileText },
   { id: 'inventory', label: 'Medicine Inventory', icon: Pill },
   { id: 'certificates', label: 'Medical Certificates', icon: Award },
   { id: 'consultations', label: 'Consultation Logs', icon: MessageSquare },
@@ -33,15 +32,18 @@ const NAV_ITEMS: Array<{
 ];
 
 export function Sidebar({
+  role,
   activePage,
   onNavigate,
   onLogout,
 }: {
+  role: Role;
   activePage: Page;
   onNavigate: (p: Page) => void;
   onLogout?: () => void;
 }) {
   const { isDark } = useTheme();
+  const navItems = NAV_ITEMS.filter((item) => canAccess(role, item.id));
 
   const bg        = isDark ? '#020817' : '#0F172A';
   const divider   = isDark ? '#0F172A' : '#1E293B';
@@ -84,7 +86,7 @@ export function Sidebar({
         </p>
 
         <ul style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
+          {navItems.map(({ id, label, icon: Icon }) => {
             const active = activePage === id;
             return (
               <li key={id}>

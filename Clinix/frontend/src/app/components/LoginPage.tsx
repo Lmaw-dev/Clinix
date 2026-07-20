@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Eye, EyeOff, AlertCircle, Heart, BarChart2, Shield, Zap, Lock, User } from 'lucide-react';
+import { ACCOUNTS, Role } from '../auth';
 
-type Props = { onLogin: () => void };
-const CREDENTIALS = { username: 'admin', password: 'clinix2024' };
+type Props = { onLogin: (role: Role) => void };
 const FEATURES = [
   { icon: BarChart2, title: 'Analytics',  sub: 'Real-time performance' },
   { icon: Shield,    title: 'Security',   sub: 'Enterprise-grade protection' },
@@ -23,9 +23,15 @@ export function LoginPage({ onLogin }: Props) {
     setError('');
     setLoading(true);
     setTimeout(() => {
-      if (username.trim() === CREDENTIALS.username && password === CREDENTIALS.password) {
-        try { localStorage.setItem('clinixSession', 'active'); } catch {}
-        onLogin();
+      const account = ACCOUNTS.find(
+        (a) => a.username === username.trim() && a.password === password
+      );
+      if (account) {
+        try {
+          localStorage.setItem('clinixSession', 'active');
+          localStorage.setItem('clinixRole', account.role);
+        } catch {}
+        onLogin(account.role);
       } else {
         setError('Incorrect username or password.');
         setLoading(false);
@@ -248,21 +254,25 @@ export function LoginPage({ onLogin }: Props) {
               <Shield size={11} style={{ color:'#94A3B8' }} />
               <p style={{ fontSize:10, fontWeight:700, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Demo Access</p>
             </div>
-            <div className="grid grid-cols-2">
-              <div className="px-4 py-2.5 flex items-center gap-2" style={{ borderRight:'1px solid #F1F5F9' }}>
-                <User size={12} style={{ color:'#CBD5E1' }} />
-                <div>
-                  <p style={{ fontSize:10, color:'#CBD5E1', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>Username</p>
-                  <p style={{ fontSize:13, fontWeight:800, color:'#3B82F6', fontFamily:'monospace' }}>admin</p>
+            <div>
+              {[
+                { role: 'Admin',     username: 'admin',     password: 'clinix2024' },
+                { role: 'Assistant', username: 'assistant', password: 'assist2024' },
+                { role: 'Staff',     username: 'staff',     password: 'staff123' },
+              ].map((acc, i) => (
+                <div key={acc.username} className="grid grid-cols-3 items-center px-4 py-2"
+                  style={{ borderTop: i > 0 ? '1px solid #F1F5F9' : 'none' }}>
+                  <p style={{ fontSize:11, fontWeight:700, color:'#64748B' }}>{acc.role}</p>
+                  <div className="flex items-center gap-1.5">
+                    <User size={11} style={{ color:'#CBD5E1', flexShrink:0 }} />
+                    <p style={{ fontSize:12, fontWeight:800, color:'#3B82F6', fontFamily:'monospace' }}>{acc.username}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Lock size={11} style={{ color:'#CBD5E1', flexShrink:0 }} />
+                    <p style={{ fontSize:12, fontWeight:800, color:'#3B82F6', fontFamily:'monospace' }}>{acc.password}</p>
+                  </div>
                 </div>
-              </div>
-              <div className="px-4 py-2.5 flex items-center gap-2">
-                <Lock size={12} style={{ color:'#CBD5E1' }} />
-                <div>
-                  <p style={{ fontSize:10, color:'#CBD5E1', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>Password</p>
-                  <p style={{ fontSize:13, fontWeight:800, color:'#3B82F6', fontFamily:'monospace' }}>clinix2024</p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
