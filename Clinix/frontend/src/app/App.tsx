@@ -2,12 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ThemeProvider } from './ThemeContext';
 import { LoginPage } from './components/LoginPage';
 import { Sidebar } from './components/Sidebar';
+import { Role, canAccess, isValidRole } from './auth';
 
 import { Dashboard } from './components/Dashboard';
 import { StudentsModule } from './components/StudentsModule';
 import { FacultyModule } from './components/FacultyModule';
 import { MedicalRecordsModule } from './components/MedicalRecordsModule';
-import { VisitsModule } from './components/VisitsModule';
 import { InventoryModule } from './components/InventoryModule';
 import { CertificatesModule } from './components/CertificatesModule';
 import { ConsultationsModule } from './components/ConsultationsModule';
@@ -21,7 +21,6 @@ export type Page =
   | 'students'
   | 'faculty'
   | 'medical-records'
-  | 'visits'
   | 'inventory'
   | 'certificates'
   | 'consultations'
@@ -57,21 +56,15 @@ export type FacultyMember = {
   medicalHistory: string;
 };
 
+export type MedFormStatus = 'Pending' | 'Processing' | 'Completed' | 'On Hold';
+
 export type MedRecord = {
   id: string;
   studentId: string;
   name: string;
   summary: string;
   date: string;
-};
-
-export type Visit = {
-  id: string;
-  studentId: string;
-  studentName: string;
-  date: string;
-  reason: string;
-  staff: string;
+  status: MedFormStatus;
 };
 
 export type InventoryItem = {
@@ -97,6 +90,8 @@ export type Consultation = {
   date: string;
   summary: string;
   outcome: string;
+  reason?: string;
+  staff?: string;
 };
 
 export type Activity = {
@@ -180,7 +175,17 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     try { return localStorage.getItem('clinixSession') === 'active'; } catch { return false; }
   });
+  const [role, setRole] = useState<Role>(() => {
+    try {
+      const stored = localStorage.getItem('clinixRole');
+      return isValidRole(stored) ? stored : 'admin';
+    } catch { return 'admin'; }
+  });
   const [activePage, setActivePage] = useState<Page>('dashboard');
+
+  const navigate = useCallback((p: Page) => {
+    setActivePage((prev) => (canAccess(role, p) ? p : prev));
+  }, [role]);
   const [globalSearch, setGlobalSearch] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -195,21 +200,32 @@ export default function App() {
     return raw.length ? raw : seedFaculty();
   });
 
-  const [medRecords, setMedRecords] = useState<MedRecord[]>(() =>
-    loadFromStorage('clinixMedRecords', [])
-  );
-  const [visits, setVisits] = useState<Visit[]>(() =>
-    loadFromStorage('clinixVisits', [])
-  );
+  const [medRecords, setMedRecords] = useState<MedRecord[]>(() => {
+    const raw = loadFromStorage<Record<string, unknown>[]>('clinixMedRecords', []);
+    return raw.map((r) => ({ ...r, status: (r.status as MedFormStatus) || 'Pending' } as MedRecord));
+  });
   const [inventory, setInventory] = useState<InventoryItem[]>(() =>
     loadFromStorage('clinixInventory', [])
   );
   const [certificates, setCertificates] = useState<Certificate[]>(() =>
     loadFromStorage('clinixCertificates', [])
   );
-  const [consultations, setConsultations] = useState<Consultation[]>(() =>
-    loadFromStorage('clinixConsultations', [])
-  );
+  const [consultations, setConsultations] = useState<Consultation[]>(() => {
+    const stored = loadFromStorage<Consultation[]>('clinixConsultations', []);
+    if (stored.length) return stored;
+    // One-time migration: fold the old Visit/History records into consultations
+    const legacyVisits = loadFromStorage<Record<string, unknown>[]>('clinixVisits', []);
+    return legacyVisits.map((v) => ({
+      id: `visit-${String(v.id ?? Date.now())}`,
+      studentId: String(v.studentId ?? ''),
+      studentName: String(v.studentName ?? ''),
+      date: String(v.date ?? ''),
+      summary: String(v.reason ?? ''),
+      outcome: '',
+      reason: String(v.reason ?? ''),
+      staff: String(v.staff ?? ''),
+    }));
+  });
   const [activities, setActivities] = useState<Activity[]>(() =>
     loadFromStorage('clinixActivities', [])
   );
@@ -236,7 +252,6 @@ export default function App() {
   useEffect(() => { localStorage.setItem('clinixStudents', JSON.stringify(students)); }, [students]);
   useEffect(() => { localStorage.setItem('clinixFaculty', JSON.stringify(faculty)); }, [faculty]);
   useEffect(() => { localStorage.setItem('clinixMedRecords', JSON.stringify(medRecords)); }, [medRecords]);
-  useEffect(() => { localStorage.setItem('clinixVisits', JSON.stringify(visits)); }, [visits]);
   useEffect(() => { localStorage.setItem('clinixInventory', JSON.stringify(inventory)); }, [inventory]);
   useEffect(() => { localStorage.setItem('clinixCertificates', JSON.stringify(certificates)); }, [certificates]);
   useEffect(() => { localStorage.setItem('clinixConsultations', JSON.stringify(consultations)); }, [consultations]);
@@ -256,22 +271,39 @@ export default function App() {
   }, []);
 
   function handleLogout() {
-    try { localStorage.removeItem('clinixSession'); } catch {}
+    try {
+      localStorage.removeItem('clinixSession');
+      localStorage.removeItem('clinixRole');
+    } catch {}
     setIsLoggedIn(false);
     setActivePage('dashboard');
   }
 
+  function handleLogin(r: Role) {
+    setRole(r);
+    setActivePage('dashboard');
+    setIsLoggedIn(true);
+  }
+
+  // If the current role loses access to the active page, fall back to dashboard
+  useEffect(() => {
+    if (!canAccess(role, activePage)) setActivePage('dashboard');
+  }, [role, activePage]);
+
+  // Never render a page the current role can't access
+  const page: Page = canAccess(role, activePage) ? activePage : 'dashboard';
+
   return (
     <ThemeProvider>
     {!isLoggedIn ? (
-      <LoginPage onLogin={() => setIsLoggedIn(true)} />
+      <LoginPage onLogin={handleLogin} />
     ) : (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
-      <Sidebar activePage={activePage} onNavigate={setActivePage} onLogout={handleLogout} />
+      <Sidebar role={role} activePage={activePage} onNavigate={navigate} onLogout={handleLogout} />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <main className="flex-1 overflow-y-auto p-6">
-          {activePage === 'dashboard' && (
+          {page === 'dashboard' && (
             <Dashboard
               students={students}
               faculty={faculty}
@@ -279,11 +311,12 @@ export default function App() {
               medRecords={medRecords}
               inventory={inventory}
               activities={activities}
-              onNavigate={setActivePage}
+              onNavigate={navigate}
               adminProfile={adminProfile}
+              role={role}
             />
           )}
-          {activePage === 'students' && (
+          {page === 'students' && (
             <StudentsModule
               students={students}
               setStudents={setStudents}
@@ -292,7 +325,7 @@ export default function App() {
               addActivity={addActivity}
             />
           )}
-          {activePage === 'faculty' && (
+          {page === 'faculty' && (
             <FacultyModule
               faculty={faculty}
               setFaculty={setFaculty}
@@ -301,7 +334,7 @@ export default function App() {
               addActivity={addActivity}
             />
           )}
-          {activePage === 'medical-records' && (
+          {page === 'medical-records' && (
             <MedicalRecordsModule
               records={medRecords}
               setRecords={setMedRecords}
@@ -310,16 +343,7 @@ export default function App() {
               addActivity={addActivity}
             />
           )}
-          {activePage === 'visits' && (
-            <VisitsModule
-              visits={visits}
-              setVisits={setVisits}
-              globalSearch={globalSearch}
-              showToast={showToast}
-              addActivity={addActivity}
-            />
-          )}
-          {activePage === 'inventory' && (
+          {page === 'inventory' && (
             <InventoryModule
               inventory={inventory}
               setInventory={setInventory}
@@ -328,7 +352,7 @@ export default function App() {
               addActivity={addActivity}
             />
           )}
-          {activePage === 'certificates' && (
+          {page === 'certificates' && (
             <CertificatesModule
               certificates={certificates}
               setCertificates={setCertificates}
@@ -337,7 +361,7 @@ export default function App() {
               addActivity={addActivity}
             />
           )}
-          {activePage === 'consultations' && (
+          {page === 'consultations' && (
             <ConsultationsModule
               consultations={consultations}
               setConsultations={setConsultations}
@@ -346,21 +370,20 @@ export default function App() {
               addActivity={addActivity}
             />
           )}
-          {activePage === 'reports' && (
+          {page === 'reports' && (
             <ReportsModule
               students={students}
               faculty={faculty}
               medRecords={medRecords}
-              visits={visits}
               inventory={inventory}
               certificates={certificates}
               consultations={consultations}
               activities={activities}
             />
           )}
-          {activePage === 'settings' && (
+          {page === 'settings' && (
             <SettingsModule
-              onNavigate={setActivePage}
+              onNavigate={navigate}
               showToast={showToast}
               adminProfile={adminProfile}
               setAdminProfile={setAdminProfile}

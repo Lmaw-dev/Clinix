@@ -1,15 +1,15 @@
 import { useState, useMemo, useRef } from 'react';
-import { Plus, Search, Pencil, Archive, Eye, Upload, CheckCircle2, Camera, User, Folder, ChevronRight, Download, Printer, Filter, List } from 'lucide-react';
+import { Plus, Search, Pencil, Archive, Eye, Upload, CheckCircle2, Camera, User, Download, Printer, Filter, X } from 'lucide-react';
 import { Student, normalizeStudent } from '../App';
 import { Modal } from './Modal';
 
-const COLLEGES = [
-  { name: 'CTECH', courses: ['BSCS', 'BSIT-FPST', 'BSIT-ELECT'] },
-  { name: 'CTE', courses: ['BEED', 'BSED-ENGLISH', 'BSED-MATH'] },
-  { name: 'COM', courses: ['BSM'] },
-  { name: 'COF', courses: ['BSF'] },
+type CollegeFolder = { name: string; courses: { name: string; years: string[] }[] };
+const DEFAULT_COLLEGES: CollegeFolder[] = [
+  { name: 'CTECH', courses: ['BSCS', 'BSIT-FPST', 'BSIT-ELECT'].map((name) => ({ name, years: ['1st Year', '2nd Year', '3rd Year', '4th Year'] })) },
+  { name: 'CTE', courses: ['BEED', 'BSED-ENGLISH', 'BSED-MATH'].map((name) => ({ name, years: ['1st Year', '2nd Year', '3rd Year', '4th Year'] })) },
+  { name: 'COM', courses: [{ name: 'BSM', years: ['1st Year', '2nd Year', '3rd Year', '4th Year'] }] },
+  { name: 'COF', courses: [{ name: 'BSF', years: ['1st Year', '2nd Year', '3rd Year', '4th Year'] }] },
 ];
-const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4001/api').replace(/\/$/, '');
 
 type Props = {
@@ -21,9 +21,9 @@ type Props = {
 };
 
 type TabId = 'list' | 'form' | 'import';
-type FolderFilter = { college: string; course?: string; yearLevel?: string } | null;
-type FolderLayout = 'list' | 'icon';
-type FolderSort = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
+type SortOrder = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
+
+const YEAR_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 
 const defaultForm = {
   studentId: '',
@@ -103,21 +103,6 @@ function normalizeCourseName(course: string) {
   } as Record<string, string>)[key] || key;
 }
 
-function collegeForCourse(course: string) {
-  const normalized = normalizeCourseName(course);
-  return COLLEGES.find((c) => c.courses.includes(normalized))?.name || 'Uncategorized';
-}
-
-function matchesFolderFilter(student: Student, filter: FolderFilter) {
-  if (!filter) return true;
-  const course = normalizeCourseName(student.course);
-  return (
-    collegeForCourse(student.course) === filter.college &&
-    (!filter.course || course === filter.course) &&
-    (!filter.yearLevel || student.yearLevel === filter.yearLevel)
-  );
-}
-
 function parseCsvLine(line: string) {
   const cells: string[] = [];
   let current = '';
@@ -195,6 +180,7 @@ async function saveStudentApi(student: Student, editingId?: string | null) {
 export function StudentsModule({ students, setStudents, globalSearch, showToast, addActivity }: Props) {
   const [tab, setTab] = useState<TabId>('list');
   const [localSearch, setLocalSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewStudent, setViewStudent] = useState<Student | null>(null);
@@ -202,9 +188,9 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   const [showImportModal, setShowImportModal] = useState(false);
   const [pendingCsv, setPendingCsv] = useState<Student[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
-  const [folderFilter, setFolderFilter] = useState<FolderFilter>(null);
-  const [folderLayout, setFolderLayout] = useState<FolderLayout>('list');
-  const [folderSort, setFolderSort] = useState<FolderSort>('name-asc');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('name-asc');
+  const [courseFilter, setCourseFilter] = useState('');
+  const [yearFilter, setYearFilter] = useState('');
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const query = (localSearch || globalSearch).trim().toLowerCase();
@@ -213,32 +199,14 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       students.filter(
         (s) =>
           s.status !== 'dropped' &&
-          matchesFolderFilter(s, folderFilter) &&
+          (!courseFilter || normalizeCourseName(s.course) === courseFilter) &&
+          (!yearFilter || s.yearLevel === yearFilter) &&
           [s.studentId, s.name, s.lastName, s.firstName, s.middleInitial, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions]
             .join(' ')
             .toLowerCase()
             .includes(query),
       ).sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)),
-    [students, query, folderFilter],
-  );
-
-  const folderRows = useMemo(
-    () =>
-      COLLEGES.map((college) => {
-        const collegeStudents = students.filter(
-          (s) => s.status !== 'dropped' && collegeForCourse(s.course) === college.name,
-        );
-        return {
-          ...college,
-          students: collegeStudents,
-          courses: college.courses.map((course) => {
-            const courseStudents = collegeStudents.filter((s) => normalizeCourseName(s.course) === course);
-            const years = [...new Set(courseStudents.map((s) => s.yearLevel).filter(Boolean))].sort();
-            return { name: course, students: courseStudents, years };
-          }),
-        };
-      }),
-    [students],
+    [students, query, courseFilter, yearFilter],
   );
 
   const searchMatches = useMemo(
@@ -398,21 +366,6 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     setShowImportModal(false);
   }
 
-  function toggleFolderFilter(next: Exclude<FolderFilter, null>) {
-    setFolderFilter((current) =>
-      current?.college === next.college &&
-      current?.course === next.course &&
-      current?.yearLevel === next.yearLevel
-        ? null
-        : next,
-    );
-  }
-
-  function openYearAdd() {
-    if (!folderFilter?.course || !folderFilter.yearLevel) return;
-    openAdd({ course: folderFilter.course, yearLevel: folderFilter.yearLevel });
-  }
-
   function exportRows(rows: Student[], title: string) {
     const headers = ['Student ID', 'Last Name', 'First Name', 'M.I.', 'Name', 'Course', 'Year Level', 'Sex', 'Contact Number', 'Medical Conditions', 'Status'];
     const csv = [headers, ...rows.map((s) => [
@@ -425,10 +378,10 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     URL.revokeObjectURL(link.href);
   }
 
-  function sortFolderRows(rows: Student[]) {
+  function sortRows(rows: Student[]) {
     const sorted = [...rows];
     sorted.sort((a, b) => {
-      switch (folderSort) {
+      switch (sortOrder) {
         case 'name-desc':
           return `${b.lastName} ${b.firstName}`.localeCompare(`${a.lastName} ${a.firstName}`);
         case 'id-asc':
@@ -467,63 +420,16 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     'bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors';
 
   function studentTable(rows: Student[], title: string) {
-    const sortedRows = sortFolderRows(rows);
+    const sortedRows = sortRows(rows);
     return (
       <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-slate-800" style={{ fontSize: 14, fontWeight: 600 }}>
-              {title}
-            </p>
-            <p className="text-slate-400" style={{ fontSize: 12 }}>
-              {sortedRows.length} enrolled record{sortedRows.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          {folderFilter?.yearLevel && (
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600 }}>
-                <Filter size={14} />
-                Sort
-                <select
-                  value={folderSort}
-                  onChange={(e) => setFolderSort(e.target.value as FolderSort)}
-                  className="bg-transparent text-slate-700 outline-none"
-                  style={{ fontSize: 12 }}
-                >
-                  <option value="name-asc">Name A-Z</option>
-                  <option value="name-desc">Name Z-A</option>
-                  <option value="id-asc">ID Asc</option>
-                  <option value="id-desc">ID Desc</option>
-                </select>
-              </label>
-              <button
-                onClick={() => exportRows(sortedRows, title)}
-                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 hover:bg-slate-50"
-                style={{ fontSize: 12, fontWeight: 600 }}
-                title="Export CSV"
-              >
-                <Download size={14} />
-                CSV
-              </button>
-              <button
-                onClick={() => printRows(sortedRows, title)}
-                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 hover:bg-slate-50"
-                style={{ fontSize: 12, fontWeight: 600 }}
-                title="Print student list"
-              >
-                <Printer size={14} />
-                Print
-              </button>
-              <button
-                onClick={openYearAdd}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-white hover:bg-blue-700"
-                style={{ fontSize: 12, fontWeight: 600 }}
-              >
-                <Plus size={14} />
-                Add student
-              </button>
-            </div>
-          )}
+        <div className="px-5 py-4 border-b border-slate-100">
+          <p className="text-slate-800" style={{ fontSize: 14, fontWeight: 600 }}>
+            {title}
+          </p>
+          <p className="text-slate-400" style={{ fontSize: 12 }}>
+            {sortedRows.length} enrolled record{sortedRows.length !== 1 ? 's' : ''}
+          </p>
         </div>
 
         <div className="overflow-x-auto">
@@ -548,7 +454,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>
-                    No students match this folder
+                    No students match your search
                   </td>
                 </tr>
               ) : (
@@ -626,6 +532,8 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     );
   }
 
+  const tableTitle = [courseFilter, yearFilter].filter(Boolean).join(' / ') || 'All Students';
+
   return (
     <div className="space-y-5 max-w-screen-xl">
       {/* Header */}
@@ -636,197 +544,162 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
             Manage student records, profiles, and enrollment status
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => exportRows(sortRows(visible), tableTitle)}
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            style={{ fontSize: 13 }}
+            title="Export CSV"
+          >
+            <Download size={15} />
+            CSV
+          </button>
+          <button
+            onClick={() => printRows(sortRows(visible), tableTitle)}
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            style={{ fontSize: 13 }}
+            title="Print student list"
+          >
+            <Printer size={15} />
+            Print
+          </button>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            style={{ fontSize: 13 }}
+            title="Import CSV"
+          >
+            <Upload size={15} />
+            Import
+          </button>
+          <button
+            onClick={() => openAdd(courseFilter || yearFilter ? { course: courseFilter, yearLevel: yearFilter } : {})}
+            className="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
+            style={{ fontSize: 13 }}
+          >
+            <Plus size={15} />
+            Add Student
+          </button>
+        </div>
       </div>
 
       {/* ── LIST TAB ── */}
       {tab === 'list' && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
-          <div className="px-5 py-4 border-b border-slate-100 space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-slate-800 dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>
-                  Student Folders
-                </p>
-                <p className="text-slate-400" style={{ fontSize: 12 }}>
-                  Browse by college, course, and year
-                </p>
-              </div>
-              {folderFilter && (
-                <button
-                  onClick={() => setFolderFilter(null)}
-                  className="text-blue-600 hover:text-blue-700"
-                  style={{ fontSize: 12, fontWeight: 600 }}
-                >
-                  Clear folder filter
-                </button>
-              )}
-            </div>
-
+          <div className="px-5 py-4 border-b border-slate-100">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[240px] flex-1">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              {/* Search — upper left, grows to fill available width */}
+              <div className="relative flex-1 min-w-[240px]">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="search"
                   value={localSearch}
-                  onChange={(e) => setLocalSearch(e.target.value)}
-                  placeholder="Search students..."
-                  className={`${fieldClass} pl-9`}
+                  onFocus={() => setSearchOpen(true)}
+                  onChange={(e) => { setLocalSearch(e.target.value); setSearchOpen(true); }}
+                  placeholder="Search by name, ID, course, or year..."
+                  className={`${fieldClass} pl-10 ${localSearch ? 'pr-9' : ''}`}
                   style={{ fontSize: 13 }}
                 />
-              </div>
-              <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
-                <List size={14} />
-                View
-                <select
-                  value={folderLayout}
-                  onChange={(e) => setFolderLayout(e.target.value as FolderLayout)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700"
-                  style={{ fontSize: 12 }}
-                >
-                  <option value="list">List</option>
-                  <option value="icon">Icon</option>
-                </select>
-              </label>
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                title="Import CSV"
-              >
-                <Upload size={16} />
-              </button>
-            </div>
+                {localSearch && (
+                  <button type="button" onClick={() => { setLocalSearch(''); setSearchOpen(false); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-blue-600" title="Clear search" aria-label="Clear search">
+                    <X size={15} />
+                  </button>
+                )}
 
-            {searchMatches.length > 0 && (
-              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-2">
-                <p className="px-2 pb-1 text-blue-700" style={{ fontSize: 12, fontWeight: 600 }}>
-                  Matching student directories
-                </p>
-                <div className="grid gap-1">
-                  {searchMatches.map((s) => {
-                    const college = collegeForCourse(s.course);
-                    const course = normalizeCourseName(s.course);
-                    return (
-                      <button
-                        key={s.studentId}
-                        onClick={() => setFolderFilter({ college, course, yearLevel: s.yearLevel })}
-                        className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-left hover:bg-blue-100"
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-slate-800 truncate" style={{ fontSize: 13, fontWeight: 600 }}>
-                            {s.name}
+                {searchOpen && searchMatches.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1.5 rounded-xl border border-blue-100 bg-white p-1.5 shadow-xl">
+                    <p className="px-2 py-1 text-blue-700" style={{ fontSize: 12, fontWeight: 600 }}>
+                      Matching students
+                    </p>
+                    <div className="grid gap-1">
+                      {searchMatches.map((s) => (
+                        <button
+                          key={s.studentId}
+                          onClick={() => { setViewStudent(s); setLocalSearch(''); setSearchOpen(false); }}
+                          className="flex items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-blue-50"
+                        >
+                          <StudentAvatar photo={s.photo} name={s.name} size="sm" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-slate-800 truncate" style={{ fontSize: 13, fontWeight: 600 }}>
+                              {s.name}
+                            </span>
+                            <span className="block text-slate-500 truncate" style={{ fontSize: 12 }}>
+                              {s.course || 'No course'} · {s.yearLevel || 'No year'}
+                            </span>
                           </span>
-                          <span className="block text-slate-500 truncate" style={{ fontSize: 12 }}>
-                            {college} / {course} / {s.yearLevel || 'No year'}
+                          <span className="text-slate-400 whitespace-nowrap" style={{ fontSize: 12 }}>
+                            {s.studentId}
                           </span>
-                        </span>
-                        <span className="text-slate-400 whitespace-nowrap" style={{ fontSize: 12 }}>
-                          {s.studentId}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Filters — beside the search, pushed to the right */}
+              <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
+                <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
+                  <Filter size={14} />
+                  Course
+                  <select
+                    value={courseFilter}
+                    onChange={(e) => setCourseFilter(e.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700"
+                    style={{ fontSize: 12 }}
+                  >
+                    <option value="">All courses</option>
+                    {DEFAULT_COLLEGES.map((college) => (
+                      <optgroup key={college.name} label={college.name}>
+                        {college.courses.map((course) => <option key={course.name} value={course.name}>{course.name}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
+                  Year
+                  <select
+                    value={yearFilter}
+                    onChange={(e) => setYearFilter(e.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700"
+                    style={{ fontSize: 12 }}
+                  >
+                    <option value="">All year levels</option>
+                    {YEAR_OPTIONS.map((year) => <option key={year} value={year}>{year}</option>)}
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
+                  Sort
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700"
+                    style={{ fontSize: 12 }}
+                  >
+                    <option value="name-asc">Name A-Z</option>
+                    <option value="name-desc">Name Z-A</option>
+                    <option value="id-asc">ID Asc</option>
+                    <option value="id-desc">ID Desc</option>
+                  </select>
+                </label>
+                {(courseFilter || yearFilter) && (
+                  <button
+                    onClick={() => { setCourseFilter(''); setYearFilter(''); }}
+                    className="text-blue-600 hover:text-blue-700"
+                    style={{ fontSize: 12, fontWeight: 600 }}
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div>
-            <div className="flex flex-wrap items-center gap-1 border-b border-slate-100 px-5 py-3 text-slate-600">
-              <button onClick={() => setFolderFilter(null)} className="hover:text-blue-700" style={{ fontSize: 13, fontWeight: 600 }}>
-                Students
-              </button>
-              {folderFilter?.college && (
-                <>
-                  <ChevronRight size={14} />
-                  <button onClick={() => setFolderFilter({ college: folderFilter.college })} className="hover:text-blue-700" style={{ fontSize: 13, fontWeight: 600 }}>
-                    {folderFilter.college}
-                  </button>
-                </>
-              )}
-              {folderFilter?.course && (
-                <>
-                  <ChevronRight size={14} />
-                  <button onClick={() => setFolderFilter({ college: folderFilter.college, course: folderFilter.course })} className="hover:text-blue-700" style={{ fontSize: 13, fontWeight: 600 }}>
-                    {folderFilter.course}
-                  </button>
-                </>
-              )}
-              {folderFilter?.yearLevel && (
-                <>
-                  <ChevronRight size={14} />
-                  <span className="text-blue-700" style={{ fontSize: 13, fontWeight: 700 }}>{folderFilter.yearLevel}</span>
-                </>
-              )}
-            </div>
-
-            <div className={folderLayout === 'icon' ? 'grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4' : 'divide-y divide-slate-100'}>
-              {(() => {
-                const itemClass = `w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors border-slate-200 hover:bg-slate-50 ${folderLayout === 'icon' ? 'min-h-32 flex-col items-start justify-center' : ''}`;
-                if (!folderFilter?.college) {
-                  return folderRows.map((college) => (
-                    <div key={college.name} className={folderLayout === 'icon' ? 'min-w-0' : 'px-4 py-3'}>
-                      <button onClick={() => setFolderFilter({ college: college.name })} className={itemClass}>
-                        <Folder size={folderLayout === 'icon' ? 34 : 24} className="text-blue-600 shrink-0" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-slate-800" style={{ fontSize: 14, fontWeight: 700 }}>{college.name}</span>
-                          <span className="block text-slate-500 truncate" style={{ fontSize: 12 }}>{college.courses.map((c) => c.name).join(', ')}</span>
-                        </span>
-                        <span className="text-slate-500 whitespace-nowrap" style={{ fontSize: 13 }}>{college.students.length} student{college.students.length !== 1 ? 's' : ''}</span>
-                      </button>
-                    </div>
-                  ));
-                }
-
-                const college = folderRows.find((row) => row.name === folderFilter.college);
-                if (!college) return null;
-
-                if (!folderFilter.course) {
-                  return college.courses.map((course) => (
-                    <div key={course.name} className={folderLayout === 'icon' ? 'min-w-0' : 'px-4 py-3'}>
-                      <button onClick={() => setFolderFilter({ college: college.name, course: course.name })} className={itemClass}>
-                        <Folder size={folderLayout === 'icon' ? 34 : 24} className="text-amber-500 shrink-0" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-slate-800" style={{ fontSize: 14, fontWeight: 700 }}>{course.name}</span>
-                          <span className="block text-slate-500" style={{ fontSize: 12 }}>{college.name}</span>
-                        </span>
-                        <span className="text-slate-500 whitespace-nowrap" style={{ fontSize: 13 }}>{course.students.length} student{course.students.length !== 1 ? 's' : ''}</span>
-                      </button>
-                    </div>
-                  ));
-                }
-
-                const course = college.courses.find((row) => row.name === folderFilter.course);
-                if (!course) return null;
-
-                if (!folderFilter.yearLevel) {
-                  return YEAR_LEVELS.map((year) => {
-                    const rows = course.students.filter((s) => s.yearLevel === year);
-                    return (
-                      <div key={year} className={folderLayout === 'icon' ? 'min-w-0' : 'px-4 py-3'}>
-                        <button onClick={() => setFolderFilter({ college: college.name, course: course.name, yearLevel: year })} className={itemClass}>
-                          <Folder size={folderLayout === 'icon' ? 34 : 24} className="text-emerald-600 shrink-0" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-slate-800" style={{ fontSize: 14, fontWeight: 700 }}>{year}</span>
-                            <span className="block text-slate-500" style={{ fontSize: 12 }}>{course.name}</span>
-                          </span>
-                          <span className="text-slate-500 whitespace-nowrap" style={{ fontSize: 13 }}>{rows.length} student{rows.length !== 1 ? 's' : ''}</span>
-                        </button>
-                      </div>
-                    );
-                  });
-                }
-
-                return (
-                  <div className={folderLayout === 'icon' ? 'md:col-span-2 xl:col-span-4' : 'px-4 py-3'}>
-                    {studentTable(visible, `${college.name} / ${course.name} / ${folderFilter.yearLevel}`)}
-                  </div>
-                );
-              })()}
-            </div>
+          <div className="px-4 pb-4">
+            {studentTable(visible, tableTitle)}
           </div>
         </div>
       )}
-
 
       {/* ── FORM TAB ── */}
       <Modal
@@ -981,9 +854,9 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     required
                   >
                     <option value="">Select program</option>
-                    {COLLEGES.map((college) => (
+                    {DEFAULT_COLLEGES.map((college) => (
                       <optgroup key={college.name} label={college.name}>
-                        {college.courses.map((c) => <option key={c}>{c}</option>)}
+                        {college.courses.map((course) => <option key={course.name}>{course.name}</option>)}
                       </optgroup>
                     ))}
                   </select>

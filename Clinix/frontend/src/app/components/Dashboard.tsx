@@ -10,6 +10,9 @@ import {
   TrendingUp,
   AlertCircle,
   Bell,
+  Search,
+  X,
+  UserRound,
 } from 'lucide-react';
 import {
   BarChart,
@@ -34,7 +37,9 @@ import {
   Page,
   AdminProfile,
 } from '../App';
+import { Role, ROLE_LABELS, ROLE_DEFAULT_NAMES, canAccess } from '../auth';
 import { useTheme } from '../ThemeContext';
+import { Modal } from './Modal';
 
 const PIE_COLORS = ['#3B82F6', '#06B6D4', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444'];
 
@@ -86,12 +91,20 @@ type Props = {
   activities: ActivityType[];
   onNavigate: (p: Page) => void;
   adminProfile: AdminProfile;
+  role: Role;
 };
 
+type QuickResult = { type: 'Student'; person: Student } | { type: 'Faculty & Staff'; person: FacultyMember };
+
 export function Dashboard({
-  students, faculty, consultations, medRecords, inventory, activities, onNavigate, adminProfile,
+  students, faculty, consultations, medRecords, inventory, activities, onNavigate, adminProfile, role,
 }: Props) {
   const { isDark } = useTheme();
+
+  const displayName = role === 'admin'
+    ? (adminProfile.name || ROLE_DEFAULT_NAMES.admin)
+    : ROLE_DEFAULT_NAMES[role];
+  const roleLabel = ROLE_LABELS[role];
 
   const C = {
     card:       isDark ? '#1E293B' : '#FFFFFF',
@@ -165,7 +178,7 @@ export function Dashboard({
     { label: 'Enrolled Students', value: enrolledCount, icon: GraduationCap, iconBg: '#EFF6FF', iconColor: '#2563EB', sub: `${students.length} total records` },
     { label: 'Faculty & Staff', value: faculty.length, icon: Users, iconBg: '#F0FDF4', iconColor: '#16A34A', sub: 'Active personnel' },
     { label: 'Consultations', value: consultations.length, icon: Stethoscope, iconBg: '#F5F3FF', iconColor: '#7C3AED', sub: 'Total logged' },
-    { label: 'Medical Records', value: medRecords.length, icon: FileText, iconBg: '#FFF7ED', iconColor: '#C2410C', sub: `${inventory.length} inventory items` },
+    { label: 'Medical Forms', value: medRecords.length, icon: FileText, iconBg: '#FFF7ED', iconColor: '#C2410C', sub: `${medRecords.filter((r) => r.status === 'Pending').length} pending` },
   ];
 
   const quickActions = [
@@ -173,9 +186,11 @@ export function Dashboard({
     { label: 'New Consultation', desc: 'Log a consultation', icon: Stethoscope, page: 'consultations' as Page, iconBg: '#F5F3FF', iconColor: '#7C3AED' },
     { label: 'Add Medicine', desc: 'Update inventory', icon: Pill, page: 'inventory' as Page, iconBg: '#FFFBEB', iconColor: '#B45309' },
     { label: 'Generate Report', desc: 'View statistics', icon: BarChart2, page: 'reports' as Page, iconBg: '#F0FDF4', iconColor: '#16A34A' },
-  ];
+  ].filter((a) => canAccess(role, a.page));
 
   const [now, setNow] = useState(() => new Date());
+  const [quickSearch, setQuickSearch] = useState('');
+  const [selectedPerson, setSelectedPerson] = useState<QuickResult | null>(null);
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
@@ -187,25 +202,30 @@ export function Dashboard({
   const timeStr = now.toLocaleTimeString(undefined, {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
+  const quickQuery = quickSearch.trim().toLowerCase();
+  const quickResults: QuickResult[] = quickQuery ? [
+    ...students.filter((s) => [s.name, s.studentId, s.course, s.yearLevel].join(' ').toLowerCase().includes(quickQuery)).map((person) => ({ type: 'Student' as const, person })),
+    ...faculty.filter((f) => [f.name, f.staffId, f.college, f.role].join(' ').toLowerCase().includes(quickQuery)).map((person) => ({ type: 'Faculty & Staff' as const, person })),
+  ].slice(0, 8) : [];
 
   return (
     <div style={{ maxWidth: 1200 }}>
       {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-4 mb-7">
-        <div>
+      <div className="flex items-start gap-4 mb-7">
+        <div className="shrink-0">
           <p style={{ fontSize: 13, color: C.txtMuted, fontWeight: 500, marginBottom: 4 }}>
-            {getGreeting()}, {adminProfile.name || 'Clinic Admin'} 👋
+            {getGreeting()}, {displayName}
           </p>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: C.txtPrimary, lineHeight: 1.2 }}>
             Dashboard
           </h1>
           <p style={{ fontSize: 13, color: C.txtMuted, marginTop: 4 }}>
-            BISU Calape Campus &nbsp;·&nbsp; {dateStr}
+            BISU Calape Campus 
           </p>
         </div>
 
         {/* Right: alerts + admin bar */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-1 items-center gap-3 justify-end">
           {lowStock.length > 0 && (
             <div
               className="flex items-center gap-2"
@@ -222,6 +242,37 @@ export function Dashboard({
               </p>
             </div>
           )}
+
+          {/* Quick search — grows to fill the header gap, beside the date */}
+          <div className="relative flex-1 min-w-[200px]" style={{ maxWidth: 560 }}>
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={quickSearch}
+              onChange={(e) => setQuickSearch(e.target.value)}
+              placeholder="Quick search..."
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              style={{ fontSize: 13 }}
+            />
+            {quickSearch && <button onClick={() => setQuickSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600" aria-label="Clear search"><X size={16} /></button>}
+            {quickResults.length > 0 && (
+              <div className="absolute left-0 right-0 z-20 mt-2 w-full overflow-hidden rounded-xl border border-blue-100 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-800" style={{ minWidth: 280 }}>
+                {quickResults.map((result) => {
+                  const person = result.person;
+                  return (
+                    <button key={result.type === 'Student' ? result.person.studentId : result.person.staffId} onClick={() => { setSelectedPerson(result); setQuickSearch(''); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-blue-50 dark:hover:bg-slate-700">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600"><UserRound size={17} /></div>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{person.name}</span>
+                        <span className="block truncate text-slate-500" style={{ fontSize: 12 }}>{result.type === 'Student' ? `${result.person.studentId} · ${result.person.course || 'No course'} · ${result.person.yearLevel || 'No year level'}` : `${result.person.staffId} · ${result.person.role}`}</span>
+                      </span>
+                      <span className="text-slate-400" style={{ fontSize: 11 }}>{result.type}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Date + live clock pill */}
           <div
@@ -264,10 +315,10 @@ export function Dashboard({
 
           {/* Admin avatar */}
           <div className="flex items-center gap-2">
-            {adminProfile.photo ? (
+            {role === 'admin' && adminProfile.photo ? (
               <img
                 src={adminProfile.photo}
-                alt={adminProfile.name}
+                alt={displayName}
                 style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }}
               />
             ) : (
@@ -282,14 +333,14 @@ export function Dashboard({
                   fontWeight: 700,
                 }}
               >
-                {(adminProfile.name || 'CA').split(' ').filter(Boolean).slice(0,2).map(s=>s[0]).join('').toUpperCase() || 'AD'}
+                {displayName.split(' ').filter(Boolean).slice(0,2).map(s=>s[0]).join('').toUpperCase() || 'AD'}
               </div>
             )}
             <div className="hidden md:block">
               <p style={{ fontSize: 12, fontWeight: 600, color: C.txtPrimary, lineHeight: 1.2 }}>
-                {adminProfile.name || 'Clinic Admin'}
+                {displayName}
               </p>
-              <p style={{ fontSize: 10, color: C.txtMuted, lineHeight: 1.2 }}>Administrator</p>
+              <p style={{ fontSize: 10, color: C.txtMuted, lineHeight: 1.2 }}>{roleLabel}</p>
             </div>
           </div>
         </div>
@@ -561,6 +612,22 @@ export function Dashboard({
           </div>
         </div>
       </div>
+
+      <Modal isOpen={!!selectedPerson} title={`${selectedPerson?.type || ''} Profile`} onClose={() => setSelectedPerson(null)}>
+        {selectedPerson && (() => {
+          const person = selectedPerson.person;
+          const details = selectedPerson.type === 'Student'
+            ? [['Student ID', selectedPerson.person.studentId], ['Course', selectedPerson.person.course], ['Year Level', selectedPerson.person.yearLevel], ['Sex', selectedPerson.person.gender], ['Contact Number', selectedPerson.person.contactNumber], ['Medical Conditions', selectedPerson.person.medicalConditions || 'None recorded'], ['Status', selectedPerson.person.status]]
+            : [['Staff ID', selectedPerson.person.staffId], ['College', selectedPerson.person.college || '—'], ['Role', selectedPerson.person.role], ['Contact', selectedPerson.person.contact], ['Medical History', selectedPerson.person.medicalHistory || 'None recorded']];
+          return <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-xl bg-blue-50 p-4 dark:bg-slate-700">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white"><UserRound size={22} /></div>
+              <div><p className="text-slate-900 dark:text-white" style={{ fontSize: 16, fontWeight: 700 }}>{person.name}</p><p className="text-slate-500" style={{ fontSize: 12 }}>{selectedPerson.type}</p></div>
+            </div>
+            <dl className="divide-y divide-slate-100 dark:divide-slate-700">{details.map(([label, value]) => <div key={label} className="flex gap-4 py-2.5"><dt className="w-32 shrink-0 text-slate-400" style={{ fontSize: 12 }}>{label}</dt><dd className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 500 }}>{value || '—'}</dd></div>)}</dl>
+          </div>;
+        })()}
+      </Modal>
     </div>
   );
 }

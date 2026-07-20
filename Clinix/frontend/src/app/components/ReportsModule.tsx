@@ -9,14 +9,13 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie,
 } from 'recharts';
-import { Student, FacultyMember, MedRecord, Visit, InventoryItem, Certificate, Consultation, Activity as ActivityType } from '../App';
+import { Student, FacultyMember, MedRecord, InventoryItem, Certificate, Consultation, Activity as ActivityType } from '../App';
 import { useTheme } from '../ThemeContext';
 
 type Props = {
   students: Student[];
   faculty: FacultyMember[];
   medRecords: MedRecord[];
-  visits: Visit[];
   inventory: InventoryItem[];
   certificates: Certificate[];
   consultations: Consultation[];
@@ -57,7 +56,7 @@ function pctChange(a: number, b: number) {
   return Math.round(((a - b) / b) * 100);
 }
 
-export function ReportsModule({ students, faculty, medRecords, visits, inventory, certificates, consultations, activities }: Props) {
+export function ReportsModule({ students, faculty, medRecords, inventory, certificates, consultations, activities }: Props) {
   const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [dateFilter, setDateFilter] = useState<DateFilter>('month');
@@ -97,7 +96,7 @@ export function ReportsModule({ students, faculty, medRecords, visits, inventory
   const consultWeek = consultations.filter(c => isThisWeek(c.date)).length;
   const consultMonth = consultations.filter(c => isThisMonth(c.date)).length;
 
-  const visitsToday = visits.filter(v => v.date === today).length;
+  const pendingForms = medRecords.filter(r => r.status === 'Pending').length;
 
   const now = new Date();
   const expiredMeds = inventory.filter(i => {
@@ -125,17 +124,17 @@ export function ReportsModule({ students, faculty, medRecords, visits, inventory
       const d = new Date(); d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
       const label = d.toLocaleDateString('en', { weekday: 'short' });
-      const value = consultations.filter(c => c.date === key).length + visits.filter(v => v.date === key).length;
+      const value = consultations.filter(c => c.date === key).length;
       days.push({ date: key, label, value, fill: '#3B82F6' });
     }
     return days;
-  }, [consultations, visits]);
+  }, [consultations]);
 
-  // Common illnesses from visit reasons
+  // Common illnesses from consultation reasons
   const illnessData = useMemo(() => {
     const m = new Map<string, number>();
-    visits.forEach(v => {
-      const r = (v.reason || '').toLowerCase().trim();
+    consultations.forEach(c => {
+      const r = (c.reason || '').toLowerCase().trim();
       if (!r) return;
       const key = r.charAt(0).toUpperCase() + r.slice(1);
       m.set(key, (m.get(key) || 0) + 1);
@@ -146,7 +145,7 @@ export function ReportsModule({ students, faculty, medRecords, visits, inventory
       name, value, fill: ILLNESS_COLORS[i % ILLNESS_COLORS.length],
       pct: total ? Math.round((value / total) * 100) : 0,
     }));
-  }, [visits]);
+  }, [consultations]);
 
   // Medicine usage: top 5 by qty dispensed (using qty as proxy)
   const medUsage = useMemo(() => {
@@ -266,8 +265,8 @@ export function ReportsModule({ students, faculty, medRecords, visits, inventory
             sub="Active personnel" trend="+6%" trendDir="up" accent="#8B5CF6" />
           <KpiCard icon={Stethoscope} label="Consultations" value={consultations.length.toLocaleString()}
             sub={`${consultToday} today`} trend="+8%" trendDir="up" accent="#10B981" />
-          <KpiCard icon={FileText} label="Medical Records" value={medRecords.length.toLocaleString()}
-            sub={`${visitsToday} visits today`} trend="6" trendDir="neutral" accent="#F59E0B" />
+          <KpiCard icon={FileText} label="Medical Forms" value={medRecords.length.toLocaleString()}
+            sub={`${pendingForms} pending`} trend="6" trendDir="neutral" accent="#F59E0B" />
           <KpiCard icon={Pill} label="Medicine Inventory" value={inventory.length}
             sub={`${lowStock.length} low stock`}
             badge={lowStock.length > 0 ? { text: `${lowStock.length} Low`, color: '#F59E0B' } : undefined}
@@ -343,7 +342,7 @@ export function ReportsModule({ students, faculty, medRecords, visits, inventory
         {/* Charts row 2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <SectionCard title="Most Common Illnesses" icon={PieIcon}>
-            {illnessData.length === 0 ? <EmptyChart title="No visit data yet" /> : (
+            {illnessData.length === 0 ? <EmptyChart title="No consultation data yet" /> : (
               <div className="flex gap-6">
                 <ResponsiveContainer width="50%" height={180}>
                   <PieChart>
@@ -482,21 +481,20 @@ export function ReportsModule({ students, faculty, medRecords, visits, inventory
   // ── Students Tab ─────────────────────────────────────────────────────────
   function StudentsTab() {
     const mostActive = courseMap[0]?.[0] || 'N/A';
-    const returningPct = students.length ? Math.round((visits.length / Math.max(students.length, 1)) * 10) : 0;
     return (
       <div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard icon={GraduationCap} label="Total Students" value={students.length} accent="#3B82F6" />
           <KpiCard icon={GraduationCap} label="Enrolled" value={enrolled.length} sub="Active" accent="#10B981" />
           <KpiCard icon={GraduationCap} label="Archived" value={dropped.length} sub="Dropped / inactive" accent="#F59E0B" />
-          <KpiCard icon={GraduationCap} label="Avg. Visits/Student" value={students.length ? (visits.length / students.length).toFixed(1) : '0'} accent="#8B5CF6" />
+          <KpiCard icon={GraduationCap} label="Avg. Consultations/Student" value={students.length ? (consultations.length / students.length).toFixed(1) : '0'} accent="#8B5CF6" />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <SectionCard title="Student Statistics">
             <StatRow label="Most Active Program" value={mostActive} color="#3B82F6" />
-            <StatRow label="Avg. Visits / Student" value={students.length ? (visits.length / students.length).toFixed(1) : '—'} />
-            <StatRow label="Total Visits" value={visits.length} />
-            <StatRow label="Today's Visits" value={visitsToday} />
+            <StatRow label="Avg. Consultations / Student" value={students.length ? (consultations.length / students.length).toFixed(1) : '—'} />
+            <StatRow label="Total Consultations" value={consultations.length} />
+            <StatRow label="Today's Consultations" value={consultToday} />
             <StatRow label="With Medical Conditions" value={students.filter(s => s.medicalConditions && s.medicalConditions !== 'None recorded').length} />
           </SectionCard>
           <div className="lg:col-span-2">
@@ -708,7 +706,7 @@ export function ReportsModule({ students, faculty, medRecords, visits, inventory
             )}
           </SectionCard>
           <SectionCard title="Most Common Illnesses" icon={PieIcon}>
-            {illnessData.length === 0 ? <EmptyChart title="No visit data yet" /> : (
+            {illnessData.length === 0 ? <EmptyChart title="No consultation data yet" /> : (
               <div className="flex gap-4">
                 <ResponsiveContainer width="50%" height={200}>
                   <PieChart>
