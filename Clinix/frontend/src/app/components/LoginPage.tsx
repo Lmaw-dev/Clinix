@@ -1,22 +1,26 @@
 import { useState } from 'react';
-import { Eye, EyeOff, AlertCircle, Heart, BarChart2, Shield, Zap, Lock, User } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, User, Lock } from 'lucide-react';
 import { ACCOUNTS, Role } from '../auth';
+import CAMPUS_PHOTO from '../../assets/campus-gate.png';
 
 type Props = { onLogin: (role: Role) => void };
-const FEATURES = [
-  { icon: BarChart2, title: 'Analytics',  sub: 'Real-time performance' },
-  { icon: Shield,    title: 'Security',   sub: 'Enterprise-grade protection' },
-  { icon: Zap,       title: 'Speed',      sub: 'Fast & reliable access' },
-];
-const CLINIC_PHOTO = 'https://images.unsplash.com/photo-1758448093806-88b2089068ab?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=900';
+
+const SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif";
+const PAGE  = '#F8FAFC'; // slate-50
+const INK   = '#0F172A'; // slate-900
+const MUTED = '#64748B'; // slate-500
+const LINE  = '#E2E8F0'; // slate-200
+const BLUE  = '#2563EB'; // blue-600
+const BLUE_DK = '#1D4ED8'; // blue-700
+const BLUE_FOCUS = '#3B82F6'; // blue-500
 
 export function LoginPage({ onLogin }: Props) {
-  const [username, setUsername]           = useState('');
-  const [password, setPassword]           = useState('');
-  const [showPassword, setShowPassword]   = useState(false);
-  const [remember, setRemember]           = useState(false);
-  const [error, setError]                 = useState('');
-  const [loading, setLoading]             = useState(false);
+  const [username, setUsername]         = useState('');
+  const [password, setPassword]         = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember]         = useState(false);
+  const [error, setError]               = useState('');
+  const [loading, setLoading]           = useState(false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,251 +43,211 @@ export function LoginPage({ onLogin }: Props) {
     }, 700);
   }
 
+  const disabled = loading || !username || !password;
+
   const inputBox: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 10,
-    background: '#F1F5F9',
-    border: '1.5px solid #E2E8F0',
-    borderRadius: 10, padding: '10px 14px',
-    transition: 'border-color 0.15s, box-shadow 0.15s',
+    background: '#FFFFFF',
+    border: `1px solid ${LINE}`,
+    borderRadius: 10, padding: '12px 14px',
+    transition: 'border-color 0.18s, box-shadow 0.18s',
   };
   const inputEl: React.CSSProperties = {
     flex: 1, background: 'none', border: 'none', outline: 'none',
-    fontSize: 14, color: '#0F172A', minWidth: 0,
+    fontSize: 14, color: INK, minWidth: 0,
   };
   function focusBox(el: HTMLElement) {
-    el.style.borderColor = '#3B82F6';
-    el.style.boxShadow   = '0 0 0 3px rgba(59,130,246,0.1)';
-    el.style.background  = '#fff';
+    el.style.borderColor = BLUE_FOCUS;
+    el.style.boxShadow   = '0 0 0 3px rgba(59,130,246,0.12)';
   }
   function blurBox(el: HTMLElement) {
-    el.style.borderColor = '#E2E8F0';
+    el.style.borderColor = LINE;
     el.style.boxShadow   = 'none';
-    el.style.background  = '#F1F5F9';
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden" style={{ background: '#020817' }}>
+    <div className="flex h-screen w-full overflow-hidden" style={{ background: PAGE }}>
 
-      {/* ══════════════ LEFT PANEL ══════════════ */}
-      <div
-        className="hidden lg:block relative overflow-hidden"
-        style={{ width: '56%', background: 'linear-gradient(135deg, #020817 0%, #0F172A 50%, #1E293B 100%)' }}
-      >
-        {/* subtle bg blobs */}
-        <div style={{ position:'absolute', top:-140, left:-140, width:440, height:440, borderRadius:'50%', background:'rgba(59,130,246,0.07)', pointerEvents:'none' }} />
-        <div style={{ position:'absolute', bottom:-100, left:-60, width:340, height:340, borderRadius:'50%', background:'rgba(29,78,216,0.08)', pointerEvents:'none' }} />
+      {/* ══════════════ LEFT — IMAGE (full-bleed, no card) ══════════════ */}
+      <div className="hidden lg:block relative" style={{ width: '56%', overflow: 'hidden' }}>
+        <img src={CAMPUS_PHOTO} alt="Bohol Island State University — Calape Campus"
+          className="clx-photo"
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
 
-        {/* CLINIC PHOTO — right half of panel, flush */}
-        <div style={{ position:'absolute', right:60, top:0, bottom:0, width:'62%', zIndex:1 }}>
-          <img
-            src={CLINIC_PHOTO}
-            alt="Clinic"
-            style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}
-          />
-          {/* left fade — blends photo into dark panel */}
-          <div style={{ position:'absolute', inset:0, background:'linear-gradient(to right, #0F172A 0%, rgba(15,23,42,0.88) 18%, rgba(15,23,42,0.35) 38%, transparent 60%)', pointerEvents:'none' }} />
-          {/* top & bottom fades */}
-          <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, #020817 0%, transparent 20%, transparent 80%, #1E293B 100%)', pointerEvents:'none' }} />
-          {/* overall darkening tint to keep text legible */}
-          <div style={{ position:'absolute', inset:0, background:'rgba(2,8,23,0.25)', pointerEvents:'none' }} />
+        {/* top & bottom scrims — keep brand/caption legible without a card */}
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(15,23,42,0.42) 0%, transparent 22%, transparent 62%, rgba(15,23,42,0.55) 100%)', pointerEvents: 'none' }} />
+
+        {/* SMOOTH BLEND — right edge dissolves into the form background */}
+        <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, transparent 0%, transparent 48%, rgba(248,250,252,0.35) 72%, rgba(248,250,252,0.85) 90%, ${PAGE} 100%)`, pointerEvents: 'none' }} />
+
+        {/* Brand — top-left over image */}
+        <div className="clx-in" style={{ position: 'absolute', top: 34, left: 40, zIndex: 2, animationDelay: '0.05s' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: SERIF, fontSize: 20, fontWeight: 700, color: '#F8FAFC', letterSpacing: '-0.01em', textShadow: '0 2px 10px rgba(0,0,0,0.4)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: BLUE_FOCUS, display: 'inline-block' }} />
+            Clinix
+          </span>
         </div>
 
-        {/* TEXT COLUMN — left side, above photo */}
-        <div className="relative flex flex-col justify-between h-full p-12" style={{ zIndex:2, pointerEvents:'none' }}>
-          {/* Logo */}
-          <div className="flex items-center gap-3" style={{ pointerEvents:'auto' }}>
-            <div style={{ width:40, height:40, borderRadius:11, background:'linear-gradient(135deg,#3B82F6,#1D4ED8)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 14px rgba(59,130,246,0.4)' }}>
-              <Heart size={19} style={{ color:'#fff' }} />
-            </div>
-            <div>
-              <p style={{ fontSize:16, fontWeight:900, color:'#F8FAFC', letterSpacing:'-0.02em', lineHeight:1 }}>Clinix</p>
-              <p style={{ fontSize:11, color:'#3B82F6', fontWeight:600, marginTop:2 }}>BISU Calape Campus</p>
-            </div>
-          </div>
-
-          {/* Hero */}
-          <div style={{ maxWidth:240 }}>
-            <p style={{ fontSize:13, color:'#3B82F6', fontWeight:700, marginBottom:8 }}>Welcome back!</p>
-            <h1 style={{ fontSize:38, fontWeight:900, color:'#F8FAFC', lineHeight:1.1, letterSpacing:'-0.03em', marginBottom:12 }}>
-              Good to see<br />you again!
-            </h1>
-            <p style={{ fontSize:13, color:'#94A3B8', lineHeight:1.75 }}>
-              Sign in to access the clinic system and continue providing excellent care.
-            </p>
-          </div>
-
-          {/* Features + footer */}
-          <div>
-            <div className="flex items-start gap-6 mb-5">
-              {FEATURES.map(({ icon: Icon, title, sub }) => (
-                <div key={title} className="flex items-start gap-2">
-                  <div style={{ width:28, height:28, borderRadius:8, background:'rgba(59,130,246,0.15)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:1 }}>
-                    <Icon size={13} style={{ color:'#3B82F6' }} />
-                  </div>
-                  <div>
-                    <p style={{ fontSize:12, fontWeight:700, color:'#CBD5E1' }}>{title}</p>
-                    <p style={{ fontSize:10, color:'#64748B', marginTop:1 }}>{sub}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ height:1, background:'rgba(255,255,255,0.07)', marginBottom:12 }} />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Shield size={11} style={{ color:'#64748B' }} />
-                <p style={{ fontSize:11, color:'#64748B' }}>Your data is secure with us</p>
-              </div>
-              <p style={{ fontSize:10, color:'#334155' }}>© 2026 Bisayas State University · Calape Campus</p>
-            </div>
-          </div>
-        </div>
-
-        {/* WAVY white right-edge separator */}
-        <div style={{ position:'absolute', right:0, top:0, bottom:0, width:100, zIndex:10, pointerEvents:'none' }}>
-          <svg viewBox="0 0 100 800" preserveAspectRatio="none" style={{ width:'100%', height:'100%' }}>
-            <path
-              d="M 55 0 C 55 0, 10 140, 30 270 C 50 400, 5 480, 20 600 C 35 720, 60 770, 50 800 L 100 800 L 100 0 Z"
-              fill="white"
-            />
-          </svg>
+        {/* Caption — bottom-left over image */}
+        <div style={{ position: 'absolute', left: 40, right: 120, bottom: 34, zIndex: 2 }}>
+          <p style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, color: '#F8FAFC', lineHeight: 1.15, letterSpacing: '-0.01em', textShadow: '0 2px 12px rgba(0,0,0,0.45)' }}>
+            Bohol Island State University
+          </p>
+          <p style={{ fontSize: 13, color: 'rgba(248,250,252,0.90)', marginTop: 5, fontWeight: 500, textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>
+            Calape Campus · Clinic Management System
+          </p>
         </div>
       </div>
 
-      {/* ══════════════ RIGHT PANEL ══════════════ */}
-      <div className="flex-1 flex flex-col items-center justify-center px-8 py-12" style={{ background:'#ffffff' }}>
+      {/* ══════════════ RIGHT — FORM ══════════════ */}
+      <div className="flex-1 flex flex-col justify-center" style={{ padding: '40px 48px', minWidth: 0 }}>
+        <div className="clx-in w-full mx-auto" style={{ maxWidth: 380, animationDelay: '0.12s' }}>
 
-        {/* mobile logo */}
-        <div className="flex items-center gap-2.5 mb-8 lg:hidden">
-          <div style={{ width:36, height:36, borderRadius:10, background:'linear-gradient(135deg,#3B82F6,#1D4ED8)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-            <Heart size={17} style={{ color:'#fff' }} />
-          </div>
-          <p style={{ fontSize:18, fontWeight:900, color:'#0F172A' }}>Clinix</p>
-        </div>
-
-        <div className="w-full" style={{ maxWidth:370 }}>
-
-          {/* Lock icon */}
-          <div className="flex justify-center mb-5">
-            <div style={{ width:56, height:56, borderRadius:'50%', background:'linear-gradient(135deg,#3B82F6,#1D4ED8)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 6px 20px rgba(59,130,246,0.35)' }}>
-              <Lock size={23} style={{ color:'#fff' }} />
-            </div>
+          {/* mobile brand */}
+          <div className="lg:hidden" style={{ marginBottom: 28 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: SERIF, fontSize: 20, fontWeight: 700, color: INK, letterSpacing: '-0.01em' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: BLUE, display: 'inline-block' }} />
+              Clinix
+            </span>
           </div>
 
           {/* Heading */}
-          <div className="text-center mb-7">
-            <h2 style={{ fontSize:21, fontWeight:800, color:'#0F172A', letterSpacing:'-0.02em', marginBottom:5 }}>
-              Sign in to your account
-            </h2>
-            <p style={{ fontSize:13, color:'#94A3B8' }}>Enter your credentials to continue</p>
-          </div>
+          <h1 style={{ fontFamily: SERIF, fontSize: 40, fontWeight: 700, color: INK, lineHeight: 1.05, letterSpacing: '-0.02em', marginBottom: 10 }}>
+            Welcome back!
+          </h1>
+          <p style={{ fontSize: 14.5, color: MUTED, marginBottom: 30, lineHeight: 1.5 }}>
+            Sign in to continue caring for the campus.
+          </p>
 
           {/* Error */}
           {error && (
-            <div className="flex items-center gap-2.5 rounded-xl px-4 py-3 mb-4"
-              style={{ background:'#FEF2F2', border:'1.5px solid #FECACA' }}>
-              <AlertCircle size={14} style={{ color:'#EF4444', flexShrink:0 }} />
-              <p style={{ fontSize:13, color:'#DC2626', fontWeight:500 }}>{error}</p>
+            <div className="clx-error flex items-center gap-2.5 rounded-lg px-4 py-3 mb-5"
+              style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
+              <AlertCircle size={15} style={{ color: '#EF4444', flexShrink: 0 }} />
+              <p style={{ fontSize: 13, color: '#DC2626', fontWeight: 500 }}>{error}</p>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit}>
 
             {/* Username */}
-            <div>
-              <label style={{ fontSize:13, fontWeight:600, color:'#374151', display:'block', marginBottom:7 }}>Username</label>
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 13.5, fontWeight: 600, color: '#334155', display: 'block', marginBottom: 8 }}>Username</label>
               <div style={inputBox} onFocus={e => focusBox(e.currentTarget)} onBlur={e => blurBox(e.currentTarget)} tabIndex={-1}>
-                <User size={15} style={{ color:'#94A3B8', flexShrink:0 }} />
+                <User size={16} style={{ color: MUTED, flexShrink: 0 }} />
                 <input type="text" value={username} onChange={e => { setUsername(e.target.value); setError(''); }}
                   placeholder="Enter your username" autoComplete="username" autoFocus style={inputEl} />
               </div>
             </div>
 
             {/* Password */}
-            <div>
-              <div className="flex items-center justify-between" style={{ marginBottom:7 }}>
-                <label style={{ fontSize:13, fontWeight:600, color:'#374151' }}>Password</label>
-                <span style={{ fontSize:12, color:'#3B82F6', cursor:'pointer', fontWeight:500 }}>Forgot password?</span>
-              </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 13.5, fontWeight: 600, color: '#334155', display: 'block', marginBottom: 8 }}>Password</label>
               <div style={inputBox} onFocus={e => focusBox(e.currentTarget)} onBlur={e => blurBox(e.currentTarget)} tabIndex={-1}>
-                <Lock size={15} style={{ color:'#94A3B8', flexShrink:0 }} />
+                <Lock size={16} style={{ color: MUTED, flexShrink: 0 }} />
                 <input type={showPassword ? 'text' : 'password'} value={password}
                   onChange={e => { setPassword(e.target.value); setError(''); }}
                   placeholder="Enter your password" autoComplete="current-password" style={inputEl} />
                 <button type="button" onClick={() => setShowPassword(v => !v)}
-                  style={{ color:'#94A3B8', background:'none', border:'none', cursor:'pointer', padding:0, display:'flex', flexShrink:0 }}>
-                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  style={{ color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', flexShrink: 0 }}>
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
 
-            {/* Remember me */}
-            <label className="flex items-center gap-2.5 cursor-pointer pt-0.5">
-              <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}
-                style={{ width:14, height:14, accentColor:'#3B82F6', cursor:'pointer' }} />
-              <span style={{ fontSize:13, color:'#64748B' }}>Remember me</span>
-            </label>
+            {/* Remember + forgot */}
+            <div className="flex items-center justify-between" style={{ marginBottom: 24 }}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}
+                  style={{ width: 15, height: 15, accentColor: BLUE, cursor: 'pointer' }} />
+                <span style={{ fontSize: 13, color: MUTED }}>Remember me</span>
+              </label>
+              <span className="clx-link" style={{ fontSize: 13, color: BLUE, cursor: 'pointer', fontWeight: 500 }}>Forgot password?</span>
+            </div>
 
             {/* Submit */}
-            <button type="submit" disabled={loading || !username || !password}
-              className="flex items-center justify-center gap-2.5 w-full"
+            <button type="submit" disabled={disabled}
+              className="clx-submit flex items-center justify-center gap-2 w-full"
               style={{
-                padding:'12px', borderRadius:10, fontSize:15, fontWeight:700,
-                color:'#fff', border:'none', marginTop:4,
-                cursor: loading || !username || !password ? 'not-allowed' : 'pointer',
-                background: loading || !username || !password
-                  ? '#BFDBFE' : 'linear-gradient(135deg,#3B82F6 0%,#1D4ED8 100%)',
-                boxShadow: loading || !username || !password ? 'none' : '0 4px 16px rgba(59,130,246,0.35)',
-                transition:'all 0.2s',
+                padding: '13px', borderRadius: 10, fontSize: 14.5, fontWeight: 600,
+                color: '#FFFFFF', border: 'none',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                background: disabled ? '#BFDBFE' : BLUE,
+                boxShadow: disabled ? 'none' : '0 4px 14px rgba(37,99,235,0.30)',
+                transition: 'background 0.2s, transform 0.18s, box-shadow 0.18s',
               }}>
               {loading
-                ? <><span style={{ width:14, height:14, border:'2px solid rgba(255,255,255,0.4)', borderTopColor:'#fff', borderRadius:'50%', display:'inline-block', animation:'spin 0.7s linear infinite' }} /> Signing in…</>
-                : <><Lock size={15} /> Sign In</>}
+                ? <><span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#FFFFFF', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} /> Signing in…</>
+                : 'Log in'}
             </button>
           </form>
 
           {/* Divider */}
-          <div className="flex items-center gap-3 my-5">
-            <div style={{ flex:1, height:1, background:'#F1F5F9' }} />
-            <span style={{ fontSize:11, color:'#CBD5E1', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.07em' }}>or</span>
-            <div style={{ flex:1, height:1, background:'#F1F5F9' }} />
+          <div style={{ height: 1, background: LINE, margin: '26px 0 18px' }} />
+
+          {/* Demo access */}
+          <div className="clx-demo" style={{ border: `1px solid ${LINE}`, borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ padding: '7px 14px', fontSize: 10.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.09em', borderBottom: `1px solid ${LINE}`, background: '#F1F5F9' }}>
+              Demo Access
+            </div>
+            {[
+              { role: 'Admin',     username: 'admin',     password: 'clinix2024' },
+              { role: 'Assistant', username: 'assistant', password: 'assist2024' },
+              { role: 'Staff',     username: 'staff',     password: 'staff123' },
+            ].map((acc, i) => (
+              <button type="button" key={acc.username}
+                onClick={() => { setUsername(acc.username); setPassword(acc.password); setError(''); }}
+                className="clx-demo-row grid grid-cols-3 items-center w-full text-left"
+                style={{ padding: '8px 14px', border: 'none', background: '#FFFFFF', cursor: 'pointer', borderTop: i > 0 ? `1px solid ${LINE}` : 'none' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: INK }}>{acc.role}</span>
+                <span style={{ fontSize: 12, color: BLUE, fontFamily: 'monospace' }}>{acc.username}</span>
+                <span style={{ fontSize: 12, color: BLUE, fontFamily: 'monospace' }}>{acc.password}</span>
+              </button>
+            ))}
           </div>
 
-          {/* Demo credentials */}
-          <div className="rounded-xl overflow-hidden" style={{ border:'1px solid #E2E8F0' }}>
-            <div className="px-4 py-2 flex items-center gap-2" style={{ background:'#F8FAFC', borderBottom:'1px solid #E2E8F0' }}>
-              <Shield size={11} style={{ color:'#94A3B8' }} />
-              <p style={{ fontSize:10, fontWeight:700, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Demo Access</p>
-            </div>
-            <div>
-              {[
-                { role: 'Admin',     username: 'admin',     password: 'clinix2024' },
-                { role: 'Assistant', username: 'assistant', password: 'assist2024' },
-                { role: 'Staff',     username: 'staff',     password: 'staff123' },
-              ].map((acc, i) => (
-                <div key={acc.username} className="grid grid-cols-3 items-center px-4 py-2"
-                  style={{ borderTop: i > 0 ? '1px solid #F1F5F9' : 'none' }}>
-                  <p style={{ fontSize:11, fontWeight:700, color:'#64748B' }}>{acc.role}</p>
-                  <div className="flex items-center gap-1.5">
-                    <User size={11} style={{ color:'#CBD5E1', flexShrink:0 }} />
-                    <p style={{ fontSize:12, fontWeight:800, color:'#3B82F6', fontFamily:'monospace' }}>{acc.username}</p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Lock size={11} style={{ color:'#CBD5E1', flexShrink:0 }} />
-                    <p style={{ fontSize:12, fontWeight:800, color:'#3B82F6', fontFamily:'monospace' }}>{acc.password}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <p className="text-center mt-5" style={{ fontSize:12, color:'#CBD5E1' }}>
+          <p className="text-center" style={{ fontSize: 13, color: MUTED, marginTop: 20 }}>
             Need help?{' '}
-            <span style={{ color:'#3B82F6', cursor:'pointer', fontWeight:600 }}>Contact administrator</span>
+            <span className="clx-link" style={{ color: BLUE, cursor: 'pointer', fontWeight: 600 }}>Contact administrator</span>
           </p>
         </div>
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes clxIn {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes clxPhotoIn {
+          from { opacity: 0; transform: scale(1.05); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes clxErrIn {
+          0%   { opacity: 0; transform: translateX(-6px); }
+          25%  { transform: translateX(5px); }
+          50%  { transform: translateX(-3px); }
+          75%  { transform: translateX(2px); }
+          100% { opacity: 1; transform: translateX(0); }
+        }
+
+        .clx-in    { opacity: 0; animation: clxIn 0.6s cubic-bezier(.16,.84,.44,1) both; }
+        .clx-photo { animation: clxPhotoIn 1.1s cubic-bezier(.16,.84,.44,1) both; }
+        .clx-error { animation: clxErrIn 0.45s ease both; }
+
+        .clx-submit:not(:disabled):hover  { background: ${BLUE_DK} !important; transform: translateY(-1px); box-shadow: 0 8px 22px rgba(37,99,235,0.38) !important; }
+        .clx-submit:not(:disabled):active { transform: translateY(0); }
+
+        .clx-link { transition: opacity 0.15s ease; }
+        .clx-link:hover { opacity: 0.7; text-decoration: underline; }
+
+        .clx-demo-row { transition: background 0.15s ease; }
+        .clx-demo-row:hover { background: #F8FAFC; }
+
+        @media (prefers-reduced-motion: reduce) {
+          .clx-in, .clx-photo, .clx-error { animation: none !important; opacity: 1 !important; transform: none !important; }
+        }
+      `}</style>
     </div>
   );
 }

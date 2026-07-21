@@ -302,7 +302,8 @@ export default function App() {
       <Sidebar role={role} activePage={activePage} onNavigate={navigate} onLogout={handleLogout} />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-6">
           {page === 'dashboard' && (
             <Dashboard
               students={students}
@@ -389,6 +390,7 @@ export default function App() {
               setAdminProfile={setAdminProfile}
             />
           )}
+          </div>
         </main>
       </div>
 

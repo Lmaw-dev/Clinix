@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Eye, EyeOff, AlertCircle, Heart, BarChart2, Shield, Zap, Lock, User } from 'lucide-react';
+import CLINIC_PHOTO from '../../assets/campus-gate.jpg';
 
 type Props = { onLogin: () => void };
 const CREDENTIALS = { username: 'admin', password: 'clinix2024' };
@@ -8,7 +9,6 @@ const FEATURES = [
   { icon: Shield,    title: 'Security',   sub: 'Enterprise-grade protection' },
   { icon: Zap,       title: 'Speed',      sub: 'Fast & reliable access' },
 ];
-const CLINIC_PHOTO = 'https://images.unsplash.com/photo-1758448093806-88b2089068ab?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=900';
 
 export function LoginPage({ onLogin }: Props) {
   const [username, setUsername]           = useState('');
@@ -63,9 +63,12 @@ export function LoginPage({ onLogin }: Props) {
         className="hidden lg:block relative overflow-hidden"
         style={{ width: '56%', background: 'linear-gradient(135deg, #020817 0%, #0F172A 50%, #1E293B 100%)' }}
       >
-        {/* subtle bg blobs */}
-        <div style={{ position:'absolute', top:-140, left:-140, width:440, height:440, borderRadius:'50%', background:'rgba(59,130,246,0.07)', pointerEvents:'none' }} />
-        <div style={{ position:'absolute', bottom:-100, left:-60, width:340, height:340, borderRadius:'50%', background:'rgba(29,78,216,0.08)', pointerEvents:'none' }} />
+        {/* subtle bg blobs — gently drifting */}
+        <div className="clx-blob" style={{ position:'absolute', top:-140, left:-140, width:440, height:440, borderRadius:'50%', background:'rgba(59,130,246,0.10)', filter:'blur(8px)', pointerEvents:'none' }} />
+        <div className="clx-blob clx-blob--slow" style={{ position:'absolute', bottom:-100, left:-60, width:340, height:340, borderRadius:'50%', background:'rgba(29,78,216,0.11)', filter:'blur(8px)', pointerEvents:'none' }} />
+
+        {/* faint dot-grid texture */}
+        <div style={{ position:'absolute', inset:0, backgroundImage:'radial-gradient(rgba(148,163,184,0.14) 1px, transparent 1px)', backgroundSize:'26px 26px', maskImage:'linear-gradient(120deg, #000 0%, transparent 55%)', WebkitMaskImage:'linear-gradient(120deg, #000 0%, transparent 55%)', pointerEvents:'none' }} />
 
         {/* CLINIC PHOTO — right half of panel, flush */}
         <div style={{ position:'absolute', right:60, top:0, bottom:0, width:'62%', zIndex:1 }}>
@@ -85,7 +88,7 @@ export function LoginPage({ onLogin }: Props) {
         {/* TEXT COLUMN — left side, above photo */}
         <div className="relative flex flex-col justify-between h-full p-12" style={{ zIndex:2, pointerEvents:'none' }}>
           {/* Logo */}
-          <div className="flex items-center gap-3" style={{ pointerEvents:'auto' }}>
+          <div className="flex items-center gap-3 clx-in" style={{ pointerEvents:'auto', animationDelay:'0.05s' }}>
             <div style={{ width:40, height:40, borderRadius:11, background:'linear-gradient(135deg,#3B82F6,#1D4ED8)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 14px rgba(59,130,246,0.4)' }}>
               <Heart size={19} style={{ color:'#fff' }} />
             </div>
@@ -96,7 +99,7 @@ export function LoginPage({ onLogin }: Props) {
           </div>
 
           {/* Hero */}
-          <div style={{ maxWidth:240 }}>
+          <div className="clx-in" style={{ maxWidth:240, animationDelay:'0.15s' }}>
             <p style={{ fontSize:13, color:'#3B82F6', fontWeight:700, marginBottom:8 }}>Welcome back!</p>
             <h1 style={{ fontSize:38, fontWeight:900, color:'#F8FAFC', lineHeight:1.1, letterSpacing:'-0.03em', marginBottom:12 }}>
               Good to see<br />you again!
@@ -107,10 +110,10 @@ export function LoginPage({ onLogin }: Props) {
           </div>
 
           {/* Features + footer */}
-          <div>
+          <div className="clx-in" style={{ animationDelay:'0.25s' }}>
             <div className="flex items-start gap-6 mb-5">
-              {FEATURES.map(({ icon: Icon, title, sub }) => (
-                <div key={title} className="flex items-start gap-2">
+              {FEATURES.map(({ icon: Icon, title, sub }, i) => (
+                <div key={title} className="clx-feature flex items-start gap-2" style={{ animationDelay:`${0.35 + i * 0.08}s` }}>
                   <div style={{ width:28, height:28, borderRadius:8, background:'rgba(59,130,246,0.15)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:1 }}>
                     <Icon size={13} style={{ color:'#3B82F6' }} />
                   </div>
@@ -154,11 +157,11 @@ export function LoginPage({ onLogin }: Props) {
           <p style={{ fontSize:18, fontWeight:900, color:'#0F172A' }}>Clinix</p>
         </div>
 
-        <div className="w-full" style={{ maxWidth:370 }}>
+        <div className="w-full clx-card" style={{ maxWidth:370 }}>
 
           {/* Lock icon */}
           <div className="flex justify-center mb-5">
-            <div style={{ width:56, height:56, borderRadius:'50%', background:'linear-gradient(135deg,#3B82F6,#1D4ED8)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 6px 20px rgba(59,130,246,0.35)' }}>
+            <div className="clx-lock" style={{ width:56, height:56, borderRadius:'50%', background:'linear-gradient(135deg,#3B82F6,#1D4ED8)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 6px 20px rgba(59,130,246,0.35)' }}>
               <Lock size={23} style={{ color:'#fff' }} />
             </div>
           </div>
@@ -173,7 +176,7 @@ export function LoginPage({ onLogin }: Props) {
 
           {/* Error */}
           {error && (
-            <div className="flex items-center gap-2.5 rounded-xl px-4 py-3 mb-4"
+            <div className="clx-error flex items-center gap-2.5 rounded-xl px-4 py-3 mb-4"
               style={{ background:'#FEF2F2', border:'1.5px solid #FECACA' }}>
               <AlertCircle size={14} style={{ color:'#EF4444', flexShrink:0 }} />
               <p style={{ fontSize:13, color:'#DC2626', fontWeight:500 }}>{error}</p>
@@ -196,14 +199,14 @@ export function LoginPage({ onLogin }: Props) {
             <div>
               <div className="flex items-center justify-between" style={{ marginBottom:7 }}>
                 <label style={{ fontSize:13, fontWeight:600, color:'#374151' }}>Password</label>
-                <span style={{ fontSize:12, color:'#3B82F6', cursor:'pointer', fontWeight:500 }}>Forgot password?</span>
+                <span className="clx-link" style={{ fontSize:12, color:'#3B82F6', cursor:'pointer', fontWeight:500 }}>Forgot password?</span>
               </div>
               <div style={inputBox} onFocus={e => focusBox(e.currentTarget)} onBlur={e => blurBox(e.currentTarget)} tabIndex={-1}>
                 <Lock size={15} style={{ color:'#94A3B8', flexShrink:0 }} />
                 <input type={showPassword ? 'text' : 'password'} value={password}
                   onChange={e => { setPassword(e.target.value); setError(''); }}
                   placeholder="Enter your password" autoComplete="current-password" style={inputEl} />
-                <button type="button" onClick={() => setShowPassword(v => !v)}
+                <button type="button" onClick={() => setShowPassword((v: boolean) => !v)}
                   style={{ color:'#94A3B8', background:'none', border:'none', cursor:'pointer', padding:0, display:'flex', flexShrink:0 }}>
                   {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
@@ -219,7 +222,7 @@ export function LoginPage({ onLogin }: Props) {
 
             {/* Submit */}
             <button type="submit" disabled={loading || !username || !password}
-              className="flex items-center justify-center gap-2.5 w-full"
+              className="clx-submit flex items-center justify-center gap-2.5 w-full"
               style={{
                 padding:'12px', borderRadius:10, fontSize:15, fontWeight:700,
                 color:'#fff', border:'none', marginTop:4,
@@ -243,7 +246,7 @@ export function LoginPage({ onLogin }: Props) {
           </div>
 
           {/* Demo credentials */}
-          <div className="rounded-xl overflow-hidden" style={{ border:'1px solid #E2E8F0' }}>
+          <div className="clx-demo rounded-xl overflow-hidden" style={{ border:'1px solid #E2E8F0' }}>
             <div className="px-4 py-2 flex items-center gap-2" style={{ background:'#F8FAFC', borderBottom:'1px solid #E2E8F0' }}>
               <Shield size={11} style={{ color:'#94A3B8' }} />
               <p style={{ fontSize:10, fontWeight:700, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.08em' }}>Demo Access</p>
@@ -268,12 +271,65 @@ export function LoginPage({ onLogin }: Props) {
 
           <p className="text-center mt-5" style={{ fontSize:12, color:'#CBD5E1' }}>
             Need help?{' '}
-            <span style={{ color:'#3B82F6', cursor:'pointer', fontWeight:600 }}>Contact administrator</span>
+            <span className="clx-link" style={{ color:'#3B82F6', cursor:'pointer', fontWeight:600 }}>Contact administrator</span>
           </p>
         </div>
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @keyframes clxIn {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes clxCardIn {
+          from { opacity: 0; transform: translateY(20px) scale(0.985); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes clxLockPop {
+          0%   { opacity: 0; transform: scale(0.6) rotate(-12deg); }
+          60%  { opacity: 1; transform: scale(1.08) rotate(4deg); }
+          100% { opacity: 1; transform: scale(1) rotate(0); }
+        }
+        @keyframes clxFloat {
+          0%, 100% { transform: translate(0, 0); }
+          50%      { transform: translate(24px, -18px); }
+        }
+        @keyframes clxErrIn {
+          0%   { opacity: 0; transform: translateX(-6px); }
+          25%  { transform: translateX(5px); }
+          50%  { transform: translateX(-3px); }
+          75%  { transform: translateX(2px); }
+          100% { opacity: 1; transform: translateX(0); }
+        }
+
+        .clx-in      { opacity: 0; animation: clxIn 0.6s cubic-bezier(.16,.84,.44,1) both; }
+        .clx-feature { opacity: 0; animation: clxIn 0.5s cubic-bezier(.16,.84,.44,1) both; }
+        .clx-card    { animation: clxCardIn 0.65s cubic-bezier(.16,.84,.44,1) both; }
+        .clx-lock    { animation: clxLockPop 0.7s cubic-bezier(.34,1.56,.64,1) 0.1s backwards; transition: transform 0.25s ease, box-shadow 0.25s ease; }
+        .clx-card:hover .clx-lock { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(59,130,246,0.45); }
+        .clx-error   { animation: clxErrIn 0.45s ease both; }
+
+        .clx-blob        { animation: clxFloat 14s ease-in-out infinite; }
+        .clx-blob--slow  { animation: clxFloat 20s ease-in-out infinite reverse; }
+
+        .clx-submit { transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.2s ease; }
+        .clx-submit:not(:disabled):hover  { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(59,130,246,0.45) !important; }
+        .clx-submit:not(:disabled):active { transform: translateY(0); }
+
+        .clx-link { transition: color 0.15s ease, opacity 0.15s ease; }
+        .clx-link:hover { color: #1D4ED8; text-decoration: underline; }
+
+        .clx-demo { transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+        .clx-demo:hover { border-color: #BFDBFE; box-shadow: 0 4px 14px rgba(59,130,246,0.10); }
+
+        @media (prefers-reduced-motion: reduce) {
+          .clx-in, .clx-feature, .clx-card, .clx-lock, .clx-error, .clx-blob, .clx-blob--slow {
+            animation: none !important; opacity: 1 !important; transform: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

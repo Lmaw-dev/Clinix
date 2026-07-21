@@ -59,7 +59,7 @@ export function Sidebar({
       style={{ width: 232, background: bg }}
     >
       {/* Brand */}
-      <div className="px-5 pt-5 pb-4">
+      <div className="px-5 pt-4 pb-3">
         <div className="flex items-center gap-3">
           <div
             className="flex items-center justify-center shrink-0 rounded-xl"
@@ -74,12 +74,12 @@ export function Sidebar({
         </div>
       </div>
 
-      <div style={{ height: 1, background: divider, margin: '0 12px 8px' }} />
+      <div style={{ height: 1, background: divider, margin: '0 12px 6px' }} />
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 pb-3 overflow-y-auto" style={{ overflowX: 'hidden' }}>
+      {/* Nav — sized to fit; no scrollbar */}
+      <nav className="flex-1 min-h-0 px-3 pb-2 flex flex-col justify-start" style={{ overflow: 'hidden' }}>
         <p
-          className="px-3 mb-2 mt-2 uppercase"
+          className="px-3 mb-1.5 mt-1 uppercase"
           style={{ fontSize: 9, fontWeight: 700, color: '#334155', letterSpacing: '0.1em' }}
         >
           Workspace
@@ -92,7 +92,7 @@ export function Sidebar({
               <li key={id}>
                 <button
                   onClick={() => onNavigate(id)}
-                  className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all"
+                  className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl transition-all"
                   style={{
                     fontSize: 13,
                     fontWeight: active ? 600 : 400,
@@ -116,12 +116,12 @@ export function Sidebar({
                   {active ? (
                     <span
                       className="flex items-center justify-center shrink-0 rounded-lg"
-                      style={{ width: 26, height: 26, background: 'rgba(59,130,246,0.3)' }}
+                      style={{ width: 24, height: 24, background: 'rgba(59,130,246,0.3)' }}
                     >
                       <Icon size={13} className="text-blue-300" />
                     </span>
                   ) : (
-                    <span style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Icon size={14} />
                     </span>
                   )}
@@ -134,11 +134,11 @@ export function Sidebar({
       </nav>
 
       {/* Bottom actions */}
-      <div style={{ padding: '8px 12px 16px', borderTop: `1px solid ${divider}` }}>
+      <div className="shrink-0" style={{ padding: '6px 12px 12px', borderTop: `1px solid ${divider}` }}>
         {/* Logout */}
         <button
           onClick={() => onLogout?.()}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all"
           style={{ fontSize: 13, color: itemInactive }}
           onMouseEnter={(e) => {
             (e.currentTarget as HTMLElement).style.background = itemHoverBg;
@@ -149,7 +149,7 @@ export function Sidebar({
             (e.currentTarget as HTMLElement).style.color = itemInactive;
           }}
         >
-          <span style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <LogOut size={14} />
           </span>
           Logout

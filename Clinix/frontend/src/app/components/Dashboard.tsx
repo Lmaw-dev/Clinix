@@ -210,18 +210,25 @@ export function Dashboard({
 
   return (
     <div style={{ maxWidth: 1200 }}>
-      {/* ── Header ── */}
-      <div className="flex items-start gap-4 mb-7">
+      {/* ── Header (sticky holder — stays on top while the dashboard scrolls) ── */}
+      <div
+        className="flex items-start gap-4"
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 30,
+          background: C.subtle,
+          // bleed over <main>'s p-6 (24px) so the bar sits flush at the very top,
+          // spans full width, and covers content scrolling beneath
+          margin: '-24px -24px 20px',
+          padding: '14px 24px 14px',
+          borderBottom: `1px solid ${C.cardBorder}`,
+        }}
+      >
         <div className="shrink-0">
-          <p style={{ fontSize: 13, color: C.txtMuted, fontWeight: 500, marginBottom: 4 }}>
-            {getGreeting()}, {displayName}
-          </p>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: C.txtPrimary, lineHeight: 1.2 }}>
             Dashboard
           </h1>
-          <p style={{ fontSize: 13, color: C.txtMuted, marginTop: 4 }}>
-            BISU Calape Campus 
-          </p>
         </div>
 
         {/* Right: alerts + admin bar */}
@@ -344,6 +351,16 @@ export function Dashboard({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── Greeting (scrolls with the content, separate from the fixed header) ── */}
+      <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 14, boxShadow: C.cardShadow, padding: '18px 22px', marginBottom: 24 }}>
+        <p style={{ fontSize: 18, fontWeight: 700, color: C.txtPrimary, lineHeight: 1.2 }}>
+          {getGreeting()}, {displayName}
+        </p>
+        <p style={{ fontSize: 13, color: C.txtMuted, marginTop: 5 }}>
+          Here's what's happening at the clinic today.
+        </p>
       </div>
 
       {/* ── Stat cards ── */}
