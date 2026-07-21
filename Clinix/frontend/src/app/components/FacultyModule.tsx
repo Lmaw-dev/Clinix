@@ -2,6 +2,8 @@ import { useState, useMemo, useRef } from 'react';
 import { Plus, Search, Pencil, Eye, Filter, Upload, Download, Printer, CheckCircle2, X } from 'lucide-react';
 import { FacultyMember, normalizeFaculty } from '../App';
 import { Modal } from './Modal';
+import { PersonDocuments } from './PersonDocuments';
+import { useColleges, normalizeCollegeName } from '../colleges';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4001/api').replace(/\/$/, '');
 
@@ -13,27 +15,29 @@ type Props = {
   addActivity: (m: string) => void;
 };
 
-const COLLEGES = [
-  { name: 'CTECH', courses: ['BSCS', 'BSIT-FPST', 'BSIT-ELECT'] },
-  { name: 'CTE', courses: ['BEED', 'BSED-ENGLISH', 'BSED-MATH'] },
-  { name: 'COM', courses: ['BSM'] },
-  { name: 'COF', courses: ['BSF'] },
-];
-
 type SortOrder = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
 
-const defaultForm = { staffId: '', name: '', college: '', role: '', contact: '', medicalHistory: '' };
+const defaultForm = {
+  staffId: '', name: '', college: '', role: '', contact: '', medicalHistory: '',
+  employmentCategory: '', employmentType: '',
+  birthdate: '', bloodType: '', office: '', homeAddress: '', presentAddress: '',
+  guardianName: '', guardianContact: '',
+};
+
+const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+// Employment classification: category → its employment types
+const CLASSIFICATIONS: { category: string; types: string[] }[] = [
+  { category: 'Non-teaching', types: ['Permanent', 'Casual', 'Contract of Service'] },
+  { category: 'Teaching', types: ['Permanent', 'Temporary', 'Contract of Service', 'Part time'] },
+  { category: 'Agency', types: ['Security guard'] },
+];
+const typesForCategory = (category: string) => CLASSIFICATIONS.find((c) => c.category === category)?.types ?? [];
 
 type CsvRecord = Record<string, string>;
 
 function avatarInitials(name: string) {
   return name.split(' ').filter(Boolean).slice(0, 2).map((s) => s[0]).join('').toUpperCase();
-}
-
-function normalizeCollegeName(college?: string) {
-  const raw = (college || '').trim();
-  if (!raw) return '';
-  return COLLEGES.find((c) => c.name.toLowerCase() === raw.toLowerCase())?.name || raw.toUpperCase();
 }
 
 function sortFaculty(rows: FacultyMember[], sort: SortOrder) {
@@ -91,6 +95,15 @@ function parseCsv(text: string): CsvRecord[] {
     contactnumber: 'contact',
     medicalhistory: 'medicalHistory',
     history: 'medicalHistory',
+    classification: 'employmentCategory', employmentcategory: 'employmentCategory', category: 'employmentCategory',
+    employmenttype: 'employmentType', type: 'employmentType',
+    birthdate: 'birthdate', birthday: 'birthdate', dob: 'birthdate',
+    bloodtype: 'bloodType',
+    office: 'office',
+    homeaddress: 'homeAddress',
+    presentaddress: 'presentAddress',
+    spouse: 'guardianName', spousename: 'guardianName', nextofkin: 'guardianName', guardianname: 'guardianName',
+    spousecontact: 'guardianContact', kincontact: 'guardianContact', guardiancontact: 'guardianContact',
   };
   const lines = text.replace(/\r/g, '').split('\n').filter((line) => line.trim());
   if (!lines.length) return [];
@@ -115,8 +128,8 @@ function htmlCell(value: string) {
 }
 
 function exportRows(rows: FacultyMember[], title: string) {
-  const headers = ['Staff ID', 'Name', 'College', 'Role', 'Contact', 'Medical History'];
-  const csv = [headers, ...rows.map((row) => [row.staffId, row.name, row.college || '', row.role, row.contact, row.medicalHistory])]
+  const headers = ['Staff ID', 'Name', 'College', 'Role', 'Classification', 'Employment Type', 'Contact', 'Office', 'Birthdate', 'Blood Type', 'Spouse Name', 'Spouse Contact', 'Home Address', 'Present Address', 'Medical History'];
+  const csv = [headers, ...rows.map((row) => [row.staffId, row.name, row.college || '', row.role, row.employmentCategory, row.employmentType, row.contact, row.office, row.birthdate, row.bloodType, row.guardianName, row.guardianContact, row.homeAddress, row.presentAddress, row.medicalHistory])]
     .map((row) => row.map(csvCell).join(','))
     .join('\n');
   const link = document.createElement('a');
@@ -154,6 +167,7 @@ async function saveFacultyApi(member: FacultyMember, editingId?: string | null) 
 }
 
 export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, addActivity }: Props) {
+  const colleges = useColleges();
   const [localSearch, setLocalSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -161,8 +175,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<SortOrder>('name-asc');
-  const [collegeFilter, setCollegeFilter] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
+  const [classFilter, setClassFilter] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [pendingCsv, setPendingCsv] = useState<FacultyMember[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
@@ -173,19 +186,13 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
     () =>
       faculty.filter(
         (f) =>
-          (!collegeFilter || normalizeCollegeName(f.college) === collegeFilter) &&
-          (!roleFilter || (f.role.trim() || 'Unspecified') === roleFilter) &&
-          [f.staffId, f.name, f.college, f.role, f.contact, f.medicalHistory]
+          (!classFilter || f.employmentCategory === classFilter) &&
+          [f.staffId, f.name, f.college, f.role, f.contact, f.medicalHistory, f.employmentCategory, f.employmentType]
             .join(' ')
             .toLowerCase()
             .includes(query),
       ),
-    [faculty, query, collegeFilter, roleFilter],
-  );
-
-  const roleOptions = useMemo(
-    () => [...new Set(faculty.map((f) => f.role.trim() || 'Unspecified'))].sort((a, b) => a.localeCompare(b)),
-    [faculty],
+    [faculty, query, classFilter],
   );
 
   const searchMatches = useMemo(
@@ -210,7 +217,14 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
   }
 
   function openEdit(f: FacultyMember) {
-    setForm({ staffId: f.staffId, name: f.name, college: f.college || '', role: f.role, contact: f.contact, medicalHistory: f.medicalHistory });
+    setForm({
+      staffId: f.staffId, name: f.name, college: f.college || '', role: f.role,
+      contact: f.contact, medicalHistory: f.medicalHistory,
+      employmentCategory: f.employmentCategory || '', employmentType: f.employmentType || '',
+      birthdate: f.birthdate || '', bloodType: f.bloodType || '', office: f.office || '',
+      homeAddress: f.homeAddress || '', presentAddress: f.presentAddress || '',
+      guardianName: f.guardianName || '', guardianContact: f.guardianContact || '',
+    });
     setEditingId(f.staffId);
     setShowModal(true);
   }
@@ -266,6 +280,15 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
       role: form.role.trim(),
       contact: form.contact.trim(),
       medicalHistory: form.medicalHistory.trim(),
+      employmentCategory: form.employmentCategory.trim(),
+      employmentType: form.employmentType.trim(),
+      birthdate: form.birthdate.trim(),
+      bloodType: form.bloodType.trim(),
+      office: form.office.trim(),
+      homeAddress: form.homeAddress.trim(),
+      presentAddress: form.presentAddress.trim(),
+      guardianName: form.guardianName.trim(),
+      guardianContact: form.guardianContact.trim(),
     };
     if (!rec.staffId || !rec.name) { showToast('ID and name required'); return; }
 
@@ -303,7 +326,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           <table className="w-full min-w-[920px]">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60">
-                {['ID', 'Name & Designation', 'College', 'Contact', 'Medical History', 'Actions'].map((h) => (
+                {['ID', 'Name & Designation', 'College', 'Classification', 'Contact', 'Medical History', 'Actions'].map((h) => (
                   <th key={h} className="whitespace-nowrap px-5 py-3 text-left text-slate-500 uppercase tracking-wider" style={{ fontSize: 11, fontWeight: 600 }}>{h}</th>
                 ))}
               </tr>
@@ -311,7 +334,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {sortedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400" style={{ fontSize: 13 }}>No personnel match your search</td>
+                  <td colSpan={7} className="py-12 text-center text-slate-400" style={{ fontSize: 13 }}>No personnel match your search</td>
                 </tr>
               ) : (
                 sortedRows.map((member) => (
@@ -329,6 +352,14 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-slate-600" style={{ fontSize: 13 }}>{member.college || '—'}</td>
+                    <td className="px-5 py-3.5" style={{ fontSize: 13 }}>
+                      {member.employmentCategory ? (
+                        <div>
+                          <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{member.employmentCategory}</p>
+                          {member.employmentType && <p className="text-slate-400" style={{ fontSize: 11 }}>{member.employmentType}</p>}
+                        </div>
+                      ) : <span className="text-slate-400">—</span>}
+                    </td>
                     <td className="px-5 py-3.5 text-slate-600" style={{ fontSize: 13 }}>{member.contact || '—'}</td>
                     <td className="max-w-[220px] px-5 py-3.5 truncate text-slate-500" style={{ fontSize: 13 }}>{member.medicalHistory || 'None recorded'}</td>
                     <td className="px-5 py-3.5">
@@ -454,31 +485,15 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
             <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
               <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
                 <Filter size={14} />
-                College
+                Classification
                 <select
-                  value={collegeFilter}
-                  onChange={(e) => setCollegeFilter(e.target.value)}
+                  value={classFilter}
+                  onChange={(e) => setClassFilter(e.target.value)}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
                   style={{ fontSize: 12 }}
                 >
-                  <option value="">All colleges</option>
-                  {COLLEGES.map((college) => (
-                    <option key={college.name} value={college.name}>{college.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
-                Designation
-                <select
-                  value={roleFilter}
-                  onChange={(e) => setRoleFilter(e.target.value)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
-                  style={{ fontSize: 12 }}
-                >
-                  <option value="">All designations</option>
-                  {roleOptions.map((role) => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
+                  <option value="">All classifications</option>
+                  {CLASSIFICATIONS.map((c) => <option key={c.category} value={c.category}>{c.category}</option>)}
                 </select>
               </label>
               <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
@@ -495,13 +510,13 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
                   <option value="id-desc">ID Desc</option>
                 </select>
               </label>
-              {(collegeFilter || roleFilter) && (
+              {classFilter && (
                 <button
-                  onClick={() => { setCollegeFilter(''); setRoleFilter(''); }}
+                  onClick={() => setClassFilter('')}
                   className="text-blue-600 hover:text-blue-700"
                   style={{ fontSize: 12, fontWeight: 600 }}
                 >
-                  Clear filters
+                  Clear filter
                 </button>
               )}
             </div>
@@ -509,7 +524,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
         </div>
 
         <div className="px-4 pb-4">
-          {facultyTable(visible, [collegeFilter, roleFilter].filter(Boolean).join(' / ') || 'All Personnel')}
+          {facultyTable(visible, classFilter || 'All Personnel')}
         </div>
       </div>
 
@@ -554,11 +569,38 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
               style={{ fontSize: 13 }}
             >
               <option value="">Not assigned to a college</option>
-              {COLLEGES.map((college) => (
+              {colleges.map((college) => (
                 <option key={college.name} value={college.name}>{college.name}</option>
               ))}
             </select>
           </label>
+          <div className="grid grid-cols-2 gap-4">
+            <label>
+              <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Classification</span>
+              <select
+                value={form.employmentCategory}
+                onChange={(e) => setForm((f) => ({ ...f, employmentCategory: e.target.value, employmentType: '' }))}
+                className={fieldClass}
+                style={{ fontSize: 13 }}
+              >
+                <option value="">Select classification</option>
+                {CLASSIFICATIONS.map((c) => <option key={c.category} value={c.category}>{c.category}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Employment Type</span>
+              <select
+                value={form.employmentType}
+                onChange={(e) => setForm((f) => ({ ...f, employmentType: e.target.value }))}
+                className={fieldClass}
+                style={{ fontSize: 13 }}
+                disabled={!form.employmentCategory}
+              >
+                <option value="">{form.employmentCategory ? 'Select type' : 'Select classification first'}</option>
+                {typesForCategory(form.employmentCategory).map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <label>
               <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Designation / Role</span>
@@ -581,6 +623,87 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
               />
             </label>
           </div>
+          <p className="mt-2 text-slate-500 uppercase tracking-wider" style={{ fontSize: 10, fontWeight: 700 }}>
+            Clinic Consultation Record Info
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <label>
+              <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Office</span>
+              <input
+                value={form.office}
+                onChange={(e) => setForm((f) => ({ ...f, office: e.target.value }))}
+                placeholder="Office / department"
+                className={fieldClass}
+                style={{ fontSize: 13 }}
+              />
+            </label>
+            <label>
+              <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Birthdate</span>
+              <input
+                type="date"
+                value={form.birthdate}
+                onChange={(e) => setForm((f) => ({ ...f, birthdate: e.target.value }))}
+                className={fieldClass}
+                style={{ fontSize: 13 }}
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label>
+              <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Blood Type</span>
+              <select
+                value={form.bloodType}
+                onChange={(e) => setForm((f) => ({ ...f, bloodType: e.target.value }))}
+                className={fieldClass}
+                style={{ fontSize: 13 }}
+              >
+                <option value="">Select blood type</option>
+                {BLOOD_TYPES.map((bt) => <option key={bt}>{bt}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Spouse / Next of Kin</span>
+              <input
+                value={form.guardianName}
+                onChange={(e) => setForm((f) => ({ ...f, guardianName: e.target.value }))}
+                placeholder="Full name"
+                className={fieldClass}
+                style={{ fontSize: 13 }}
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label>
+              <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Spouse / Next of Kin Contact</span>
+              <input
+                value={form.guardianContact}
+                onChange={(e) => setForm((f) => ({ ...f, guardianContact: e.target.value }))}
+                placeholder="09XX XXX XXXX"
+                className={fieldClass}
+                style={{ fontSize: 13 }}
+              />
+            </label>
+            <label>
+              <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Home Address</span>
+              <input
+                value={form.homeAddress}
+                onChange={(e) => setForm((f) => ({ ...f, homeAddress: e.target.value }))}
+                placeholder="Permanent / home address"
+                className={fieldClass}
+                style={{ fontSize: 13 }}
+              />
+            </label>
+          </div>
+          <label>
+            <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Present Address</span>
+            <input
+              value={form.presentAddress}
+              onChange={(e) => setForm((f) => ({ ...f, presentAddress: e.target.value }))}
+              placeholder="Current address"
+              className={fieldClass}
+              style={{ fontSize: 13 }}
+            />
+          </label>
           <label>
             <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Medical History</span>
             <textarea
@@ -592,6 +715,15 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
               style={{ fontSize: 13 }}
             />
           </label>
+
+          {editingId ? (
+            <PersonDocuments ownerType="faculty" ownerId={editingId} showToast={showToast} canEdit />
+          ) : (
+            <p className="rounded-lg bg-slate-50 dark:bg-slate-700/40 px-3 py-2.5 text-slate-400" style={{ fontSize: 12 }}>
+              Save this record first, then edit it to attach files.
+            </p>
+          )}
+
           <div className="flex justify-end gap-3">
             <button
               type="button"
@@ -668,7 +800,15 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
               {[
                 ['College', viewMember.college],
                 ['Designation', viewMember.role],
+                ['Classification', [viewMember.employmentCategory, viewMember.employmentType].filter(Boolean).join(' · ')],
                 ['Contact', viewMember.contact],
+                ['Office', viewMember.office],
+                ['Birthdate', viewMember.birthdate],
+                ['Blood Type', viewMember.bloodType],
+                ['Spouse / Next of Kin', viewMember.guardianName],
+                ['Kin Contact', viewMember.guardianContact],
+                ['Home Address', viewMember.homeAddress],
+                ['Present Address', viewMember.presentAddress],
               ].map(([k, v]) => (
                 <div key={k} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
                   <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 500 }}>{k}</p>
@@ -680,6 +820,10 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
               <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>Medical History</p>
               <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewMember.medicalHistory || 'No entries'}</p>
             </div>
+
+            {/* Documents & files */}
+            <PersonDocuments ownerType="faculty" ownerId={viewMember.staffId} showToast={showToast} />
+
             <div className="flex justify-end">
               <button
                 onClick={() => { openEdit(viewMember); setViewMember(null); }}

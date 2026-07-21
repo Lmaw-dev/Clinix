@@ -36,4 +36,18 @@ export async function ensureDbUpdates() {
       MODIFY first_name VARCHAR(80) NOT NULL,
       MODIFY middle_name VARCHAR(80) NULL
   `);
+  // Per-person document attachments (files stored on disk, metadata here)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS documents (
+      id VARCHAR(40) PRIMARY KEY,
+      owner_type VARCHAR(16) NOT NULL,
+      owner_id VARCHAR(40) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      stored_name VARCHAR(255) NOT NULL,
+      mime_type VARCHAR(150) NULL,
+      size_bytes BIGINT NULL,
+      uploaded_at DATETIME NOT NULL,
+      INDEX idx_owner (owner_type, owner_id)
+    )
+  `);
 }
