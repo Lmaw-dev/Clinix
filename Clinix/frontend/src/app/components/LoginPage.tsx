@@ -6,13 +6,16 @@ import CAMPUS_PHOTO from '../../assets/campus-gate.png';
 type Props = { onLogin: (role: Role) => void };
 
 const SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif";
-const PAGE  = '#F8FAFC'; // slate-50
-const INK   = '#0F172A'; // slate-900
-const MUTED = '#64748B'; // slate-500
-const LINE  = '#E2E8F0'; // slate-200
+const PAGE  = '#0F172A'; // sidebar navy (slate-900)
+const INK   = '#F8FAFC'; // light primary text on navy
+const MUTED = '#94A3B8'; // slate-400
+const LABEL = '#CBD5E1'; // slate-300
+const LINE  = '#334155'; // slate-700 border
+const INPUT_BG = '#1E293B'; // slate-800 input fill
 const BLUE  = '#2563EB'; // blue-600
 const BLUE_DK = '#1D4ED8'; // blue-700
 const BLUE_FOCUS = '#3B82F6'; // blue-500
+const LINK  = '#60A5FA'; // blue-400 (readable on navy)
 
 export function LoginPage({ onLogin }: Props) {
   const [username, setUsername]         = useState('');
@@ -47,7 +50,7 @@ export function LoginPage({ onLogin }: Props) {
 
   const inputBox: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 10,
-    background: '#FFFFFF',
+    background: INPUT_BG,
     border: `1px solid ${LINE}`,
     borderRadius: 10, padding: '12px 14px',
     transition: 'border-color 0.18s, box-shadow 0.18s',
@@ -58,7 +61,7 @@ export function LoginPage({ onLogin }: Props) {
   };
   function focusBox(el: HTMLElement) {
     el.style.borderColor = BLUE_FOCUS;
-    el.style.boxShadow   = '0 0 0 3px rgba(59,130,246,0.12)';
+    el.style.boxShadow   = '0 0 0 3px rgba(59,130,246,0.28)';
   }
   function blurBox(el: HTMLElement) {
     el.style.borderColor = LINE;
@@ -77,8 +80,8 @@ export function LoginPage({ onLogin }: Props) {
         {/* top & bottom scrims — keep brand/caption legible without a card */}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(15,23,42,0.42) 0%, transparent 22%, transparent 62%, rgba(15,23,42,0.55) 100%)', pointerEvents: 'none' }} />
 
-        {/* SMOOTH BLEND — right edge dissolves into the form background */}
-        <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, transparent 0%, transparent 48%, rgba(248,250,252,0.35) 72%, rgba(248,250,252,0.85) 90%, ${PAGE} 100%)`, pointerEvents: 'none' }} />
+        {/* SMOOTH BLEND — right edge dissolves into the navy form background */}
+        <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, transparent 0%, transparent 42%, rgba(15,23,42,0.35) 66%, rgba(15,23,42,0.85) 88%, ${PAGE} 100%)`, pointerEvents: 'none' }} />
 
         {/* Brand — top-left over image */}
         <div className="clx-in" style={{ position: 'absolute', top: 34, left: 40, zIndex: 2, animationDelay: '0.05s' }}>
@@ -122,9 +125,9 @@ export function LoginPage({ onLogin }: Props) {
           {/* Error */}
           {error && (
             <div className="clx-error flex items-center gap-2.5 rounded-lg px-4 py-3 mb-5"
-              style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
-              <AlertCircle size={15} style={{ color: '#EF4444', flexShrink: 0 }} />
-              <p style={{ fontSize: 13, color: '#DC2626', fontWeight: 500 }}>{error}</p>
+              style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)' }}>
+              <AlertCircle size={15} style={{ color: '#F87171', flexShrink: 0 }} />
+              <p style={{ fontSize: 13, color: '#FCA5A5', fontWeight: 500 }}>{error}</p>
             </div>
           )}
 
@@ -132,7 +135,7 @@ export function LoginPage({ onLogin }: Props) {
 
             {/* Username */}
             <div style={{ marginBottom: 18 }}>
-              <label style={{ fontSize: 13.5, fontWeight: 600, color: '#334155', display: 'block', marginBottom: 8 }}>Username</label>
+              <label style={{ fontSize: 13.5, fontWeight: 600, color: LABEL, display: 'block', marginBottom: 8 }}>Username</label>
               <div style={inputBox} onFocus={e => focusBox(e.currentTarget)} onBlur={e => blurBox(e.currentTarget)} tabIndex={-1}>
                 <User size={16} style={{ color: MUTED, flexShrink: 0 }} />
                 <input type="text" value={username} onChange={e => { setUsername(e.target.value); setError(''); }}
@@ -142,7 +145,7 @@ export function LoginPage({ onLogin }: Props) {
 
             {/* Password */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 13.5, fontWeight: 600, color: '#334155', display: 'block', marginBottom: 8 }}>Password</label>
+              <label style={{ fontSize: 13.5, fontWeight: 600, color: LABEL, display: 'block', marginBottom: 8 }}>Password</label>
               <div style={inputBox} onFocus={e => focusBox(e.currentTarget)} onBlur={e => blurBox(e.currentTarget)} tabIndex={-1}>
                 <Lock size={16} style={{ color: MUTED, flexShrink: 0 }} />
                 <input type={showPassword ? 'text' : 'password'} value={password}
@@ -162,7 +165,7 @@ export function LoginPage({ onLogin }: Props) {
                   style={{ width: 15, height: 15, accentColor: BLUE, cursor: 'pointer' }} />
                 <span style={{ fontSize: 13, color: MUTED }}>Remember me</span>
               </label>
-              <span className="clx-link" style={{ fontSize: 13, color: BLUE, cursor: 'pointer', fontWeight: 500 }}>Forgot password?</span>
+              <span className="clx-link" style={{ fontSize: 13, color: LINK, cursor: 'pointer', fontWeight: 500 }}>Forgot password?</span>
             </div>
 
             {/* Submit */}
@@ -172,7 +175,7 @@ export function LoginPage({ onLogin }: Props) {
                 padding: '13px', borderRadius: 10, fontSize: 14.5, fontWeight: 600,
                 color: '#FFFFFF', border: 'none',
                 cursor: disabled ? 'not-allowed' : 'pointer',
-                background: disabled ? '#BFDBFE' : BLUE,
+                background: disabled ? '#1E3A8A' : BLUE,
                 boxShadow: disabled ? 'none' : '0 4px 14px rgba(37,99,235,0.30)',
                 transition: 'background 0.2s, transform 0.18s, box-shadow 0.18s',
               }}>
@@ -187,7 +190,7 @@ export function LoginPage({ onLogin }: Props) {
 
           {/* Demo access */}
           <div className="clx-demo" style={{ border: `1px solid ${LINE}`, borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '7px 14px', fontSize: 10.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.09em', borderBottom: `1px solid ${LINE}`, background: '#F1F5F9' }}>
+            <div style={{ padding: '7px 14px', fontSize: 10.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.09em', borderBottom: `1px solid ${LINE}`, background: '#1E293B' }}>
               Demo Access
             </div>
             {[
@@ -198,17 +201,17 @@ export function LoginPage({ onLogin }: Props) {
               <button type="button" key={acc.username}
                 onClick={() => { setUsername(acc.username); setPassword(acc.password); setError(''); }}
                 className="clx-demo-row grid grid-cols-3 items-center w-full text-left"
-                style={{ padding: '8px 14px', border: 'none', background: '#FFFFFF', cursor: 'pointer', borderTop: i > 0 ? `1px solid ${LINE}` : 'none' }}>
+                style={{ padding: '8px 14px', border: 'none', background: 'transparent', cursor: 'pointer', borderTop: i > 0 ? `1px solid ${LINE}` : 'none' }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: INK }}>{acc.role}</span>
-                <span style={{ fontSize: 12, color: BLUE, fontFamily: 'monospace' }}>{acc.username}</span>
-                <span style={{ fontSize: 12, color: BLUE, fontFamily: 'monospace' }}>{acc.password}</span>
+                <span style={{ fontSize: 12, color: LINK, fontFamily: 'monospace' }}>{acc.username}</span>
+                <span style={{ fontSize: 12, color: LINK, fontFamily: 'monospace' }}>{acc.password}</span>
               </button>
             ))}
           </div>
 
           <p className="text-center" style={{ fontSize: 13, color: MUTED, marginTop: 20 }}>
             Need help?{' '}
-            <span className="clx-link" style={{ color: BLUE, cursor: 'pointer', fontWeight: 600 }}>Contact administrator</span>
+            <span className="clx-link" style={{ color: LINK, cursor: 'pointer', fontWeight: 600 }}>Contact administrator</span>
           </p>
         </div>
       </div>
@@ -242,7 +245,7 @@ export function LoginPage({ onLogin }: Props) {
         .clx-link:hover { opacity: 0.7; text-decoration: underline; }
 
         .clx-demo-row { transition: background 0.15s ease; }
-        .clx-demo-row:hover { background: #F8FAFC; }
+        .clx-demo-row:hover { background: rgba(255,255,255,0.05); }
 
         @media (prefers-reduced-motion: reduce) {
           .clx-in, .clx-photo, .clx-error { animation: none !important; opacity: 1 !important; transform: none !important; }
