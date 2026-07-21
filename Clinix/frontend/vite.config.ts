@@ -31,6 +31,12 @@ export default defineConfig({
     },
   },
 
+  // Pre-bundle these on dev-server start so dynamic import() of them doesn't
+  // trigger a mid-session re-optimize (which 404s the old ?v= hash).
+  optimizeDeps: {
+    include: ['docx-preview'],
+  },
+
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 })

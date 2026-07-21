@@ -3,11 +3,14 @@ import {
   User, Shield, Building2, Monitor, FileText, Bell,
   Database, Clock, Lock, Info, Camera, Check, Eye, EyeOff,
   Sun, Moon, Download, Upload, RefreshCw, LogOut, Activity,
-  ChevronRight,
+  ChevronRight, GraduationCap, Plus, Trash2, X,
 } from 'lucide-react';
 
 import { Page, AdminProfile } from '../App';
 import { useTheme } from '../ThemeContext';
+import {
+  useColleges, addCollege, removeCollege, addCourse, removeCourse, resetColleges,
+} from '../colleges';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -194,6 +197,40 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
     encrypt: true, requirePasswordExport: true, hideSensitive: true, recordActivity: true,
   }));
   const [privSaved, setPrivSaved] = useState(false);
+
+  // ── Colleges & Courses state
+  const collegesList = useColleges();
+  const [newCollege, setNewCollege] = useState('');
+  const [courseDrafts, setCourseDrafts] = useState<Record<string, string>>({});
+
+  function handleAddCollege() {
+    const name = newCollege.trim();
+    const res = addCollege(name);
+    if (!res.ok) { showToast(res.error || 'Could not add college'); return; }
+    showToast(`College "${name}" added`);
+    setNewCollege('');
+  }
+  function handleRemoveCollege(name: string) {
+    if (!confirm(`Remove "${name}" and its courses? Existing student/faculty records keep their saved values.`)) return;
+    removeCollege(name);
+    showToast(`College "${name}" removed`);
+  }
+  function handleAddCourse(college: string) {
+    const course = (courseDrafts[college] || '').trim();
+    const res = addCourse(college, course);
+    if (!res.ok) { showToast(res.error || 'Could not add course'); return; }
+    showToast(`Course "${course}" added to ${college}`);
+    setCourseDrafts((d) => ({ ...d, [college]: '' }));
+  }
+  function handleRemoveCourse(college: string, course: string) {
+    removeCourse(college, course);
+    showToast(`Course "${course}" removed`);
+  }
+  function handleResetColleges() {
+    if (!confirm('Restore the default colleges and courses? Your custom additions will be removed.')) return;
+    resetColleges();
+    showToast('Colleges & courses reset to defaults');
+  }
 
   // ── Save helpers
   function saved(setter: (v: boolean) => void) {
@@ -436,6 +473,79 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             </Field>
           </div>
           <SaveBar onSave={saveClinic} saved={clinicSaved} />
+        </SectionCard>
+
+        <SectionHeading icon={GraduationCap} label="Colleges & Courses" />
+        <SectionCard
+          title="Colleges & Courses"
+          desc="Add or remove colleges and their courses. Changes apply to the Student and Faculty forms and filters instantly."
+          action={
+            <button onClick={handleResetColleges} className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13 }}>
+              Restore defaults
+            </button>
+          }
+        >
+          {/* Add a new college */}
+          <div className="flex gap-2 mb-5">
+            <input
+              value={newCollege}
+              onChange={e => setNewCollege(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCollege(); } }}
+              placeholder="New college code or name (e.g. CON — College of Nursing)"
+              className={INPUT}
+              style={{ fontSize: 13 }}
+            />
+            <button onClick={handleAddCollege} className="flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-white hover:bg-blue-700 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>
+              <Plus size={15} /> Add College
+            </button>
+          </div>
+
+          {/* College list */}
+          <div className="space-y-4">
+            {collegesList.length === 0 && (
+              <p className="text-slate-400 text-center py-6" style={{ fontSize: 13 }}>No colleges yet — add one above.</p>
+            )}
+            {collegesList.map((col) => (
+              <div key={col.name} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 700 }}>{col.name}</p>
+                  <button onClick={() => handleRemoveCollege(col.name)} title="Remove college" className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+
+                {/* Course chips */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {col.courses.length === 0 && (
+                    <span className="text-slate-400" style={{ fontSize: 12 }}>No courses yet</span>
+                  )}
+                  {col.courses.map((course) => (
+                    <span key={course} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 px-2.5 py-1 text-slate-700 dark:text-slate-200" style={{ fontSize: 12, fontWeight: 500 }}>
+                      {course}
+                      <button onClick={() => handleRemoveCourse(col.name, course)} title="Remove course" className="text-slate-400 hover:text-red-600 transition-colors">
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Add a course to this college */}
+                <div className="flex gap-2">
+                  <input
+                    value={courseDrafts[col.name] || ''}
+                    onChange={e => setCourseDrafts(d => ({ ...d, [col.name]: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCourse(col.name); } }}
+                    placeholder={`Add course to ${col.name}`}
+                    className={INPUT}
+                    style={{ fontSize: 12 }}
+                  />
+                  <button onClick={() => handleAddCourse(col.name)} className="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-600 px-3 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 12, fontWeight: 600 }}>
+                    <Plus size={14} /> Add
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </SectionCard>
 
         <SectionHeading icon={Monitor} label="System Preferences" />

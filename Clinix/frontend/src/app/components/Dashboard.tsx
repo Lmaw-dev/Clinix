@@ -171,8 +171,9 @@ export function Dashboard({
     .filter((x) => x.count > 0)
     .map((x) => ({ name: x.label, value: x.count, fill: x.dot }));
 
-  // Low stock alert
-  const lowStock = inventory.filter((i) => i.qty >= 0 && i.qty < 5);
+  // Low stock alert — items actually running low (has some stock, below 5),
+  // excluding the archived "Medication (Old)" sheet and uncounted (0-qty) items.
+  const lowStock = inventory.filter((i) => !i.archived && i.category !== 'Medication (Old)' && i.qty > 0 && i.qty < 5);
 
   const statCards = [
     { label: 'Enrolled Students', value: enrolledCount, icon: GraduationCap, iconBg: '#EFF6FF', iconColor: '#2563EB', sub: `${students.length} total records` },
@@ -182,10 +183,10 @@ export function Dashboard({
   ];
 
   const quickActions = [
-    { label: 'Add Student', desc: 'Register a new student', icon: UserPlus, page: 'students' as Page, iconBg: '#EFF6FF', iconColor: '#2563EB' },
-    { label: 'New Consultation', desc: 'Log a consultation', icon: Stethoscope, page: 'consultations' as Page, iconBg: '#F5F3FF', iconColor: '#7C3AED' },
-    { label: 'Add Medicine', desc: 'Update inventory', icon: Pill, page: 'inventory' as Page, iconBg: '#FFFBEB', iconColor: '#B45309' },
-    { label: 'Generate Report', desc: 'View statistics', icon: BarChart2, page: 'reports' as Page, iconBg: '#F0FDF4', iconColor: '#16A34A' },
+    { label: 'Add Student', desc: 'Register a new student', icon: UserPlus, page: 'students' as Page, iconBg: '#EFF6FF', iconColor: '#2563EB', badge: 0 },
+    { label: 'New Consultation', desc: 'Log a consultation', icon: Stethoscope, page: 'consultations' as Page, iconBg: '#F5F3FF', iconColor: '#7C3AED', badge: 0 },
+    { label: 'Add Medicine', desc: lowStock.length > 0 ? `${lowStock.length} item${lowStock.length !== 1 ? 's' : ''} low on stock` : 'Update inventory', icon: Pill, page: 'inventory' as Page, iconBg: '#FFFBEB', iconColor: '#B45309', badge: lowStock.length },
+    { label: 'Generate Report', desc: 'View statistics', icon: BarChart2, page: 'reports' as Page, iconBg: '#F0FDF4', iconColor: '#16A34A', badge: 0 },
   ].filter((a) => canAccess(role, a.page));
 
   const [now, setNow] = useState(() => new Date());
@@ -224,24 +225,8 @@ export function Dashboard({
           </p>
         </div>
 
-        {/* Right: alerts + admin bar */}
+        {/* Right: admin bar */}
         <div className="flex flex-1 items-center gap-3 justify-end">
-          {lowStock.length > 0 && (
-            <div
-              className="flex items-center gap-2"
-              style={{
-                background: '#FFF7ED',
-                border: '1px solid #FED7AA',
-                borderRadius: 10,
-                padding: '8px 14px',
-              }}
-            >
-              <AlertCircle size={14} style={{ color: '#C2410C' }} />
-              <p style={{ fontSize: 12, color: '#C2410C', fontWeight: 600 }}>
-                {lowStock.length} low stock item{lowStock.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-          )}
 
           {/* Quick search — grows to fill the header gap, beside the date */}
           <div className="relative flex-1 min-w-[200px]" style={{ maxWidth: 560 }}>
@@ -382,14 +367,14 @@ export function Dashboard({
 
       {/* ── Quick actions ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 24 }}>
-        {quickActions.map(({ label, desc, icon: Icon, page, iconBg, iconColor }) => (
+        {quickActions.map(({ label, desc, icon: Icon, page, iconBg, iconColor, badge }) => (
           <button
             key={page}
             onClick={() => onNavigate(page)}
-            className="text-left transition-all"
+            className="relative text-left transition-all"
             style={{
               background: C.card,
-              border: '1px solid #E2E8F0',
+              border: badge > 0 ? '1px solid #FED7AA' : '1px solid #E2E8F0',
               borderRadius: 14,
               padding: '14px 16px',
               boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
@@ -404,6 +389,19 @@ export function Dashboard({
               (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
             }}
           >
+            {badge > 0 && (
+              <span
+                className="absolute flex items-center gap-1"
+                style={{
+                  top: 12, right: 12,
+                  background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 999,
+                  padding: '2px 8px', fontSize: 11, fontWeight: 700, color: '#C2410C',
+                }}
+              >
+                <AlertCircle size={11} />
+                {badge}
+              </span>
+            )}
             <div
               className="flex items-center justify-center rounded-lg mb-3"
               style={{ width: 36, height: 36, background: iconBg }}
@@ -411,7 +409,7 @@ export function Dashboard({
               <Icon size={16} style={{ color: iconColor }} />
             </div>
             <p style={{ fontSize: 13, fontWeight: 700, color: C.txtPrimary, lineHeight: 1.2 }}>{label}</p>
-            <p style={{ fontSize: 11, color: C.txtMuted, marginTop: 3 }}>{desc}</p>
+            <p style={{ fontSize: 11, color: badge > 0 ? '#C2410C' : C.txtMuted, marginTop: 3, fontWeight: badge > 0 ? 600 : 400 }}>{desc}</p>
           </button>
         ))}
       </div>

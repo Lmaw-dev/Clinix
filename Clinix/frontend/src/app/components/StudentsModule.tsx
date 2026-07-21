@@ -2,14 +2,9 @@ import { useState, useMemo, useRef } from 'react';
 import { Plus, Search, Pencil, Archive, Eye, Upload, CheckCircle2, Camera, User, Download, Printer, Filter, X } from 'lucide-react';
 import { Student, normalizeStudent } from '../App';
 import { Modal } from './Modal';
+import { PersonDocuments } from './PersonDocuments';
+import { useColleges, YEAR_OPTIONS } from '../colleges';
 
-type CollegeFolder = { name: string; courses: { name: string; years: string[] }[] };
-const DEFAULT_COLLEGES: CollegeFolder[] = [
-  { name: 'CTECH', courses: ['BSCS', 'BSIT-FPST', 'BSIT-ELECT'].map((name) => ({ name, years: ['1st Year', '2nd Year', '3rd Year', '4th Year'] })) },
-  { name: 'CTE', courses: ['BEED', 'BSED-ENGLISH', 'BSED-MATH'].map((name) => ({ name, years: ['1st Year', '2nd Year', '3rd Year', '4th Year'] })) },
-  { name: 'COM', courses: [{ name: 'BSM', years: ['1st Year', '2nd Year', '3rd Year', '4th Year'] }] },
-  { name: 'COF', courses: [{ name: 'BSF', years: ['1st Year', '2nd Year', '3rd Year', '4th Year'] }] },
-];
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4001/api').replace(/\/$/, '');
 
 type Props = {
@@ -23,8 +18,6 @@ type Props = {
 type TabId = 'list' | 'form' | 'import';
 type SortOrder = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
 
-const YEAR_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
-
 const defaultForm = {
   studentId: '',
   lastName: '',
@@ -36,7 +29,16 @@ const defaultForm = {
   contactNumber: '',
   medicalConditions: '',
   photo: '',
+  birthdate: '',
+  bloodType: '',
+  schoolYear: '',
+  homeAddress: '',
+  presentAddress: '',
+  guardianName: '',
+  guardianContact: '',
 };
+
+const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 function avatarInitials(name: string) {
   return name
@@ -133,6 +135,13 @@ function parseCsv(text: string): Record<string, unknown>[] {
     lastname: 'lastName', surname: 'lastName',
     firstname: 'firstName', fullname: 'name',
     middleinitial: 'middleInitial', mi: 'middleInitial',
+    birthdate: 'birthdate', birthday: 'birthdate', dob: 'birthdate',
+    bloodtype: 'bloodType',
+    schoolyear: 'schoolYear',
+    guardianname: 'guardianName', parentname: 'guardianName',
+    guardiancontact: 'guardianContact', parentcontact: 'guardianContact',
+    homeaddress: 'homeAddress',
+    presentaddress: 'presentAddress',
   };
   const lines = text.replace(/\r/g, '').split('\n').filter((l) => l.trim());
   if (!lines.length) return [];
@@ -178,6 +187,7 @@ async function saveStudentApi(student: Student, editingId?: string | null) {
 }
 
 export function StudentsModule({ students, setStudents, globalSearch, showToast, addActivity }: Props) {
+  const colleges = useColleges();
   const [tab, setTab] = useState<TabId>('list');
   const [localSearch, setLocalSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -244,6 +254,13 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       contactNumber: s.contactNumber,
       medicalConditions: s.medicalConditions,
       photo: s.photo || '',
+      birthdate: s.birthdate || '',
+      bloodType: s.bloodType || '',
+      schoolYear: s.schoolYear || '',
+      homeAddress: s.homeAddress || '',
+      presentAddress: s.presentAddress || '',
+      guardianName: s.guardianName || '',
+      guardianContact: s.guardianContact || '',
     });
     setEditingId(s.studentId);
     setShowFormModal(true);
@@ -367,9 +384,9 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   }
 
   function exportRows(rows: Student[], title: string) {
-    const headers = ['Student ID', 'Last Name', 'First Name', 'M.I.', 'Name', 'Course', 'Year Level', 'Sex', 'Contact Number', 'Medical Conditions', 'Status'];
+    const headers = ['Student ID', 'Last Name', 'First Name', 'M.I.', 'Name', 'Course', 'Year Level', 'Sex', 'Contact Number', 'Birthdate', 'Blood Type', 'School Year', 'Guardian Name', 'Guardian Contact', 'Home Address', 'Present Address', 'Medical Conditions', 'Status'];
     const csv = [headers, ...rows.map((s) => [
-      s.studentId, s.lastName, s.firstName, s.middleInitial, s.name, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions, s.status,
+      s.studentId, s.lastName, s.firstName, s.middleInitial, s.name, s.course, s.yearLevel, s.gender, s.contactNumber, s.birthdate, s.bloodType, s.schoolYear, s.guardianName, s.guardianContact, s.homeAddress, s.presentAddress, s.medicalConditions, s.status,
     ])].map((row) => row.map(csvCell).join(',')).join('\n');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -649,9 +666,9 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     style={{ fontSize: 12 }}
                   >
                     <option value="">All courses</option>
-                    {DEFAULT_COLLEGES.map((college) => (
+                    {colleges.map((college) => (
                       <optgroup key={college.name} label={college.name}>
-                        {college.courses.map((course) => <option key={course.name} value={course.name}>{course.name}</option>)}
+                        {college.courses.map((course) => <option key={course} value={course}>{course}</option>)}
                       </optgroup>
                     ))}
                   </select>
@@ -854,9 +871,9 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     required
                   >
                     <option value="">Select program</option>
-                    {DEFAULT_COLLEGES.map((college) => (
+                    {colleges.map((college) => (
                       <optgroup key={college.name} label={college.name}>
-                        {college.courses.map((course) => <option key={course.name}>{course.name}</option>)}
+                        {college.courses.map((course) => <option key={course}>{course}</option>)}
                       </optgroup>
                     ))}
                   </select>
@@ -911,6 +928,94 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 </label>
               </div>
 
+              <p className="mt-6 mb-1 text-slate-500 uppercase tracking-wider" style={{ fontSize: 10, fontWeight: 700 }}>
+                Clinic Consultation Record Info
+              </p>
+
+              <div className="grid grid-cols-2 gap-4 mt-2">
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Birthdate</span>
+                  <input
+                    type="date"
+                    value={form.birthdate}
+                    onChange={(e) => setForm((f) => ({ ...f, birthdate: e.target.value }))}
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Blood Type</span>
+                  <select
+                    value={form.bloodType}
+                    onChange={(e) => setForm((f) => ({ ...f, bloodType: e.target.value }))}
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  >
+                    <option value="">Select blood type</option>
+                    {BLOOD_TYPES.map((bt) => <option key={bt}>{bt}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>School Year</span>
+                  <input
+                    value={form.schoolYear}
+                    onChange={(e) => setForm((f) => ({ ...f, schoolYear: e.target.value }))}
+                    placeholder="2025-2026"
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Parent's / Guardian's Name</span>
+                  <input
+                    value={form.guardianName}
+                    onChange={(e) => setForm((f) => ({ ...f, guardianName: e.target.value }))}
+                    placeholder="Full name"
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Parent's / Guardian's Contact</span>
+                  <input
+                    value={form.guardianContact}
+                    onChange={(e) => setForm((f) => ({ ...f, guardianContact: e.target.value.replace(/\D/g, '').slice(0, 12) }))}
+                    placeholder="09XXXXXXXXX"
+                    maxLength={12}
+                    inputMode="numeric"
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Home Address</span>
+                  <input
+                    value={form.homeAddress}
+                    onChange={(e) => setForm((f) => ({ ...f, homeAddress: e.target.value }))}
+                    placeholder="Permanent / home address"
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+              </div>
+
+              <label className="block mt-4">
+                <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Present Address</span>
+                <input
+                  value={form.presentAddress}
+                  onChange={(e) => setForm((f) => ({ ...f, presentAddress: e.target.value }))}
+                  placeholder="Current address while studying"
+                  className={fieldClass}
+                  style={{ fontSize: 13 }}
+                />
+              </label>
+
               <label className="block mt-4">
                 <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
                   Medical Conditions
@@ -924,6 +1029,16 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   style={{ fontSize: 13 }}
                 />
               </label>
+
+              {editingId ? (
+                <div className="mt-4">
+                  <PersonDocuments ownerType="student" ownerId={editingId} showToast={showToast} canEdit />
+                </div>
+              ) : (
+                <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2.5 text-slate-400" style={{ fontSize: 12 }}>
+                  Save this student first, then edit the record to attach files.
+                </p>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
@@ -1052,6 +1167,13 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 ['Sex', viewStudent.gender],
                 ['Contact', viewStudent.contactNumber],
                 ['Program', viewStudent.course],
+                ['Birthdate', viewStudent.birthdate],
+                ['Blood Type', viewStudent.bloodType],
+                ['School Year', viewStudent.schoolYear],
+                ["Parent's / Guardian's Name", viewStudent.guardianName],
+                ["Guardian's Contact", viewStudent.guardianContact],
+                ['Home Address', viewStudent.homeAddress],
+                ['Present Address', viewStudent.presentAddress],
               ].map(([k, v]) => (
                 <div key={k} className="bg-slate-50 rounded-lg p-3">
                   <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 500 }}>
@@ -1071,6 +1193,9 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 {viewStudent.medicalConditions || 'None recorded'}
               </p>
             </div>
+
+            {/* Documents & files */}
+            <PersonDocuments ownerType="student" ownerId={viewStudent.studentId} showToast={showToast} />
 
             {/* Actions */}
             <div className="flex justify-end gap-2">
