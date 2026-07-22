@@ -9,13 +9,14 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie,
 } from 'recharts';
-import { Student, FacultyMember, MedRecord, InventoryItem, Certificate, Consultation, Activity as ActivityType } from '../App';
+import { Student, FacultyMember, MedRecord, MedForm, InventoryItem, Certificate, Consultation, Activity as ActivityType } from '../App';
 import { useTheme } from '../ThemeContext';
 
 type Props = {
   students: Student[];
   faculty: FacultyMember[];
   medRecords: MedRecord[];
+  medForms: MedForm[];
   inventory: InventoryItem[];
   certificates: Certificate[];
   consultations: Consultation[];
@@ -56,7 +57,7 @@ function pctChange(a: number, b: number) {
   return Math.round(((a - b) / b) * 100);
 }
 
-export function ReportsModule({ students, faculty, medRecords, inventory, certificates, consultations, activities }: Props) {
+export function ReportsModule({ students, faculty, medRecords, medForms, inventory, certificates, consultations, activities }: Props) {
   const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [dateFilter, setDateFilter] = useState<DateFilter>('month');
@@ -96,7 +97,7 @@ export function ReportsModule({ students, faculty, medRecords, inventory, certif
   const consultWeek = consultations.filter(c => isThisWeek(c.date)).length;
   const consultMonth = consultations.filter(c => isThisMonth(c.date)).length;
 
-  const pendingForms = medRecords.filter(r => r.status === 'Pending').length;
+  const formCopies = medForms.reduce((n, f) => n + f.entries.length, 0);
 
   const now = new Date();
   const expiredMeds = inventory.filter(i => {
@@ -265,8 +266,8 @@ export function ReportsModule({ students, faculty, medRecords, inventory, certif
             sub="Active personnel" trend="+6%" trendDir="up" accent="#8B5CF6" />
           <KpiCard icon={Stethoscope} label="Consultations" value={consultations.length.toLocaleString()}
             sub={`${consultToday} today`} trend="+8%" trendDir="up" accent="#10B981" />
-          <KpiCard icon={FileText} label="Medical Forms" value={medRecords.length.toLocaleString()}
-            sub={`${pendingForms} pending`} trend="6" trendDir="neutral" accent="#F59E0B" />
+          <KpiCard icon={FileText} label="Medical Forms" value={medForms.length.toLocaleString()}
+            sub={`${formCopies} student copies`} trend="6" trendDir="neutral" accent="#F59E0B" />
           <KpiCard icon={Pill} label="Medicine Inventory" value={inventory.length}
             sub={`${lowStock.length} low stock`}
             badge={lowStock.length > 0 ? { text: `${lowStock.length} Low`, color: '#F59E0B' } : undefined}

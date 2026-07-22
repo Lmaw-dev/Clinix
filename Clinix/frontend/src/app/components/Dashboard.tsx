@@ -32,6 +32,7 @@ import {
   FacultyMember,
   Consultation,
   MedRecord,
+  MedForm,
   InventoryItem,
   Activity as ActivityType,
   Page,
@@ -87,6 +88,7 @@ type Props = {
   faculty: FacultyMember[];
   consultations: Consultation[];
   medRecords: MedRecord[];
+  medForms: MedForm[];
   inventory: InventoryItem[];
   activities: ActivityType[];
   onNavigate: (p: Page) => void;
@@ -97,7 +99,7 @@ type Props = {
 type QuickResult = { type: 'Student'; person: Student } | { type: 'Faculty & Staff'; person: FacultyMember };
 
 export function Dashboard({
-  students, faculty, consultations, medRecords, inventory, activities, onNavigate, adminProfile, role,
+  students, faculty, consultations, medRecords, medForms, inventory, activities, onNavigate, adminProfile, role,
 }: Props) {
   const { isDark } = useTheme();
 
@@ -179,7 +181,7 @@ export function Dashboard({
     { label: 'Enrolled Students', value: enrolledCount, icon: GraduationCap, iconBg: '#EFF6FF', iconColor: '#2563EB', sub: `${students.length} total records` },
     { label: 'Faculty & Staff', value: faculty.length, icon: Users, iconBg: '#F0FDF4', iconColor: '#16A34A', sub: 'Active personnel' },
     { label: 'Consultations', value: consultations.length, icon: Stethoscope, iconBg: '#F5F3FF', iconColor: '#7C3AED', sub: 'Total logged' },
-    { label: 'Medical Forms', value: medRecords.length, icon: FileText, iconBg: '#FFF7ED', iconColor: '#C2410C', sub: `${medRecords.filter((r) => r.status === 'Pending').length} pending` },
+    { label: 'Medical Forms', value: medForms.length, icon: FileText, iconBg: '#FFF7ED', iconColor: '#C2410C', sub: `${medForms.reduce((n, f) => n + f.entries.length, 0)} student copies` },
   ];
 
   const quickActions = [

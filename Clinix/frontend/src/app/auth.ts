@@ -4,11 +4,40 @@ import type { Page } from './App';
 
 export type Role = 'admin' | 'assistant' | 'staff';
 
-export const ACCOUNTS: Array<{ username: string; password: string; role: Role }> = [
+export type Account = { username: string; password: string; role: Role };
+
+// Built-in seed accounts. The live list is stored in localStorage and managed
+// by the admin in the Accounts page (see load/save/find helpers below).
+export const ACCOUNTS: Account[] = [
   { username: 'admin', password: 'clinix2024', role: 'admin' },
   { username: 'assistant', password: 'assist2024', role: 'assistant' },
   { username: 'staff', password: 'staff123', role: 'staff' },
 ];
+
+const ACCOUNTS_KEY = 'clinixAccounts';
+
+export function loadAccounts(): Account[] {
+  try {
+    const raw = localStorage.getItem(ACCOUNTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) {
+        return parsed.filter((a) => a && a.username && a.password && isValidRole(a.role));
+      }
+    }
+  } catch { /* fall through to defaults */ }
+  return ACCOUNTS.map((a) => ({ ...a }));
+}
+
+export function saveAccounts(list: Account[]) {
+  try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list)); } catch { /* ignore quota */ }
+}
+
+export function findAccount(username: string, password: string): Account | undefined {
+  return loadAccounts().find(
+    (a) => a.username.toLowerCase() === username.trim().toLowerCase() && a.password === password,
+  );
+}
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Administrator',
@@ -37,8 +66,9 @@ const ALL_PAGES: Page[] = [
 ];
 
 export const ROLE_PAGES: Record<Role, Page[]> = {
-  admin: ALL_PAGES,
-  // Same access as admin; confidential features are gated per-feature below.
+  // Admin also manages user accounts (main-admin only).
+  admin: [...ALL_PAGES, 'accounts'],
+  // Same access as admin; confidential features (Accounts) are NOT included.
   assistant: ALL_PAGES,
   // Staff monitors consultation logs + dashboard + reports only.
   staff: ['dashboard', 'consultations', 'reports'],

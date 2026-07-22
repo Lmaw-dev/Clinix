@@ -8,6 +8,7 @@ import {
   MessageSquare,
   BarChart2,
   Settings,
+  ShieldCheck,
   LogOut,
   Activity,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ const NAV_ITEMS: Array<{
   { id: 'certificates', label: 'Medical Certificates', icon: Award },
   { id: 'consultations', label: 'Consultation Logs', icon: MessageSquare },
   { id: 'reports', label: 'Reports & Statistics', icon: BarChart2 },
+  { id: 'accounts', label: 'Accounts', icon: ShieldCheck },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -36,14 +38,18 @@ export function Sidebar({
   activePage,
   onNavigate,
   onLogout,
+  certificatesEnabled = true,
 }: {
   role: Role;
   activePage: Page;
   onNavigate: (p: Page) => void;
   onLogout?: () => void;
+  certificatesEnabled?: boolean;
 }) {
   const { isDark } = useTheme();
-  const navItems = NAV_ITEMS.filter((item) => canAccess(role, item.id));
+  const navItems = NAV_ITEMS.filter((item) =>
+    canAccess(role, item.id) && (item.id !== 'certificates' || certificatesEnabled),
+  );
 
   const bg        = isDark ? '#020817' : '#0F172A';
   const divider   = isDark ? '#0F172A' : '#1E293B';

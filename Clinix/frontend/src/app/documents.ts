@@ -2,7 +2,9 @@
 // Each student / faculty member can hold uploaded files (PDF, docs, images, …).
 // Files live on the server; this module is the thin API client used by the UI.
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4001/api').replace(/\/$/, '');
+// Default to the host that served the app so other devices on the LAN reach the
+// backend automatically; override with VITE_API_URL for a fixed server/domain.
+const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
 export type OwnerType = 'student' | 'faculty';
 

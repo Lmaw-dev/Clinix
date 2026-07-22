@@ -133,6 +133,8 @@ type Props = {
   showToast: (m: string) => void;
   adminProfile?: AdminProfile;
   setAdminProfile?: React.Dispatch<React.SetStateAction<AdminProfile>>;
+  certificatesEnabled?: boolean;
+  setCertificatesEnabled?: (v: boolean) => void;
 };
 
 const DEFAULT_PROFILE: AdminProfile = { name: 'Clinic Admin', photo: '' };
@@ -140,7 +142,7 @@ const DEFAULT_PROFILE: AdminProfile = { name: 'Clinic Admin', photo: '' };
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_PROFILE, setAdminProfile }: Props) {
+export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_PROFILE, setAdminProfile, certificatesEnabled = true, setCertificatesEnabled }: Props) {
   const { isDark, toggle: toggleTheme } = useTheme();
   const photoRef = useRef<HTMLInputElement>(null);
 
@@ -545,6 +547,23 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 </div>
               </div>
             ))}
+          </div>
+        </SectionCard>
+
+        <SectionHeading icon={FileText} label="Pages & Features" />
+        <SectionCard title="Optional Pages" desc="Turn clinic pages on or off for everyone">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>Medical Certificates page</p>
+              <p className="text-slate-400" style={{ fontSize: 12 }}>
+                {certificatesEnabled ? 'Shown in the sidebar and accessible.' : 'Hidden from the sidebar for all users.'}
+              </p>
+            </div>
+            <Toggle on={certificatesEnabled} onToggle={() => {
+              const next = !certificatesEnabled;
+              setCertificatesEnabled?.(next);
+              showToast(next ? 'Medical Certificates page enabled' : 'Medical Certificates page hidden');
+            }} />
           </div>
         </SectionCard>
 

@@ -12,7 +12,8 @@ import { ensureDbUpdates, pingDb, pool } from './db.js';
 const app = express();
 const port = Number(process.env.PORT || 4001);
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
+// Allow the configured origin, or reflect any origin (LAN devices) when unset.
+app.use(cors({ origin: process.env.CORS_ORIGIN || true }));
 app.use(express.json({ limit: '5mb' }));
 
 // ── File uploads (per-person documents) ──────────────────────────────────────
@@ -419,8 +420,9 @@ app.use((error, _req, res, _next) => {
 
 await ensureDbUpdates();
 
-const server = app.listen(port, () => {
-  console.log(`Clinix API: http://localhost:${port}`);
+// Bind to all interfaces (0.0.0.0) so other devices on the LAN can reach the API.
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log(`Clinix API listening on port ${port} (all interfaces) — e.g. http://<this-pc-ip>:${port}`);
 });
 
 server.on('error', (error) => {

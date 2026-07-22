@@ -25,8 +25,8 @@ const isDocx = (d: PersonDoc) => matchesType(d, 'wordprocessingml', /\.docx$/i);
 const isWord = (d: PersonDoc) => isDocx(d) || matchesType(d, 'msword', /\.doc$/i);
 const isText = (d: PersonDoc) => (d.mimeType || '').startsWith('text/') || /\.(txt|csv|md|json|log|xml)$/i.test(d.fileName);
 
-// ── In-app content preview (PDF/image natively; .docx via mammoth) ──────────────
-function DocPreview({ doc, onClose }: { doc: PersonDoc; onClose: () => void }) {
+// ── In-app content preview (PDF/image natively; .docx via docx-preview) ─────────
+export function DocPreview({ doc, onClose }: { doc: PersonDoc; onClose: () => void }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'unsupported' | 'error'>('loading');
   const [text, setText] = useState('');
   const [errMsg, setErrMsg] = useState('');

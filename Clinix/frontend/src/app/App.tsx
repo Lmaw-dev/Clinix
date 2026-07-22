@@ -10,6 +10,7 @@ import { FacultyModule } from './components/FacultyModule';
 import { MedicalRecordsModule } from './components/MedicalRecordsModule';
 import { InventoryModule } from './components/InventoryModule';
 import { CertificatesModule } from './components/CertificatesModule';
+import { AccountsModule } from './components/AccountsModule';
 import { ConsultationsModule } from './components/ConsultationsModule';
 import { ReportsModule } from './components/ReportsModule';
 import { SettingsModule } from './components/SettingsModule';
@@ -25,7 +26,8 @@ export type Page =
   | 'certificates'
   | 'consultations'
   | 'reports'
-  | 'settings';
+  | 'settings'
+  | 'accounts';
 
 export type AdminProfile = {
   name: string;
@@ -86,6 +88,27 @@ export type MedRecord = {
   status: MedFormStatus;
 };
 
+// ── Uploaded medical forms ──
+// A form is an uploaded document (the original/blank copy is kept), under which
+// each student's filled copy is compiled. Files live on the backend (documents API).
+export type MedFormEntry = {
+  studentId: string;
+  studentName: string;
+  docId: string;      // backend document id of the student's filled copy
+  fileName: string;
+  uploadedAt: string;
+};
+
+export type MedForm = {
+  id: string;
+  name: string;
+  description: string;
+  date: string;
+  templateDocId: string;    // backend document id of the original/blank form
+  templateFileName: string;
+  entries: MedFormEntry[];
+};
+
 export type MonthlyStock = { remaining: number | null; dispensed: number | null };
 
 export type InventoryItem = {
@@ -136,6 +159,13 @@ export type Consultation = {
   outcome: string;
   reason?: string;
   staff?: string;
+  // ── Daily Treatment Record fields ──
+  time?: string;
+  age?: string;
+  sex?: string;
+  courseOrOffice?: string;    // Course & Year / Office
+  chiefComplaint?: string;    // Purpose of Visit / Chief Complaint
+  management?: string;
 };
 
 export type Activity = {
@@ -143,7 +173,7 @@ export type Activity = {
   ts: string;
 };
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4001/api').replace(/\/$/, '');
+const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -334,11 +364,25 @@ export default function App() {
       return isValidRole(stored) ? stored : 'admin';
     } catch { return 'admin'; }
   });
+  const [currentUser, setCurrentUser] = useState<string>(() => {
+    try { return localStorage.getItem('clinixUser') || ''; } catch { return ''; }
+  });
+  // Whether the Medical Certificates page is enabled (toggled in Settings).
+  const [certificatesEnabled, setCertificatesEnabled] = useState<boolean>(() => {
+    try { const v = localStorage.getItem('clinixShowCertificates'); return v === null ? true : v === 'true'; }
+    catch { return true; }
+  });
   const [activePage, setActivePage] = useState<Page>('dashboard');
 
+  // A page is reachable if the role allows it AND (for certificates) it's enabled.
+  const pageAllowed = useCallback(
+    (p: Page) => canAccess(role, p) && (p !== 'certificates' || certificatesEnabled),
+    [role, certificatesEnabled],
+  );
+
   const navigate = useCallback((p: Page) => {
-    setActivePage((prev) => (canAccess(role, p) ? p : prev));
-  }, [role]);
+    setActivePage((prev) => (pageAllowed(p) ? p : prev));
+  }, [pageAllowed]);
   const [globalSearch, setGlobalSearch] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -357,6 +401,7 @@ export default function App() {
     const raw = loadFromStorage<Record<string, unknown>[]>('clinixMedRecords', []);
     return raw.map((r) => ({ ...r, status: (r.status as MedFormStatus) || 'Pending' } as MedRecord));
   });
+  const [medForms, setMedForms] = useState<MedForm[]>(() => loadFromStorage('clinixMedForms', []));
   const [inventory, setInventory] = useState<InventoryItem[]>(() => {
     const stored = loadFromStorage<InventoryItem[]>('clinixInventory', []);
     // Re-seed when empty, or upgrade older seeds that predate categories.
@@ -413,11 +458,13 @@ export default function App() {
   useEffect(() => { localStorage.setItem('clinixStudents', JSON.stringify(students)); }, [students]);
   useEffect(() => { localStorage.setItem('clinixFaculty', JSON.stringify(faculty)); }, [faculty]);
   useEffect(() => { localStorage.setItem('clinixMedRecords', JSON.stringify(medRecords)); }, [medRecords]);
+  useEffect(() => { localStorage.setItem('clinixMedForms', JSON.stringify(medForms)); }, [medForms]);
   useEffect(() => { localStorage.setItem('clinixInventory', JSON.stringify(inventory)); }, [inventory]);
   useEffect(() => { localStorage.setItem('clinixCertificates', JSON.stringify(certificates)); }, [certificates]);
   useEffect(() => { localStorage.setItem('clinixConsultations', JSON.stringify(consultations)); }, [consultations]);
   useEffect(() => { localStorage.setItem('clinixActivities', JSON.stringify(activities)); }, [activities]);
   useEffect(() => { localStorage.setItem('clinixAdminProfile', JSON.stringify(adminProfile)); }, [adminProfile]);
+  useEffect(() => { try { localStorage.setItem('clinixShowCertificates', String(certificatesEnabled)); } catch { /* ignore */ } }, [certificatesEnabled]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -435,24 +482,27 @@ export default function App() {
     try {
       localStorage.removeItem('clinixSession');
       localStorage.removeItem('clinixRole');
+      localStorage.removeItem('clinixUser');
     } catch {}
     setIsLoggedIn(false);
     setActivePage('dashboard');
   }
 
-  function handleLogin(r: Role) {
+  function handleLogin(r: Role, username: string) {
     setRole(r);
+    setCurrentUser(username);
+    try { localStorage.setItem('clinixUser', username); } catch { /* ignore */ }
     setActivePage('dashboard');
     setIsLoggedIn(true);
   }
 
-  // If the current role loses access to the active page, fall back to dashboard
+  // If the current role loses access to (or a feature disables) the active page, fall back to dashboard
   useEffect(() => {
-    if (!canAccess(role, activePage)) setActivePage('dashboard');
-  }, [role, activePage]);
+    if (!pageAllowed(activePage)) setActivePage('dashboard');
+  }, [pageAllowed, activePage]);
 
-  // Never render a page the current role can't access
-  const page: Page = canAccess(role, activePage) ? activePage : 'dashboard';
+  // Never render a page the current role/feature-flag can't access
+  const page: Page = pageAllowed(activePage) ? activePage : 'dashboard';
 
   return (
     <ThemeProvider>
@@ -460,7 +510,7 @@ export default function App() {
       <LoginPage onLogin={handleLogin} />
     ) : (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
-      <Sidebar role={role} activePage={activePage} onNavigate={navigate} onLogout={handleLogout} />
+      <Sidebar role={role} activePage={activePage} onNavigate={navigate} onLogout={handleLogout} certificatesEnabled={certificatesEnabled} />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <main className="flex-1 overflow-y-auto">
@@ -471,6 +521,7 @@ export default function App() {
               faculty={faculty}
               consultations={consultations}
               medRecords={medRecords}
+              medForms={medForms}
               inventory={inventory}
               activities={activities}
               onNavigate={navigate}
@@ -498,8 +549,9 @@ export default function App() {
           )}
           {page === 'medical-records' && (
             <MedicalRecordsModule
-              records={medRecords}
-              setRecords={setMedRecords}
+              forms={medForms}
+              setForms={setMedForms}
+              students={students}
               globalSearch={globalSearch}
               showToast={showToast}
               addActivity={addActivity}
@@ -527,6 +579,7 @@ export default function App() {
             <ConsultationsModule
               consultations={consultations}
               setConsultations={setConsultations}
+              students={students}
               globalSearch={globalSearch}
               showToast={showToast}
               addActivity={addActivity}
@@ -537,6 +590,7 @@ export default function App() {
               students={students}
               faculty={faculty}
               medRecords={medRecords}
+              medForms={medForms}
               inventory={inventory}
               certificates={certificates}
               consultations={consultations}
@@ -549,6 +603,16 @@ export default function App() {
               showToast={showToast}
               adminProfile={adminProfile}
               setAdminProfile={setAdminProfile}
+              certificatesEnabled={certificatesEnabled}
+              setCertificatesEnabled={setCertificatesEnabled}
+            />
+          )}
+          {page === 'accounts' && (
+            <AccountsModule
+              role={role}
+              currentUser={currentUser}
+              showToast={showToast}
+              addActivity={addActivity}
             />
           )}
           </div>

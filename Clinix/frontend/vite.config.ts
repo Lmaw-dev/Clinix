@@ -24,6 +24,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  // Expose the dev/preview server on the LAN so other devices can open the app.
+  server: { host: true },
+  preview: { host: true },
+
   resolve: {
     alias: {
       // Alias @ to the src directory

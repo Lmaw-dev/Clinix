@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Eye, EyeOff, AlertCircle, User, Lock } from 'lucide-react';
-import { ACCOUNTS, Role } from '../auth';
+import { findAccount, Role } from '../auth';
 import CAMPUS_PHOTO from '../../assets/campus-gate.png';
 
-type Props = { onLogin: (role: Role) => void };
+type Props = { onLogin: (role: Role, username: string) => void };
 
 const SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif";
 const PAGE  = '#0F172A'; // sidebar navy (slate-900)
@@ -30,15 +30,14 @@ export function LoginPage({ onLogin }: Props) {
     setError('');
     setLoading(true);
     setTimeout(() => {
-      const account = ACCOUNTS.find(
-        (a) => a.username === username.trim() && a.password === password
-      );
+      const account = findAccount(username, password);
       if (account) {
         try {
           localStorage.setItem('clinixSession', 'active');
           localStorage.setItem('clinixRole', account.role);
+          localStorage.setItem('clinixUser', account.username);
         } catch {}
-        onLogin(account.role);
+        onLogin(account.role, account.username);
       } else {
         setError('Incorrect username or password.');
         setLoading(false);
