@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { Plus, Search, Pencil, Eye, Filter, Upload, Download, Printer, CheckCircle2, X } from 'lucide-react';
+import { Plus, Search, Pencil, Eye, Filter, Upload, Download, Printer, CheckCircle2, X, Phone, Camera, User } from 'lucide-react';
 import { FacultyMember, normalizeFaculty } from '../App';
 import { Modal } from './Modal';
 import { PersonDocuments } from './PersonDocuments';
@@ -18,7 +18,7 @@ type Props = {
 type SortOrder = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
 
 const defaultForm = {
-  staffId: '', name: '', college: '', role: '', contact: '', medicalHistory: '',
+  staffId: '', name: '', college: '', role: '', contact: '', medicalHistory: '', photo: '',
   employmentCategory: '', employmentType: '',
   birthdate: '', bloodType: '', office: '', homeAddress: '', presentAddress: '',
   guardianName: '', guardianContact: '',
@@ -38,6 +38,53 @@ type CsvRecord = Record<string, string>;
 
 function avatarInitials(name: string) {
   return name.split(' ').filter(Boolean).slice(0, 2).map((s) => s[0]).join('').toUpperCase();
+}
+
+// Downscales + re-encodes the photo client-side so the stored data URL stays well under
+// MySQL's max_allowed_packet, regardless of how large the original upload was.
+function readFileAsCompressedDataUrl(file: File, maxDim = 480, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas is not supported in this browser')); return; }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image file')); };
+    img.src = url;
+  });
+}
+
+function FacultyAvatar({ photo, name, size = 'md', className = '' }: { photo?: string; name: string; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+  const dims = size === 'sm' ? 'h-8 w-8' : size === 'md' ? 'h-11 w-11' : 'h-12 w-12';
+  const textSize = size === 'sm' ? 11 : size === 'md' ? 13 : 16;
+  if (photo) {
+    return <img src={photo} alt={name} className={`${dims} shrink-0 rounded-full object-cover ${className}`} />;
+  }
+  return (
+    <div className={`flex ${dims} shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-700 ${className}`} style={{ fontSize: textSize, fontWeight: 700 }}>
+      {avatarInitials(name) || <User size={textSize} />}
+    </div>
+  );
+}
+
+// Colors keyed off employment classification, used for the avatar ring and status pill
+// in the personnel list card (see facultyTable()).
+const CLASSIFICATION_STYLES: Record<string, { ring: string; badge: string; dot: string }> = {
+  Teaching: { ring: 'ring-indigo-200 dark:ring-indigo-800', badge: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300', dot: 'bg-indigo-400' },
+  'Non-teaching': { ring: 'ring-teal-200 dark:ring-teal-800', badge: 'bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-300', dot: 'bg-teal-400' },
+  Agency: { ring: 'ring-amber-200 dark:ring-amber-800', badge: 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300', dot: 'bg-amber-400' },
+};
+const DEFAULT_CLASSIFICATION_STYLE = { ring: 'ring-slate-200 dark:ring-slate-600', badge: 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300', dot: 'bg-slate-300' };
+function classificationStyle(category?: string) {
+  return (category && CLASSIFICATION_STYLES[category]) || DEFAULT_CLASSIFICATION_STYLE;
 }
 
 function sortFaculty(rows: FacultyMember[], sort: SortOrder) {
@@ -180,6 +227,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
   const [pendingCsv, setPendingCsv] = useState<FacultyMember[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const query = (localSearch || globalSearch).trim().toLowerCase();
   const visible = useMemo(
@@ -219,7 +267,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
   function openEdit(f: FacultyMember) {
     setForm({
       staffId: f.staffId, name: f.name, college: f.college || '', role: f.role,
-      contact: f.contact, medicalHistory: f.medicalHistory,
+      contact: f.contact, medicalHistory: f.medicalHistory, photo: f.photo || '',
       employmentCategory: f.employmentCategory || '', employmentType: f.employmentType || '',
       birthdate: f.birthdate || '', bloodType: f.bloodType || '', office: f.office || '',
       homeAddress: f.homeAddress || '', presentAddress: f.presentAddress || '',
@@ -271,6 +319,20 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
     setShowImportModal(false);
   }
 
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { showToast('Profile image must be under 8 MB'); return; }
+    let dataUrl: string;
+    try {
+      dataUrl = await readFileAsCompressedDataUrl(file);
+    } catch {
+      showToast('Could not process that image');
+      return;
+    }
+    setForm((f) => ({ ...f, photo: dataUrl }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const rec: FacultyMember = {
@@ -280,6 +342,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
       role: form.role.trim(),
       contact: form.contact.trim(),
       medicalHistory: form.medicalHistory.trim(),
+      photo: form.photo || undefined,
       employmentCategory: form.employmentCategory.trim(),
       employmentType: form.employmentType.trim(),
       birthdate: form.birthdate.trim(),
@@ -322,62 +385,58 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px]">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60">
-                {['ID', 'Name & Designation', 'College', 'Classification', 'Contact', 'Medical History', 'Actions'].map((h) => (
-                  <th key={h} className="whitespace-nowrap px-5 py-3 text-left text-slate-500 uppercase tracking-wider" style={{ fontSize: 11, fontWeight: 600 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-              {sortedRows.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400" style={{ fontSize: 13 }}>No personnel match your search</td>
-                </tr>
-              ) : (
-                sortedRows.map((member) => (
-                  <tr key={member.staffId} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                    <td className="px-5 py-3.5 text-slate-600" style={{ fontSize: 13 }}>{member.staffId}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-700" style={{ fontSize: 11, fontWeight: 700 }}>
-                          {avatarInitials(member.name)}
-                        </div>
-                        <div>
-                          <p className="text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 500 }}>{member.name}</p>
-                          <p className="text-slate-400" style={{ fontSize: 11 }}>{member.role || '—'}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-600" style={{ fontSize: 13 }}>{member.college || '—'}</td>
-                    <td className="px-5 py-3.5" style={{ fontSize: 13 }}>
-                      {member.employmentCategory ? (
-                        <div>
-                          <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{member.employmentCategory}</p>
-                          {member.employmentType && <p className="text-slate-400" style={{ fontSize: 11 }}>{member.employmentType}</p>}
-                        </div>
-                      ) : <span className="text-slate-400">—</span>}
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-600" style={{ fontSize: 13 }}>{member.contact || '—'}</td>
-                    <td className="max-w-[220px] px-5 py-3.5 truncate text-slate-500" style={{ fontSize: 13 }}>{member.medicalHistory || 'None recorded'}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => setViewMember(member)} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600" title="View">
-                          <Eye size={14} />
-                        </button>
-                        <button onClick={() => openEdit(member)} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" title="Edit">
-                          <Pencil size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {sortedRows.length === 0 ? (
+          <p className="py-12 text-center text-slate-400" style={{ fontSize: 13 }}>No personnel match your search</p>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-slate-700">
+            {sortedRows.map((member) => {
+              const style = classificationStyle(member.employmentCategory);
+              return (
+                <div
+                  key={member.staffId}
+                  onClick={() => setViewMember(member)}
+                  className="group flex cursor-pointer items-center gap-4 px-5 py-4 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/30"
+                >
+                  <FacultyAvatar photo={member.photo} name={member.name} className={`ring-2 ring-offset-2 dark:ring-offset-slate-800 ${style.ring}`} />
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>
+                      {member.name}
+                      {member.role && (
+                        <>
+                          <span className="mx-1.5 text-slate-300 dark:text-slate-600">•</span>
+                          <span className="text-indigo-500 dark:text-indigo-300" style={{ fontSize: 12, fontWeight: 500 }}>{member.role}</span>
+                        </>
+                      )}
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1.5 truncate text-slate-400" style={{ fontSize: 12 }}>
+                      <Phone size={12} className="shrink-0" />
+                      {member.contact || 'No contact on file'}
+                      <span className="text-slate-300 dark:text-slate-600">·</span>
+                      {member.college || 'No college assigned'}
+                    </p>
+                  </div>
+
+                  {member.employmentCategory && (
+                    <span className={`hidden shrink-0 items-center gap-1.5 rounded-full px-3 py-1 sm:inline-flex ${style.badge}`} style={{ fontSize: 11, fontWeight: 600 }}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+                      {member.employmentType || member.employmentCategory}
+                    </span>
+                  )}
+
+                  <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <button onClick={(e) => { e.stopPropagation(); setViewMember(member); }} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600" title="View">
+                      <Eye size={14} />
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); openEdit(member); }} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" title="Edit">
+                      <Pencil size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
@@ -464,9 +523,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
                         onClick={() => { setViewMember(member); setLocalSearch(''); setSearchOpen(false); }}
                         className="flex items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-slate-700"
                       >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-700" style={{ fontSize: 11, fontWeight: 700 }}>
-                          {avatarInitials(member.name)}
-                        </div>
+                        <FacultyAvatar photo={member.photo} name={member.name} size="sm" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{member.name}</span>
                           <span className="block truncate text-slate-500" style={{ fontSize: 12 }}>
@@ -535,6 +592,42 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
         onClose={() => { setShowModal(false); setForm(defaultForm); setEditingId(null); }}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Profile photo */}
+          <div className="flex items-center gap-5">
+            <div className="relative shrink-0">
+              {form.photo ? (
+                <img src={form.photo} alt="Profile" className="h-20 w-20 rounded-full border-2 border-slate-200 object-cover dark:border-slate-600" />
+              ) : (
+                <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700">
+                  <User size={28} className="text-slate-400" />
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white shadow-md transition-colors hover:bg-blue-700"
+                title="Upload profile photo"
+              >
+                <Camera size={13} />
+              </button>
+              <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
+            </div>
+            <div>
+              <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 500 }}>Profile photo</p>
+              <p className="mt-0.5 text-slate-400" style={{ fontSize: 12 }}>Click the camera icon to upload. JPG, PNG up to 8 MB — auto-resized for storage.</p>
+              {form.photo && (
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, photo: '' }))}
+                  className="mt-1.5 text-red-500 transition-colors hover:text-red-600"
+                  style={{ fontSize: 12 }}
+                >
+                  Remove photo
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <label>
               <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Staff ID</span>
@@ -783,12 +876,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
         {viewMember && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div
-                className="w-12 h-12 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center shrink-0"
-                style={{ fontSize: 16, fontWeight: 700 }}
-              >
-                {avatarInitials(viewMember.name)}
-              </div>
+              <FacultyAvatar photo={viewMember.photo} name={viewMember.name} size="lg" />
               <div>
                 <p className="text-slate-900" style={{ fontSize: 15, fontWeight: 600 }}>{viewMember.name}</p>
                 <p className="text-slate-500" style={{ fontSize: 12 }}>

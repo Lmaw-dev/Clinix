@@ -36,6 +36,10 @@ export async function ensureDbUpdates() {
       MODIFY first_name VARCHAR(80) NOT NULL,
       MODIFY middle_name VARCHAR(80) NULL
   `);
+  await pool.query(`
+    ALTER TABLE faculty
+      ADD COLUMN IF NOT EXISTS photo LONGTEXT NULL
+  `);
   // Per-person document attachments (files stored on disk, metadata here)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS documents (

@@ -157,12 +157,25 @@ function parseCsv(text: string): Record<string, unknown>[] {
   });
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
+// Downscales + re-encodes the photo client-side so the stored data URL stays well under
+// MySQL's max_allowed_packet, regardless of how large the original upload was.
+function readFileAsCompressedDataUrl(file: File, maxDim = 480, quality = 0.82): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas is not supported in this browser')); return; }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image file')); };
+    img.src = url;
   });
 }
 
@@ -269,8 +282,14 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { showToast('Profile image must be under 2 MB'); return; }
-    const dataUrl = await readFileAsDataUrl(file);
+    if (file.size > 8 * 1024 * 1024) { showToast('Profile image must be under 8 MB'); return; }
+    let dataUrl: string;
+    try {
+      dataUrl = await readFileAsCompressedDataUrl(file);
+    } catch {
+      showToast('Could not process that image');
+      return;
+    }
     setForm((f) => ({ ...f, photo: dataUrl }));
   }
 
@@ -780,7 +799,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   Profile
                 </p>
                 <p className="text-slate-400 mt-0.5" style={{ fontSize: 12 }}>
-                  Click the camera icon to upload. JPG, PNG up to 2 MB.
+                  Click the camera icon to upload. JPG, PNG up to 8 MB — auto-resized for storage.
                 </p>
                 {form.photo && (
                   <button

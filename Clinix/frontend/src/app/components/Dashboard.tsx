@@ -255,7 +255,11 @@ export function Dashboard({
                   const person = result.person;
                   return (
                     <button key={result.type === 'Student' ? result.person.studentId : result.person.staffId} onClick={() => { setSelectedPerson(result); setQuickSearch(''); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-blue-50 dark:hover:bg-slate-700">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600"><UserRound size={17} /></div>
+                      {person.photo ? (
+                        <img src={person.photo} alt={person.name} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+                      ) : (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600"><UserRound size={17} /></div>
+                      )}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{person.name}</span>
                         <span className="block truncate text-slate-500" style={{ fontSize: 12 }}>{result.type === 'Student' ? `${result.person.studentId} · ${result.person.course || 'No course'} · ${result.person.yearLevel || 'No year level'}` : `${result.person.staffId} · ${result.person.role}`}</span>
@@ -638,7 +642,11 @@ export function Dashboard({
             : [['Staff ID', selectedPerson.person.staffId], ['College', selectedPerson.person.college || '—'], ['Role', selectedPerson.person.role], ['Contact', selectedPerson.person.contact], ['Medical History', selectedPerson.person.medicalHistory || 'None recorded']];
           return <div className="space-y-4">
             <div className="flex items-center gap-3 rounded-xl bg-blue-50 p-4 dark:bg-slate-700">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white"><UserRound size={22} /></div>
+              {person.photo ? (
+                <img src={person.photo} alt={person.name} className="h-12 w-12 shrink-0 rounded-full object-cover" />
+              ) : (
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white"><UserRound size={22} /></div>
+              )}
               <div><p className="text-slate-900 dark:text-white" style={{ fontSize: 16, fontWeight: 700 }}>{person.name}</p><p className="text-slate-500" style={{ fontSize: 12 }}>{selectedPerson.type}</p></div>
             </div>
             <dl className="divide-y divide-slate-100 dark:divide-slate-700">{details.map(([label, value]) => <div key={label} className="flex gap-4 py-2.5"><dt className="w-32 shrink-0 text-slate-400" style={{ fontSize: 12 }}>{label}</dt><dd className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 500 }}>{value || '—'}</dd></div>)}</dl>
