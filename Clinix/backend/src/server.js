@@ -107,6 +107,7 @@ const tables = {
       role: 'role',
       contact: 'contact',
       medicalHistory: 'medical_history',
+      photo: 'photo',
     },
   },
   medicalRecords: {

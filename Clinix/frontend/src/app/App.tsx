@@ -62,6 +62,7 @@ export type FacultyMember = {
   role: string;
   contact: string;
   medicalHistory: string;
+  photo?: string;
   // ── Employment classification ──
   employmentCategory: string; // Non-teaching | Teaching | Agency
   employmentType: string;     // depends on category (Permanent, Casual, …)
@@ -300,6 +301,7 @@ export function normalizeFaculty(member: Record<string, unknown>): FacultyMember
     role: String(member.role ?? '').trim(),
     contact: String(member.contact ?? '').trim(),
     medicalHistory: String(member.medicalHistory ?? member.medical_history ?? '').trim(),
+    photo: typeof member.photo === 'string' && member.photo ? member.photo : undefined,
     employmentCategory: String(member.employmentCategory ?? member.employment_category ?? '').trim(),
     employmentType: String(member.employmentType ?? member.employment_type ?? '').trim(),
     birthdate: String(member.birthdate ?? '').trim(),
