@@ -55,6 +55,7 @@ export type Student = {
   presentAddress: string;
   guardianName: string;      // Parent's / Guardian's name
   guardianContact: string;   // Contact number (Parent/Guardian)
+  confidentialNotes: string; // Admin-only sensitive notes
 };
 
 export type FacultyMember = {
@@ -76,6 +77,7 @@ export type FacultyMember = {
   presentAddress: string;
   guardianName: string;      // Spouse / next of kin
   guardianContact: string;   // Contact number (Spouse/next of kin)
+  confidentialNotes: string; // Admin-only sensitive notes
 };
 
 export type MedFormStatus = 'Pending' | 'Processing' | 'Completed' | 'On Hold';
@@ -211,6 +213,7 @@ export function normalizeStudent(s: Record<string, unknown>): Student {
     presentAddress: String(s.presentAddress ?? s.present_address ?? '').trim(),
     guardianName: String(s.guardianName ?? s.guardian_name ?? '').trim(),
     guardianContact: String(s.guardianContact ?? s.guardian_contact ?? '').trim(),
+    confidentialNotes: String(s.confidentialNotes ?? s.confidential_notes ?? '').trim(),
   };
 }
 
@@ -341,6 +344,7 @@ export function normalizeFaculty(member: Record<string, unknown>): FacultyMember
     presentAddress: String(member.presentAddress ?? member.present_address ?? '').trim(),
     guardianName: String(member.guardianName ?? member.guardian_name ?? '').trim(),
     guardianContact: String(member.guardianContact ?? member.guardian_contact ?? '').trim(),
+    confidentialNotes: String(member.confidentialNotes ?? member.confidential_notes ?? '').trim(),
   };
 }
 
@@ -467,6 +471,24 @@ export default function App() {
   useEffect(() => { localStorage.setItem('clinixActivities', JSON.stringify(activities)); }, [activities]);
   useEffect(() => { localStorage.setItem('clinixAdminProfile', JSON.stringify(adminProfile)); }, [adminProfile]);
   useEffect(() => { try { localStorage.setItem('clinixShowCertificates', String(certificatesEnabled)); } catch { /* ignore */ } }, [certificatesEnabled]);
+
+  // Load system-wide settings from the backend so feature toggles apply to everyone.
+  useEffect(() => {
+    fetch(`${API_URL}/settings`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => { if (s && typeof s.showCertificates === 'string') setCertificatesEnabled(s.showCertificates === 'true'); })
+      .catch(() => { /* backend offline — keep the local value */ });
+  }, []);
+
+  // Persist the certificates toggle system-wide (shared across devices) + local cache.
+  const updateCertificatesEnabled = useCallback((v: boolean) => {
+    setCertificatesEnabled(v);
+    fetch(`${API_URL}/settings/showCertificates`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: String(v) }),
+    }).catch(() => { /* offline — cached locally */ });
+  }, []);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -606,7 +628,7 @@ export default function App() {
               adminProfile={adminProfile}
               setAdminProfile={setAdminProfile}
               certificatesEnabled={certificatesEnabled}
-              setCertificatesEnabled={setCertificatesEnabled}
+              setCertificatesEnabled={updateCertificatesEnabled}
             />
           )}
           {page === 'accounts' && (

@@ -87,6 +87,19 @@ export function canViewConfidential(role: Role): boolean {
   return role === 'admin';
 }
 
+/** The role of the currently signed-in user (read from the session). */
+export function currentRole(): Role {
+  try {
+    const stored = localStorage.getItem('clinixRole');
+    return isValidRole(stored) ? stored : 'admin';
+  } catch { return 'admin'; }
+}
+
+/** Convenience: is the current user allowed to see confidential info (admin only)? */
+export function canSeeConfidential(): boolean {
+  return canViewConfidential(currentRole());
+}
+
 export function isValidRole(value: unknown): value is Role {
   return value === 'admin' || value === 'assistant' || value === 'staff';
 }

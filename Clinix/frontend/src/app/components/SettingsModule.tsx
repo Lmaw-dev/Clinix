@@ -8,6 +8,7 @@ import {
 
 import { Page, AdminProfile } from '../App';
 import { useTheme } from '../ThemeContext';
+import { canSeeConfidential } from '../auth';
 import {
   useColleges, addCollege, removeCollege, addCourse, removeCourse, resetColleges,
 } from '../colleges';
@@ -144,6 +145,7 @@ const DEFAULT_PROFILE: AdminProfile = { name: 'Clinic Admin', photo: '' };
 
 export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_PROFILE, setAdminProfile, certificatesEnabled = true, setCertificatesEnabled }: Props) {
   const { isDark, toggle: toggleTheme } = useTheme();
+  const isAdmin = canSeeConfidential();
   const photoRef = useRef<HTMLInputElement>(null);
 
   // ── Account state
@@ -701,6 +703,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             </button>
           </div>
 
+        {isAdmin && <>
         <SectionHeading icon={Database} label="Backup & Recovery" />
         <SectionCard title="Database Backup" desc="Create and restore system backups">
             <div className="bg-slate-50 dark:bg-slate-700/40 rounded-xl p-4 mb-5 flex items-center justify-between">
@@ -732,6 +735,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               ))}
             </div>
           </SectionCard>
+        </>}
 
         <SectionHeading icon={Clock} label="Audit Log" />
         <SectionCard title="Recent Activities" desc="A log of all actions performed in the system">
@@ -821,9 +825,11 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               <button onClick={() => { onNavigate('dashboard'); showToast('Dashboard opened'); }} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13 }}>
                 Back to Dashboard
               </button>
-              <button onClick={() => { if (!confirm('Clear all activity logs?')) return; localStorage.removeItem('clinixActivities'); showToast('Activity log cleared'); }} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" style={{ fontSize: 13 }}>
-                Clear Activity Log
-              </button>
+              {isAdmin && (
+                <button onClick={() => { if (!confirm('Clear all activity logs?')) return; localStorage.removeItem('clinixActivities'); showToast('Activity log cleared'); }} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" style={{ fontSize: 13 }}>
+                  Clear Activity Log
+                </button>
+              )}
             </div>
           </SectionCard>
       </>

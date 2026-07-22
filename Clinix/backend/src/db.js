@@ -54,4 +54,11 @@ export async function ensureDbUpdates() {
       INDEX idx_owner (owner_type, owner_id)
     )
   `);
+  // System-wide settings shared across all users/devices (e.g. feature toggles)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      setting_key VARCHAR(64) PRIMARY KEY,
+      setting_value TEXT NULL
+    )
+  `);
 }

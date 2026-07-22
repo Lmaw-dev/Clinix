@@ -1,9 +1,10 @@
 import { useState, useMemo, useRef } from 'react';
-import { Plus, Search, Pencil, Archive, Eye, Upload, CheckCircle2, Camera, User, Download, Printer, Filter, X } from 'lucide-react';
+import { Plus, Search, Pencil, Archive, Eye, Upload, CheckCircle2, Camera, User, Download, Printer, Filter, X, Lock } from 'lucide-react';
 import { Student, normalizeStudent } from '../App';
 import { Modal } from './Modal';
 import { PersonDocuments } from './PersonDocuments';
 import { useColleges, YEAR_OPTIONS } from '../colleges';
+import { canSeeConfidential } from '../auth';
 
 const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
@@ -36,6 +37,7 @@ const defaultForm = {
   presentAddress: '',
   guardianName: '',
   guardianContact: '',
+  confidentialNotes: '',
 };
 
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
@@ -201,6 +203,7 @@ async function saveStudentApi(student: Student, editingId?: string | null) {
 
 export function StudentsModule({ students, setStudents, globalSearch, showToast, addActivity }: Props) {
   const colleges = useColleges();
+  const isAdmin = canSeeConfidential();
   const [tab, setTab] = useState<TabId>('list');
   const [localSearch, setLocalSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -274,6 +277,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       presentAddress: s.presentAddress || '',
       guardianName: s.guardianName || '',
       guardianContact: s.guardianContact || '',
+      confidentialNotes: s.confidentialNotes || '',
     });
     setEditingId(s.studentId);
     setShowFormModal(true);
@@ -1049,6 +1053,25 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 />
               </label>
 
+              {isAdmin && (
+                <label className="block mt-4">
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Lock size={12} /> Confidential Notes
+                      <span className="text-slate-400" style={{ fontWeight: 400 }}>(admin only)</span>
+                    </span>
+                  </span>
+                  <textarea
+                    value={form.confidentialNotes}
+                    onChange={(e) => setForm((f) => ({ ...f, confidentialNotes: e.target.value }))}
+                    placeholder="Sensitive notes visible to the main admin only (e.g. counseling, private conditions)."
+                    className={`${fieldClass} resize-none`}
+                    rows={3}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+              )}
+
               {editingId ? (
                 <div className="mt-4">
                   <PersonDocuments ownerType="student" ownerId={editingId} showToast={showToast} canEdit />
@@ -1181,24 +1204,28 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
 
             {/* Details grid */}
             <div className="grid grid-cols-2 gap-2">
-              {[
-                ['Year Level', viewStudent.yearLevel],
-                ['Sex', viewStudent.gender],
-                ['Contact', viewStudent.contactNumber],
-                ['Program', viewStudent.course],
-                ['Birthdate', viewStudent.birthdate],
-                ['Blood Type', viewStudent.bloodType],
-                ['School Year', viewStudent.schoolYear],
-                ["Parent's / Guardian's Name", viewStudent.guardianName],
-                ["Guardian's Contact", viewStudent.guardianContact],
-                ['Home Address', viewStudent.homeAddress],
-                ['Present Address', viewStudent.presentAddress],
-              ].map(([k, v]) => (
+              {([
+                ['Year Level', viewStudent.yearLevel, false],
+                ['Sex', viewStudent.gender, false],
+                ['Contact', viewStudent.contactNumber, false],
+                ['Program', viewStudent.course, false],
+                ['Birthdate', viewStudent.birthdate, false],
+                ['Blood Type', viewStudent.bloodType, false],
+                ['School Year', viewStudent.schoolYear, false],
+                ["Parent's / Guardian's Name", viewStudent.guardianName, true],
+                ["Guardian's Contact", viewStudent.guardianContact, true],
+                ['Home Address', viewStudent.homeAddress, true],
+                ['Present Address', viewStudent.presentAddress, true],
+              ] as [string, string, boolean][]).map(([k, v, conf]) => (
                 <div key={k} className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 500 }}>
-                    {k}
+                  <p className="text-slate-400 flex items-center gap-1" style={{ fontSize: 11, fontWeight: 500 }}>
+                    {conf && <Lock size={10} />}{k}
                   </p>
-                  <p className="text-slate-700" style={{ fontSize: 13 }}>{v || '—'}</p>
+                  {conf && !isAdmin ? (
+                    <p className="text-slate-400 italic" style={{ fontSize: 12 }}>Admin only</p>
+                  ) : (
+                    <p className="text-slate-700" style={{ fontSize: 13 }}>{v || '—'}</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -1212,6 +1239,18 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 {viewStudent.medicalConditions || 'None recorded'}
               </p>
             </div>
+
+            {/* Confidential notes — admin only */}
+            {isAdmin && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-amber-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600 }}>
+                  <Lock size={11} /> Confidential Notes (admin only)
+                </p>
+                <p className="text-slate-700" style={{ fontSize: 13 }}>
+                  {viewStudent.confidentialNotes || 'None recorded'}
+                </p>
+              </div>
+            )}
 
             {/* Documents & files */}
             <PersonDocuments ownerType="student" ownerId={viewStudent.studentId} showToast={showToast} />

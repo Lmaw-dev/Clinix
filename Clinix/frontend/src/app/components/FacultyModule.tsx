@@ -1,9 +1,10 @@
 import { useState, useMemo, useRef } from 'react';
-import { Plus, Search, Pencil, Eye, Filter, Upload, Download, Printer, CheckCircle2, X, Phone, Camera, User } from 'lucide-react';
+import { Plus, Search, Pencil, Eye, Filter, Upload, Download, Printer, CheckCircle2, X, Phone, Camera, User, Lock } from 'lucide-react';
 import { FacultyMember, normalizeFaculty } from '../App';
 import { Modal } from './Modal';
 import { PersonDocuments } from './PersonDocuments';
 import { useColleges, normalizeCollegeName } from '../colleges';
+import { canSeeConfidential } from '../auth';
 
 const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
@@ -21,7 +22,7 @@ const defaultForm = {
   staffId: '', name: '', college: '', role: '', contact: '', medicalHistory: '', photo: '',
   employmentCategory: '', employmentType: '',
   birthdate: '', bloodType: '', office: '', homeAddress: '', presentAddress: '',
-  guardianName: '', guardianContact: '',
+  guardianName: '', guardianContact: '', confidentialNotes: '',
 };
 
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
@@ -215,6 +216,7 @@ async function saveFacultyApi(member: FacultyMember, editingId?: string | null) 
 
 export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, addActivity }: Props) {
   const colleges = useColleges();
+  const isAdmin = canSeeConfidential();
   const [localSearch, setLocalSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -271,7 +273,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
       employmentCategory: f.employmentCategory || '', employmentType: f.employmentType || '',
       birthdate: f.birthdate || '', bloodType: f.bloodType || '', office: f.office || '',
       homeAddress: f.homeAddress || '', presentAddress: f.presentAddress || '',
-      guardianName: f.guardianName || '', guardianContact: f.guardianContact || '',
+      guardianName: f.guardianName || '', guardianContact: f.guardianContact || '', confidentialNotes: f.confidentialNotes || '',
     });
     setEditingId(f.staffId);
     setShowModal(true);
@@ -352,6 +354,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
       presentAddress: form.presentAddress.trim(),
       guardianName: form.guardianName.trim(),
       guardianContact: form.guardianContact.trim(),
+      confidentialNotes: form.confidentialNotes.trim(),
     };
     if (!rec.staffId || !rec.name) { showToast('ID and name required'); return; }
 
@@ -809,6 +812,22 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
             />
           </label>
 
+          {isAdmin && (
+            <label>
+              <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
+                <span className="inline-flex items-center gap-1.5"><Lock size={12} /> Confidential Notes <span className="text-slate-400" style={{ fontWeight: 400 }}>(admin only)</span></span>
+              </span>
+              <textarea
+                value={form.confidentialNotes}
+                onChange={(e) => setForm((f) => ({ ...f, confidentialNotes: e.target.value }))}
+                placeholder="Sensitive notes visible to the main admin only."
+                className={`${fieldClass} resize-none`}
+                rows={3}
+                style={{ fontSize: 13 }}
+              />
+            </label>
+          )}
+
           {editingId ? (
             <PersonDocuments ownerType="faculty" ownerId={editingId} showToast={showToast} canEdit />
           ) : (
@@ -885,22 +904,26 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {[
-                ['College', viewMember.college],
-                ['Designation', viewMember.role],
-                ['Classification', [viewMember.employmentCategory, viewMember.employmentType].filter(Boolean).join(' · ')],
-                ['Contact', viewMember.contact],
-                ['Office', viewMember.office],
-                ['Birthdate', viewMember.birthdate],
-                ['Blood Type', viewMember.bloodType],
-                ['Spouse / Next of Kin', viewMember.guardianName],
-                ['Kin Contact', viewMember.guardianContact],
-                ['Home Address', viewMember.homeAddress],
-                ['Present Address', viewMember.presentAddress],
-              ].map(([k, v]) => (
+              {([
+                ['College', viewMember.college, false],
+                ['Designation', viewMember.role, false],
+                ['Classification', [viewMember.employmentCategory, viewMember.employmentType].filter(Boolean).join(' · '), false],
+                ['Contact', viewMember.contact, false],
+                ['Office', viewMember.office, false],
+                ['Birthdate', viewMember.birthdate, false],
+                ['Blood Type', viewMember.bloodType, false],
+                ['Spouse / Next of Kin', viewMember.guardianName, true],
+                ['Kin Contact', viewMember.guardianContact, true],
+                ['Home Address', viewMember.homeAddress, true],
+                ['Present Address', viewMember.presentAddress, true],
+              ] as [string, string | undefined, boolean][]).map(([k, v, conf]) => (
                 <div key={k} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
-                  <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 500 }}>{k}</p>
-                  <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{v || '—'}</p>
+                  <p className="text-slate-400 flex items-center gap-1" style={{ fontSize: 11, fontWeight: 500 }}>{conf && <Lock size={10} />}{k}</p>
+                  {conf && !isAdmin ? (
+                    <p className="text-slate-400 italic" style={{ fontSize: 12 }}>Admin only</p>
+                  ) : (
+                    <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{v || '—'}</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -908,6 +931,13 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
               <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>Medical History</p>
               <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewMember.medicalHistory || 'No entries'}</p>
             </div>
+
+            {isAdmin && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-amber-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600 }}><Lock size={11} /> Confidential Notes (admin only)</p>
+                <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewMember.confidentialNotes || 'None recorded'}</p>
+              </div>
+            )}
 
             {/* Documents & files */}
             <PersonDocuments ownerType="faculty" ownerId={viewMember.staffId} showToast={showToast} />

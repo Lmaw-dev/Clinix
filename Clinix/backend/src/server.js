@@ -216,6 +216,31 @@ app.get('/api/health', async (_req, res, next) => {
   }
 });
 
+// ── System-wide settings (shared across all devices) ─────────────────────────
+app.get('/api/settings', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT setting_key, setting_value FROM app_settings');
+    const out = {};
+    rows.forEach((r) => { out[r.setting_key] = r.setting_value; });
+    res.json(out);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/settings/:key', async (req, res, next) => {
+  try {
+    const value = String(req.body?.value ?? '');
+    await pool.query(
+      'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+      [req.params.key, value],
+    );
+    res.json({ key: req.params.key, value });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ── Document routes (registered before the generic /api/:resource routes) ─────
 app.get('/api/documents', async (req, res, next) => {
   try {
