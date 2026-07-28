@@ -16,6 +16,8 @@ export type PersonDoc = {
   mimeType: string;
   size: number;
   uploadedAt: string;
+  formId?: string | null;    // linked medical form (if this is a compiled form copy)
+  formName?: string | null;
 };
 
 /** Direct URL to view (inline) or download a stored file. */
@@ -34,11 +36,24 @@ export async function listDocuments(ownerType: OwnerType, ownerId: string): Prom
   return res.json();
 }
 
-export async function uploadDocument(ownerType: OwnerType, ownerId: string, file: File): Promise<PersonDoc> {
+/** All student copies compiled under a medical form. */
+export async function listDocumentsByForm(formId: string): Promise<PersonDoc[]> {
+  const res = await fetch(`${API_URL}/documents?formId=${encodeURIComponent(formId)}`);
+  if (!res.ok) throw new Error('Failed to load form copies');
+  return res.json();
+}
+
+export async function uploadDocument(
+  ownerType: OwnerType,
+  ownerId: string,
+  file: File,
+  link?: { formId: string; formName: string },
+): Promise<PersonDoc> {
   const fd = new FormData();
   fd.append('ownerType', ownerType);
   fd.append('ownerId', ownerId);
   fd.append('file', file);
+  if (link) { fd.append('formId', link.formId); fd.append('formName', link.formName); }
   const res = await fetch(`${API_URL}/documents`, { method: 'POST', body: fd });
   if (!res.ok) {
     const msg = await res.json().catch(() => ({}));

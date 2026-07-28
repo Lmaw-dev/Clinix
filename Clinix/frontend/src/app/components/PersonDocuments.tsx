@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FileText, Upload, Download, Trash2, Eye, Loader2, AlertCircle, X } from 'lucide-react';
+import { FileText, Upload, Download, Trash2, Eye, Loader2, AlertCircle, X, FolderClosed } from 'lucide-react';
 import {
   OwnerType, PersonDoc, listDocuments, uploadDocument, deleteDocument, fileUrl, pdfUrl,
 } from '../documents';
@@ -273,8 +273,13 @@ export function PersonDocuments({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 12, fontWeight: 600 }}>{doc.fileName}</p>
-                <p className="text-slate-400" style={{ fontSize: 11 }}>
-                  {formatBytes(doc.size)}{doc.uploadedAt ? ` · ${formatDate(doc.uploadedAt)}` : ''}
+                <p className="flex items-center gap-1.5 text-slate-400" style={{ fontSize: 11 }}>
+                  <span>{formatBytes(doc.size)}{doc.uploadedAt ? ` · ${formatDate(doc.uploadedAt)}` : ''}</span>
+                  {doc.formName && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-1.5 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" style={{ fontSize: 10, fontWeight: 600 }}>
+                      <FolderClosed size={9} /> {doc.formName}
+                    </span>
+                  )}
                 </p>
               </div>
               <button type="button" onClick={() => setPreviewDoc(doc)} title="Preview" className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors">
@@ -283,10 +288,13 @@ export function PersonDocuments({
               <a href={fileUrl(doc.id, true)} title="Download" className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors">
                 <Download size={14} />
               </a>
-              {canEdit && (
+              {canEdit && !doc.formId && (
                 <button type="button" onClick={() => onDelete(doc)} title="Delete" className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                   <Trash2 size={14} />
                 </button>
+              )}
+              {canEdit && doc.formId && (
+                <span className="p-1.5 text-slate-300" title="Managed under Medical Forms"><Trash2 size={14} /></span>
               )}
             </li>
           ))}

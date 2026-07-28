@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
 import { ensureDbUpdates, pingDb, pool } from './db.js';
+import { encrypt, decrypt } from './crypto.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4001);
@@ -34,10 +35,12 @@ function docFromDb(row) {
     id: row.id,
     ownerType: row.owner_type,
     ownerId: row.owner_id,
-    fileName: row.file_name,
+    fileName: decrypt(row.file_name),
     mimeType: row.mime_type,
     size: Number(row.size_bytes ?? 0),
     uploadedAt: row.uploaded_at,
+    formId: row.form_id ?? null,
+    formName: decrypt(row.form_name),
   };
 }
 
@@ -97,6 +100,9 @@ const tables = {
       status: 'status',
       photo: 'photo',
     },
+    // Personal / health fields are encrypted at rest. IDs, course code, year and
+    // status stay plaintext so search, filtering and joins keep working.
+    encrypted: ['name', 'lastName', 'firstName', 'middleInitial', 'gender', 'contactNumber', 'medicalConditions', 'photo'],
   },
   faculty: {
     table: 'faculty',
@@ -110,6 +116,7 @@ const tables = {
       medicalHistory: 'medical_history',
       photo: 'photo',
     },
+    encrypted: ['name', 'role', 'contact', 'medicalHistory', 'photo'],
   },
   medicalRecords: {
     table: 'medical_records',
@@ -122,6 +129,7 @@ const tables = {
       summary: 'summary',
       date: 'record_date',
     },
+    encrypted: ['name', 'summary'],
   },
   visits: {
     table: 'visits',
@@ -135,6 +143,7 @@ const tables = {
       reason: 'reason',
       staff: 'staff',
     },
+    encrypted: ['studentName', 'reason', 'staff'],
   },
   inventory: {
     table: 'inventory_items',
@@ -147,6 +156,8 @@ const tables = {
       unit: 'unit',
       expiry: 'expiry',
     },
+    // Medicine/supply reference data — not personal; left queryable/plaintext.
+    encrypted: [],
   },
   certificates: {
     table: 'certificates',
@@ -159,6 +170,7 @@ const tables = {
       date: 'certificate_date',
       status: 'status',
     },
+    encrypted: ['studentName'],
   },
   consultations: {
     table: 'consultations',
@@ -172,6 +184,7 @@ const tables = {
       summary: 'summary',
       outcome: 'outcome',
     },
+    encrypted: ['studentName', 'summary', 'outcome'],
   },
   activities: {
     table: 'activities',
@@ -182,20 +195,26 @@ const tables = {
       msg: 'msg',
       ts: 'ts',
     },
+    encrypted: ['msg'],
   },
 };
 
+// Encrypt sensitive fields on the way into MySQL, decrypt on the way out.
 function toDb(config, body) {
+  const enc = config.encrypted || [];
   const row = {};
   for (const [apiKey, dbKey] of Object.entries(config.fields)) {
-    if (body[apiKey] !== undefined) row[dbKey] = body[apiKey];
+    if (body[apiKey] !== undefined) row[dbKey] = enc.includes(apiKey) ? encrypt(body[apiKey]) : body[apiKey];
   }
   return row;
 }
 
 function fromDb(config, row) {
+  const enc = config.encrypted || [];
   const out = {};
-  for (const [apiKey, dbKey] of Object.entries(config.fields)) out[apiKey] = row[dbKey];
+  for (const [apiKey, dbKey] of Object.entries(config.fields)) {
+    out[apiKey] = enc.includes(apiKey) ? decrypt(row[dbKey]) : row[dbKey];
+  }
   return out;
 }
 
@@ -241,18 +260,126 @@ app.put('/api/settings/:key', async (req, res, next) => {
   }
 });
 
+// ── Accounts & login (id, username, password, name, birthdate, email, address,
+//    contact are all AES-encrypted; login decrypts to verify) ──────────────────
+const ACCOUNT_COLS = {
+  empId: 'emp_id', username: 'username', password: 'password',
+  firstName: 'first_name', lastName: 'last_name', middleName: 'middle_name',
+  birthdate: 'birthdate', email: 'email', address: 'address', contact: 'contact',
+};
+
+function accountFromDb(row, withPassword = false) {
+  const out = { id: row.id, role: row.role };
+  for (const [apiKey, col] of Object.entries(ACCOUNT_COLS)) {
+    if (apiKey === 'password' && !withPassword) continue;
+    out[apiKey] = decrypt(row[col]);
+  }
+  return out;
+}
+
+export async function seedAccountsIfEmpty() {
+  const [rows] = await pool.query('SELECT COUNT(*) AS n FROM accounts');
+  if (rows[0].n > 0) return;
+  const defaults = [
+    { role: 'admin', username: 'admin', password: 'clinix2024' },
+    { role: 'assistant', username: 'assistant', password: 'assist2024' },
+    { role: 'staff', username: 'staff', password: 'staff123' },
+  ];
+  for (const d of defaults) {
+    await pool.query(
+      'INSERT INTO accounts (id, role, username, password) VALUES (?, ?, ?, ?)',
+      [randomUUID(), d.role, encrypt(d.username), encrypt(d.password)],
+    );
+  }
+  console.log('[accounts] seeded default admin / assistant / staff accounts (encrypted)');
+}
+
+app.post('/api/login', async (req, res, next) => {
+  try {
+    const username = String(req.body?.username ?? '').trim();
+    const password = String(req.body?.password ?? '');
+    if (!username || !password) { res.status(400).json({ error: 'Username and password required' }); return; }
+    const [rows] = await pool.query('SELECT * FROM accounts');
+    // Decrypt each stored username/password and compare (GCM uses a random IV, so
+    // we can't match ciphertext directly — we decrypt then compare).
+    const match = rows.find((r) => decrypt(r.username).toLowerCase() === username.toLowerCase() && decrypt(r.password) === password);
+    if (!match) { res.status(401).json({ error: 'Incorrect username or password' }); return; }
+    const acc = accountFromDb(match);
+    res.json({ ok: true, role: acc.role, username: acc.username, name: [acc.firstName, acc.lastName].filter(Boolean).join(' ') || acc.username });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/accounts', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM accounts');
+    res.json(rows.map((r) => accountFromDb(r, false))); // never expose passwords
+  } catch (error) { next(error); }
+});
+
+app.post('/api/accounts', async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    if (!b.username || !b.password || !b.role) { res.status(400).json({ error: 'username, password and role are required' }); return; }
+    const [existing] = await pool.query('SELECT username FROM accounts');
+    if (existing.some((r) => decrypt(r.username).toLowerCase() === String(b.username).trim().toLowerCase())) {
+      res.status(409).json({ error: 'Username already exists' }); return;
+    }
+    const id = randomUUID();
+    const cols = ['id', 'role'];
+    const vals = [id, String(b.role)];
+    for (const [apiKey, col] of Object.entries(ACCOUNT_COLS)) {
+      if (b[apiKey] !== undefined && b[apiKey] !== '') { cols.push(col); vals.push(encrypt(String(b[apiKey]))); }
+    }
+    await pool.query(`INSERT INTO accounts (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, vals);
+    res.status(201).json({ id, role: b.role });
+  } catch (error) { next(error); }
+});
+
+app.put('/api/accounts/:id', async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const sets = [];
+    const vals = [];
+    if (b.role) { sets.push('role = ?'); vals.push(String(b.role)); }
+    for (const [apiKey, col] of Object.entries(ACCOUNT_COLS)) {
+      if (b[apiKey] !== undefined && b[apiKey] !== '') { sets.push(`${col} = ?`); vals.push(encrypt(String(b[apiKey]))); }
+    }
+    if (!sets.length) { res.status(400).json({ error: 'No fields to update' }); return; }
+    vals.push(req.params.id);
+    const [r] = await pool.query(`UPDATE accounts SET ${sets.join(', ')} WHERE id = ?`, vals);
+    if (!r.affectedRows) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+app.delete('/api/accounts/:id', async (req, res, next) => {
+  try {
+    const [r] = await pool.query('DELETE FROM accounts WHERE id = ?', [req.params.id]);
+    if (!r.affectedRows) { res.status(404).json({ error: 'Not found' }); return; }
+    res.status(204).end();
+  } catch (error) { next(error); }
+});
+
 // ── Document routes (registered before the generic /api/:resource routes) ─────
 app.get('/api/documents', async (req, res, next) => {
   try {
-    const { ownerType, ownerId } = req.query;
-    if (!ownerType || !ownerId) {
-      res.status(400).json({ error: 'ownerType and ownerId are required' });
+    const { ownerType, ownerId, formId } = req.query;
+    let rows;
+    if (formId) {
+      // All student copies compiled under a medical form.
+      [rows] = await pool.query(
+        'SELECT * FROM documents WHERE form_id = ? ORDER BY uploaded_at DESC',
+        [String(formId)],
+      );
+    } else if (ownerType && ownerId) {
+      [rows] = await pool.query(
+        'SELECT * FROM documents WHERE owner_type = ? AND owner_id = ? ORDER BY uploaded_at DESC',
+        [String(ownerType), String(ownerId)],
+      );
+    } else {
+      res.status(400).json({ error: 'ownerType+ownerId or formId is required' });
       return;
     }
-    const [rows] = await pool.query(
-      'SELECT * FROM documents WHERE owner_type = ? AND owner_id = ? ORDER BY uploaded_at DESC',
-      [String(ownerType), String(ownerId)],
-    );
     res.json(rows.map(docFromDb));
   } catch (error) {
     next(error);
@@ -261,7 +388,7 @@ app.get('/api/documents', async (req, res, next) => {
 
 app.post('/api/documents', upload.single('file'), async (req, res, next) => {
   try {
-    const { ownerType, ownerId } = req.body;
+    const { ownerType, ownerId, formId, formName } = req.body;
     if (!ownerType || !ownerId || !req.file) {
       if (req.file) fs.unlink(req.file.path, () => {});
       res.status(400).json({ error: 'ownerType, ownerId and a file are required' });
@@ -270,13 +397,14 @@ app.post('/api/documents', upload.single('file'), async (req, res, next) => {
     const id = randomUUID();
     const uploadedAt = new Date();
     await pool.query(
-      'INSERT INTO documents (id, owner_type, owner_id, file_name, stored_name, mime_type, size_bytes, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, String(ownerType), String(ownerId), req.file.originalname, req.file.filename, req.file.mimetype, req.file.size, uploadedAt],
+      'INSERT INTO documents (id, owner_type, owner_id, file_name, stored_name, mime_type, size_bytes, uploaded_at, form_id, form_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, String(ownerType), String(ownerId), encrypt(req.file.originalname), req.file.filename, req.file.mimetype, req.file.size, uploadedAt, formId ? String(formId) : null, formName ? encrypt(String(formName)) : null],
     );
     res.status(201).json({
       id, ownerType, ownerId,
       fileName: req.file.originalname, mimeType: req.file.mimetype,
       size: req.file.size, uploadedAt: uploadedAt.toISOString(),
+      formId: formId || null, formName: formName || null,
     });
   } catch (error) {
     next(error);
@@ -292,7 +420,7 @@ app.get('/api/documents/:id/file', async (req, res, next) => {
     if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File is missing on the server' }); return; }
     const disposition = req.query.download ? 'attachment' : 'inline';
     res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodeURIComponent(doc.file_name)}`);
+    res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodeURIComponent(decrypt(doc.file_name))}`);
     fs.createReadStream(filePath).pipe(res);
   } catch (error) {
     next(error);
@@ -314,7 +442,7 @@ app.get('/api/documents/:id/pdf', async (req, res, next) => {
       return;
     }
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(doc.file_name.replace(/\.[^.]+$/, '.pdf'))}`);
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(decrypt(doc.file_name).replace(/\.[^.]+$/, '.pdf'))}`);
     fs.createReadStream(pdfPath).pipe(res);
   } catch (error) {
     next(error);
@@ -445,6 +573,7 @@ app.use((error, _req, res, _next) => {
 });
 
 await ensureDbUpdates();
+await seedAccountsIfEmpty();
 
 // Bind to all interfaces (0.0.0.0) so other devices on the LAN can reach the API.
 const server = app.listen(port, '0.0.0.0', () => {

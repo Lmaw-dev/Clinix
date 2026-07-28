@@ -12,6 +12,7 @@ import { InventoryModule } from './components/InventoryModule';
 import { CertificatesModule } from './components/CertificatesModule';
 import { AccountsModule } from './components/AccountsModule';
 import { ConsultationsModule } from './components/ConsultationsModule';
+import { ConsultationRecordModule } from './components/ConsultationRecordModule';
 import { ReportsModule } from './components/ReportsModule';
 import { SettingsModule } from './components/SettingsModule';
 
@@ -25,6 +26,7 @@ export type Page =
   | 'inventory'
   | 'certificates'
   | 'consultations'
+  | 'consultation-record'
   | 'reports'
   | 'settings'
   | 'accounts';
@@ -95,9 +97,10 @@ export type MedRecord = {
 // A form is an uploaded document (the original/blank copy is kept), under which
 // each student's filled copy is compiled. Files live on the backend (documents API).
 export type MedFormEntry = {
-  studentId: string;
-  studentName: string;
-  docId: string;      // backend document id of the student's filled copy
+  ownerType?: 'student' | 'faculty'; // which directory the person belongs to (defaults to student)
+  studentId: string;   // person id (student ID or staff ID)
+  studentName: string; // person name
+  docId: string;       // backend document id of the person's filled copy
   fileName: string;
   uploadedAt: string;
 };
@@ -168,7 +171,20 @@ export type Consultation = {
   sex?: string;
   courseOrOffice?: string;    // Course & Year / Office
   chiefComplaint?: string;    // Purpose of Visit / Chief Complaint
-  management?: string;
+  management?: string;        // Management & Treatment (added by admin)
+  // ── Clinic Consultation Record — intake by staff ──
+  personType?: 'student' | 'faculty';
+  bloodType?: string;
+  bp?: string;                // BP (mmHg)
+  rr?: string;                // RR (bpm)
+  pr?: string;                // PR (bpm)
+  temp?: string;              // Temp (°C)
+  o2sat?: string;             // O2 Sat (%)
+  // ── Workflow ──
+  consultStatus?: 'Pending' | 'Evaluated' | 'Confirmed';
+  recordedBy?: string;        // staff who took the intake
+  evaluatedBy?: string;       // assistant who evaluated
+  confirmedBy?: string;       // admin who confirmed
 };
 
 export type Activity = {
@@ -576,6 +592,7 @@ export default function App() {
               forms={medForms}
               setForms={setMedForms}
               students={students}
+              faculty={faculty}
               globalSearch={globalSearch}
               showToast={showToast}
               addActivity={addActivity}
@@ -604,6 +621,20 @@ export default function App() {
               consultations={consultations}
               setConsultations={setConsultations}
               students={students}
+              role={role}
+              currentUser={currentUser}
+              globalSearch={globalSearch}
+              showToast={showToast}
+              addActivity={addActivity}
+            />
+          )}
+          {page === 'consultation-record' && (
+            <ConsultationRecordModule
+              consultations={consultations}
+              setConsultations={setConsultations}
+              students={students}
+              faculty={faculty}
+              currentUser={currentUser}
               globalSearch={globalSearch}
               showToast={showToast}
               addActivity={addActivity}

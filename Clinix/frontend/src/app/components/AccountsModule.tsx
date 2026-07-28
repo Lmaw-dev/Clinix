@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Plus, ShieldCheck, Trash2, KeyRound, UserCog, Lock } from 'lucide-react';
-import { Account, Role, ROLE_LABELS, loadAccounts, saveAccounts } from '../auth';
+import { useState, useEffect, useCallback } from 'react';
+import { Plus, ShieldCheck, Trash2, KeyRound, UserCog, Lock, Loader2, AlertCircle } from 'lucide-react';
+import { Account, Role, ROLE_LABELS, listAccountsApi, createAccountApi, updateAccountApi, deleteAccountApi } from '../auth';
 import { Modal } from './Modal';
 
 type Props = {
@@ -10,7 +10,6 @@ type Props = {
   addActivity: (m: string) => void;
 };
 
-// Admin may create these roles (not another main admin).
 const CREATABLE_ROLES: Role[] = ['assistant', 'staff'];
 
 const ROLE_BADGE: Record<Role, string> = {
@@ -19,17 +18,29 @@ const ROLE_BADGE: Record<Role, string> = {
   staff: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
 };
 
+const emptyForm = {
+  role: 'staff' as Role, empId: '', username: '', password: '',
+  firstName: '', lastName: '', middleName: '', birthdate: '', email: '', address: '', contact: '',
+};
+
 export function AccountsModule({ role, currentUser, showToast, addActivity }: Props) {
-  const [accounts, setAccounts] = useState<Account[]>(() => loadAccounts());
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState<{ username: string; password: string; role: Role }>({ username: '', password: '', role: 'staff' });
-  const [resetFor, setResetFor] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [resetFor, setResetFor] = useState<Account | null>(null);
   const [newPw, setNewPw] = useState('');
 
-  function persist(next: Account[]) {
-    setAccounts(next);
-    saveAccounts(next);
-  }
+  const refresh = useCallback(async () => {
+    setLoading(true); setError('');
+    try { setAccounts(await listAccountsApi()); }
+    catch { setError('Could not reach the server. Start the backend to manage accounts.'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
 
   if (role !== 'admin') {
     return (
@@ -43,42 +54,51 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
     );
   }
 
-  function handleCreate(e: React.FormEvent) {
+  async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    const username = form.username.trim();
-    if (!username) { showToast('Enter a username'); return; }
-    if (/\s/.test(username)) { showToast('Username cannot contain spaces'); return; }
-    if (accounts.some((a) => a.username.toLowerCase() === username.toLowerCase())) { showToast('That username already exists'); return; }
+    if (!form.username.trim()) { showToast('Enter a username'); return; }
+    if (/\s/.test(form.username.trim())) { showToast('Username cannot contain spaces'); return; }
     if (form.password.length < 4) { showToast('Password must be at least 4 characters'); return; }
-    const acct: Account = { username, password: form.password, role: form.role };
-    persist([...accounts, acct]);
-    showToast(`Account "${username}" created`);
-    addActivity(`Account created: ${username} (${ROLE_LABELS[form.role]})`);
-    setForm({ username: '', password: '', role: 'staff' });
-    setShowCreate(false);
+    setSaving(true);
+    try {
+      await createAccountApi({ ...form, username: form.username.trim() });
+      showToast(`Account "${form.username.trim()}" created`);
+      addActivity(`Account created: ${form.username.trim()} (${ROLE_LABELS[form.role]})`);
+      setForm(emptyForm);
+      setShowCreate(false);
+      await refresh();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Create failed');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function canDelete(a: Account) {
     return a.role !== 'admin' && a.username !== currentUser;
   }
 
-  function handleDelete(a: Account) {
-    if (!canDelete(a)) return;
+  async function handleDelete(a: Account) {
+    if (!canDelete(a) || !a.id) return;
     if (!confirm(`Delete the account "${a.username}"? They will no longer be able to sign in.`)) return;
-    persist(accounts.filter((x) => x.username !== a.username));
-    showToast(`Account "${a.username}" deleted`);
-    addActivity(`Account deleted: ${a.username}`);
+    try {
+      await deleteAccountApi(a.id);
+      showToast(`Account "${a.username}" deleted`);
+      addActivity(`Account deleted: ${a.username}`);
+      await refresh();
+    } catch { showToast('Delete failed'); }
   }
 
-  function handleReset(e: React.FormEvent) {
+  async function handleReset(e: React.FormEvent) {
     e.preventDefault();
-    if (!resetFor) return;
+    if (!resetFor?.id) return;
     if (newPw.length < 4) { showToast('Password must be at least 4 characters'); return; }
-    persist(accounts.map((a) => a.username === resetFor ? { ...a, password: newPw } : a));
-    showToast(`Password updated for "${resetFor}"`);
-    addActivity(`Password reset: ${resetFor}`);
-    setResetFor(null);
-    setNewPw('');
+    try {
+      await updateAccountApi(resetFor.id, { password: newPw });
+      showToast(`Password updated for "${resetFor.username}"`);
+      addActivity(`Password reset: ${resetFor.username}`);
+      setResetFor(null); setNewPw('');
+    } catch { showToast('Update failed'); }
   }
 
   const field = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -92,7 +112,7 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
             <ShieldCheck size={20} className="text-blue-600" /> Accounts
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>
-            Create and manage staff and assistant accounts (admin only)
+            Create and manage accounts — all credentials &amp; personal fields are AES-encrypted in the database
           </p>
         </div>
         <button onClick={() => setShowCreate(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shrink-0" style={{ fontSize: 13 }}>
@@ -104,36 +124,37 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
         <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700">
           <p className="text-slate-400" style={{ fontSize: 12 }}>{accounts.length} account{accounts.length !== 1 ? 's' : ''}</p>
         </div>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-slate-400" style={{ fontSize: 13 }}><Loader2 size={16} className="animate-spin" /> Loading accounts…</div>
+        ) : error ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-amber-600" style={{ fontSize: 13 }}><AlertCircle size={16} /> {error}</div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700">
-                {['Username', 'Role', 'Access', 'Actions'].map((h) => (
+                {['Username', 'Name', 'Role', 'Email / Contact', 'Actions'].map((h) => (
                   <th key={h} className="text-left px-5 py-3 text-slate-500 uppercase tracking-wider" style={{ fontSize: 11, fontWeight: 600 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {accounts.map((a) => (
-                <tr key={a.username} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                <tr key={a.id || a.username} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2.5">
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500"><UserCog size={15} /></div>
                       <span className="text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>
-                        {a.username}
-                        {a.username === currentUser && <span className="ml-2 text-slate-400" style={{ fontSize: 11, fontWeight: 400 }}>(you)</span>}
+                        {a.username}{a.username === currentUser && <span className="ml-2 text-slate-400" style={{ fontSize: 11, fontWeight: 400 }}>(you)</span>}
                       </span>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full ${ROLE_BADGE[a.role]}`} style={{ fontSize: 11, fontWeight: 600 }}>{ROLE_LABELS[a.role]}</span>
-                  </td>
-                  <td className="px-5 py-3.5 text-slate-500" style={{ fontSize: 12 }}>
-                    {a.role === 'staff' ? 'Dashboard · Consultations · Reports' : a.role === 'assistant' ? 'All pages except Accounts' : 'Full access'}
-                  </td>
+                  <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300" style={{ fontSize: 13 }}>{[a.firstName, a.middleName, a.lastName].filter(Boolean).join(' ') || '—'}</td>
+                  <td className="px-5 py-3.5"><span className={`inline-flex px-2 py-0.5 rounded-full ${ROLE_BADGE[a.role]}`} style={{ fontSize: 11, fontWeight: 600 }}>{ROLE_LABELS[a.role]}</span></td>
+                  <td className="px-5 py-3.5 text-slate-500" style={{ fontSize: 12 }}>{[a.email, a.contact].filter(Boolean).join(' · ') || '—'}</td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => { setResetFor(a.username); setNewPw(''); }} className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Reset password"><KeyRound size={15} /></button>
+                      <button onClick={() => { setResetFor(a); setNewPw(''); }} className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Reset password"><KeyRound size={15} /></button>
                       <button onClick={() => handleDelete(a)} disabled={!canDelete(a)} className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400" title={canDelete(a) ? 'Delete account' : 'Protected account'}><Trash2 size={15} /></button>
                     </div>
                   </td>
@@ -142,34 +163,45 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {/* Create account */}
       <Modal isOpen={showCreate} title="Create Account" onClose={() => setShowCreate(false)}>
         <form onSubmit={handleCreate} className="space-y-4">
-          <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Username</span>
-            <input value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} placeholder="e.g. jdelacruz" className={field} style={{ fontSize: 13 }} required />
-          </label>
-          <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Password</span>
-            <input value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="At least 4 characters" className={field} style={{ fontSize: 13 }} required />
-          </label>
-          <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Role</span>
-            <select value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Role }))} className={field} style={{ fontSize: 13 }}>
-              {CREATABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-            </select>
-            <p className="text-slate-400 mt-1" style={{ fontSize: 11 }}>
-              {form.role === 'staff' ? 'Can view Dashboard, Consultation Logs, and Reports only.' : 'Can access everything except this Accounts page and confidential info.'}
-            </p>
-          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>ID</span><input value={form.empId} onChange={(e) => setForm((f) => ({ ...f, empId: e.target.value }))} placeholder="EMP-001 (optional)" className={field} style={{ fontSize: 13 }} /></label>
+            <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Role</span>
+              <select value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Role }))} className={field} style={{ fontSize: 13 }}>
+                {CREATABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Username</span><input value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} placeholder="jdelacruz" className={field} style={{ fontSize: 13 }} required /></label>
+            <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Password</span><input value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="At least 4 characters" className={field} style={{ fontSize: 13 }} required /></label>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>First name</span><input value={form.firstName} onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))} className={field} style={{ fontSize: 13 }} /></label>
+            <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Middle name</span><input value={form.middleName} onChange={(e) => setForm((f) => ({ ...f, middleName: e.target.value }))} className={field} style={{ fontSize: 13 }} /></label>
+            <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Last name</span><input value={form.lastName} onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))} className={field} style={{ fontSize: 13 }} /></label>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Birthdate</span><input type="date" value={form.birthdate} onChange={(e) => setForm((f) => ({ ...f, birthdate: e.target.value }))} className={field} style={{ fontSize: 13 }} /></label>
+            <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Contact #</span><input value={form.contact} onChange={(e) => setForm((f) => ({ ...f, contact: e.target.value }))} placeholder="09XX XXX XXXX" className={field} style={{ fontSize: 13 }} /></label>
+          </div>
+          <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Email address</span><input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="name@email.com" className={field} style={{ fontSize: 13 }} /></label>
+          <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Address</span><input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className={field} style={{ fontSize: 13 }} /></label>
+          <p className="flex items-center gap-1.5 text-slate-400" style={{ fontSize: 11 }}><Lock size={11} /> All of these fields are stored AES-256 encrypted in the database.</p>
           <div className="flex justify-end gap-3">
             <button type="button" onClick={() => setShowCreate(false)} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50" style={{ fontSize: 13 }}>Cancel</button>
-            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2" style={{ fontSize: 13 }}><Plus size={14} /> Create</button>
+            <button type="submit" disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2" style={{ fontSize: 13 }}>{saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create</button>
           </div>
         </form>
       </Modal>
 
       {/* Reset password */}
-      <Modal isOpen={!!resetFor} title={`Reset password — ${resetFor || ''}`} onClose={() => setResetFor(null)}>
+      <Modal isOpen={!!resetFor} title={`Reset password — ${resetFor?.username || ''}`} onClose={() => setResetFor(null)}>
         <form onSubmit={handleReset} className="space-y-4">
           <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>New Password</span>
             <input value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="At least 4 characters" className={field} style={{ fontSize: 13 }} required autoFocus />

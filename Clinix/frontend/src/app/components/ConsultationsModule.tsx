@@ -1,16 +1,29 @@
 import { useState, useMemo } from 'react';
-import { Plus, Eye, Search, X, UserRound } from 'lucide-react';
+import { Plus, Eye, Search, X, UserRound, CheckCircle2, ClipboardCheck } from 'lucide-react';
 import { Consultation, Student } from '../App';
+import { Role } from '../auth';
 import { Modal } from './Modal';
 
 type Props = {
   consultations: Consultation[];
   setConsultations: React.Dispatch<React.SetStateAction<Consultation[]>>;
   students: Student[];
+  role: Role;
+  currentUser: string;
   globalSearch: string;
   showToast: (m: string) => void;
   addActivity: (m: string) => void;
 };
+
+const STATUS_STYLES: Record<string, string> = {
+  Pending: 'bg-amber-100 text-amber-700',
+  Evaluated: 'bg-blue-100 text-blue-700',
+  Confirmed: 'bg-green-100 text-green-700',
+};
+function StatusBadge({ status }: { status?: string }) {
+  const s = status || 'Pending';
+  return <span className={`inline-flex px-2 py-0.5 rounded-full ${STATUS_STYLES[s] || STATUS_STYLES.Pending}`} style={{ fontSize: 11, fontWeight: 500 }}>{s}</span>;
+}
 
 const defaultForm = {
   date: '', time: '', studentId: '', studentName: '',
@@ -28,12 +41,38 @@ function ageFromBirthdate(bd?: string) {
   return age >= 0 && age < 130 ? String(age) : '';
 }
 
-export function ConsultationsModule({ consultations, setConsultations, students, globalSearch, showToast, addActivity }: Props) {
+export function ConsultationsModule({ consultations, setConsultations, students, role, currentUser, globalSearch, showToast, addActivity }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [viewConsult, setViewConsult] = useState<Consultation | null>(null);
   const [form, setForm] = useState(defaultForm);
   const [studentSearch, setStudentSearch] = useState('');
   const [studentOpen, setStudentOpen] = useState(false);
+  const [mgmtDraft, setMgmtDraft] = useState('');
+
+  const isAdmin = role === 'admin';
+  const isAssistant = role === 'assistant';
+
+  function patch(id: string, changes: Partial<Consultation>) {
+    setConsultations((prev) => prev.map((c) => (c.id === id ? { ...c, ...changes } : c)));
+    setViewConsult((prev) => (prev && prev.id === id ? { ...prev, ...changes } : prev));
+  }
+
+  function markEvaluated(c: Consultation) {
+    patch(c.id, { consultStatus: 'Evaluated', evaluatedBy: currentUser || 'assistant' });
+    showToast('Marked as evaluated');
+    addActivity(`Consultation evaluated: ${c.studentName || c.studentId}`);
+  }
+
+  function saveManagement(c: Consultation) {
+    patch(c.id, { management: mgmtDraft.trim(), outcome: mgmtDraft.trim() });
+    showToast('Management & treatment saved');
+  }
+
+  function confirmLog(c: Consultation) {
+    patch(c.id, { consultStatus: 'Confirmed', confirmedBy: currentUser || 'admin', management: mgmtDraft.trim() || c.management, outcome: (mgmtDraft.trim() || c.management) });
+    showToast('Consultation confirmed');
+    addActivity(`Consultation confirmed: ${c.studentName || c.studentId}`);
+  }
 
   const studentMatches = useMemo(() => {
     const q = studentSearch.trim().toLowerCase();
@@ -125,14 +164,14 @@ export function ConsultationsModule({ consultations, setConsultations, students,
           <table className="w-full min-w-[1000px]">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700">
-                {['Date', 'Time', 'ID', 'Name', 'Age', 'Sex', 'Course & Year / Office', 'Purpose of Visit / Chief Complaint', 'Management', ''].map((h, i) => (
+                {['Date', 'Time', 'ID', 'Name', 'Age', 'Sex', 'Course & Year / Office', 'Purpose of Visit / Chief Complaint', 'Management', 'Status', ''].map((h, i) => (
                   <th key={i} className="text-left px-4 py-3 text-slate-500 uppercase tracking-wider whitespace-nowrap" style={{ fontSize: 11, fontWeight: 600 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {visible.length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>No records logged</td></tr>
+                <tr><td colSpan={11} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>No records logged</td></tr>
               ) : (
                 visible.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
@@ -145,8 +184,9 @@ export function ConsultationsModule({ consultations, setConsultations, students,
                     <td className={`${td} max-w-[160px] truncate`} style={{ fontSize: 13 }}>{c.courseOrOffice || '—'}</td>
                     <td className={`${td} max-w-[220px] truncate`} style={{ fontSize: 13 }}>{c.chiefComplaint || c.reason || '—'}</td>
                     <td className={`${td} max-w-[200px] truncate`} style={{ fontSize: 13 }}>{c.management || c.outcome || '—'}</td>
+                    <td className="px-4 py-3"><StatusBadge status={c.consultStatus} /></td>
                     <td className="px-4 py-3">
-                      <button onClick={() => setViewConsult(c)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Eye size={14} /></button>
+                      <button onClick={() => { setViewConsult(c); setMgmtDraft(c.management || ''); }} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Eye size={14} /></button>
                     </td>
                   </tr>
                 ))
@@ -231,28 +271,69 @@ export function ConsultationsModule({ consultations, setConsultations, students,
         </form>
       </Modal>
 
-      {/* View */}
+      {/* View + workflow */}
       <Modal isOpen={!!viewConsult} title="Treatment Record" onClose={() => setViewConsult(null)}>
         {viewConsult && (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                ['Date', viewConsult.date], ['Time', viewConsult.time], ['ID', viewConsult.studentId], ['Name', viewConsult.studentName],
-                ['Age', viewConsult.age], ['Sex', viewConsult.sex], ['Course & Year / Office', viewConsult.courseOrOffice],
-              ].map(([k, v]) => (
-                <div key={k} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-900 dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>{viewConsult.studentName || '—'}</p>
+                <p className="text-slate-500" style={{ fontSize: 12 }}>{viewConsult.studentId || '—'} · {viewConsult.courseOrOffice || '—'}</p>
+              </div>
+              <StatusBadge status={viewConsult.consultStatus} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[['Date', viewConsult.date], ['Time', viewConsult.time], ['Age', viewConsult.age], ['Sex', viewConsult.sex], ['Blood Type', viewConsult.bloodType]].map(([k, v]) => (
+                <div key={k} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-2.5">
                   <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 500 }}>{k}</p>
                   <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{v || '—'}</p>
                 </div>
               ))}
             </div>
+            {/* Initial vital signs (from staff intake) */}
+            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+              <p className="text-slate-400 mb-1.5" style={{ fontSize: 11, fontWeight: 600 }}>Initial Vital Signs</p>
+              <div className="grid grid-cols-5 gap-2 text-center">
+                {([['BP', viewConsult.bp], ['RR', viewConsult.rr], ['PR', viewConsult.pr], ['Temp', viewConsult.temp], ['O₂', viewConsult.o2sat]] as const).map(([k, v]) => (
+                  <div key={k}><p className="text-slate-400" style={{ fontSize: 10 }}>{k}</p><p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>{v || '—'}</p></div>
+                ))}
+              </div>
+            </div>
             <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
               <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>Purpose of Visit / Chief Complaint</p>
               <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewConsult.chiefComplaint || viewConsult.reason || 'Not recorded'}</p>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
-              <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>Management</p>
-              <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewConsult.management || viewConsult.outcome || 'Not recorded'}</p>
+
+            {/* Management & treatment — admin edits, others read-only */}
+            {isAdmin ? (
+              <div>
+                <p className="text-slate-600 dark:text-slate-400 mb-1" style={{ fontSize: 12, fontWeight: 600 }}>Management &amp; Treatment</p>
+                <textarea value={mgmtDraft} onChange={(e) => setMgmtDraft(e.target.value)} placeholder="Treatment given, medication, referral…" className={`${fieldClass} resize-none`} rows={2} style={{ fontSize: 13 }} />
+              </div>
+            ) : (
+              <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+                <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>Management &amp; Treatment</p>
+                <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewConsult.management || viewConsult.outcome || 'Awaiting admin'}</p>
+              </div>
+            )}
+
+            {/* Workflow actions */}
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+              {(isAssistant || isAdmin) && (viewConsult.consultStatus || 'Pending') === 'Pending' && (
+                <button onClick={() => markEvaluated(viewConsult)} className="flex items-center gap-2 rounded-lg border border-blue-200 px-4 py-2 text-blue-700 hover:bg-blue-50" style={{ fontSize: 13, fontWeight: 600 }}>
+                  <ClipboardCheck size={15} /> Mark Evaluated
+                </button>
+              )}
+              {isAdmin && (
+                <button onClick={() => saveManagement(viewConsult)} className="rounded-lg border border-slate-200 dark:border-slate-600 px-4 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700" style={{ fontSize: 13, fontWeight: 600 }}>
+                  Save management
+                </button>
+              )}
+              {isAdmin && viewConsult.consultStatus !== 'Confirmed' && (
+                <button onClick={() => confirmLog(viewConsult)} className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700" style={{ fontSize: 13, fontWeight: 600 }}>
+                  <CheckCircle2 size={15} /> Confirm log
+                </button>
+              )}
             </div>
           </div>
         )}

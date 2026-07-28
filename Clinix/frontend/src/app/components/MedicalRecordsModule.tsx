@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import {
   Upload, FileText, Eye, Download, Trash2, Loader2, FolderOpen, UserPlus, ArrowLeft, ChevronRight,
 } from 'lucide-react';
-import { MedForm, MedFormEntry, Student } from '../App';
+import { MedForm, MedFormEntry, Student, FacultyMember } from '../App';
 import { Modal } from './Modal';
 import { DocPreview } from './PersonDocuments';
 import {
@@ -13,6 +13,7 @@ type Props = {
   forms: MedForm[];
   setForms: React.Dispatch<React.SetStateAction<MedForm[]>>;
   students: Student[];
+  faculty: FacultyMember[];
   globalSearch: string;
   showToast: (m: string) => void;
   addActivity: (m: string) => void;
@@ -33,7 +34,7 @@ function fmtDate(iso: string) {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export function MedicalRecordsModule({ forms, setForms, students, globalSearch, showToast, addActivity }: Props) {
+export function MedicalRecordsModule({ forms, setForms, students, faculty, globalSearch, showToast, addActivity }: Props) {
   const [showUpload, setShowUpload] = useState(false);
   const [uName, setUName] = useState('');
   const [uDesc, setUDesc] = useState('');
@@ -43,10 +44,12 @@ export function MedicalRecordsModule({ forms, setForms, students, globalSearch, 
   const [viewId, setViewId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PersonDoc | null>(null);
 
-  // Add-student-copy state (inside the form detail)
-  const [entryStudent, setEntryStudent] = useState('');
+  // Add-copy state (inside the form detail)
+  const [entryType, setEntryType] = useState<OwnerType>('student');
+  const [entryPerson, setEntryPerson] = useState('');
   const [entryUploading, setEntryUploading] = useState(false);
   const entryFileRef = useRef<HTMLInputElement>(null);
+  const [copyFilter, setCopyFilter] = useState<'' | OwnerType>(''); // filter compiled copies
 
   const query = globalSearch.trim().toLowerCase();
   const visible = useMemo(
@@ -87,20 +90,27 @@ export function MedicalRecordsModule({ forms, setForms, students, globalSearch, 
   // ── Add a student's filled copy under a form ──
   async function handleAddEntry(form: MedForm) {
     const file = entryFileRef.current?.files?.[0];
-    const student = students.find((s) => s.studentId === entryStudent);
-    if (!student) { showToast('Select a student'); return; }
-    if (!file) { showToast('Choose the student\'s form file'); return; }
+    const person = entryType === 'student'
+      ? students.find((s) => s.studentId === entryPerson)
+      : faculty.find((f) => f.staffId === entryPerson);
+    if (!person) { showToast(`Select a ${entryType === 'student' ? 'student' : 'faculty/staff member'}`); return; }
+    if (!file) { showToast('Choose the form file'); return; }
+    const personId = entryType === 'student' ? (person as Student).studentId : (person as FacultyMember).staffId;
+    const personName = person.name;
     setEntryUploading(true);
     try {
-      const doc = await uploadDocument(OWNER, formOwnerId(form.id), file);
+      // Store the copy as the person's own document, tagged with this form, so it
+      // shows up both in their files and this form's compilation.
+      const doc = await uploadDocument(entryType, personId, file, { formId: form.id, formName: form.name });
       const entry: MedFormEntry = {
-        studentId: student.studentId, studentName: student.name,
+        ownerType: entryType,
+        studentId: personId, studentName: personName,
         docId: doc.id, fileName: file.name, uploadedAt: new Date().toISOString(),
       };
       setForms((prev) => prev.map((f) => f.id === form.id ? { ...f, entries: [entry, ...f.entries] } : f));
-      showToast(`Added ${student.name}'s copy`);
-      addActivity(`Form "${form.name}": added copy for ${student.name}`);
-      setEntryStudent('');
+      showToast(`Added ${personName}'s copy`);
+      addActivity(`Form "${form.name}": added copy for ${personName}`);
+      setEntryPerson('');
       if (entryFileRef.current) entryFileRef.current.value = '';
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Upload failed');
@@ -237,33 +247,59 @@ export function MedicalRecordsModule({ forms, setForms, students, globalSearch, 
             </div>
           </div>
 
-          {/* Compiled student copies */}
+          {/* Compiled copies */}
+          {(() => {
+            const shownEntries = viewForm.entries.filter((en) => !copyFilter || (en.ownerType || 'student') === copyFilter);
+            return (
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
-            <p className="text-slate-400 mb-3" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Student copies · {viewForm.entries.length}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Compiled copies · {shownEntries.length}
+              </p>
+              <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
+                Show
+                <select value={copyFilter} onChange={(e) => setCopyFilter(e.target.value as '' | OwnerType)} className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-slate-700 dark:text-slate-200" style={{ fontSize: 12 }}>
+                  <option value="">All</option>
+                  <option value="student">Students</option>
+                  <option value="faculty">Faculty &amp; Staff</option>
+                </select>
+              </label>
+            </div>
 
-            {/* Add a student copy */}
+            {/* Add a copy — pick type, then person */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
-              <select value={entryStudent} onChange={(e) => setEntryStudent(e.target.value)} className="flex-1 min-w-[160px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>
-                <option value="">Select student…</option>
-                {students.map((s) => <option key={s.studentId} value={s.studentId}>{s.name} · {s.studentId}</option>)}
+              <select value={entryType} onChange={(e) => { setEntryType(e.target.value as OwnerType); setEntryPerson(''); }} className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>
+                <option value="student">Student</option>
+                <option value="faculty">Faculty &amp; Staff</option>
               </select>
-              <input ref={entryFileRef} type="file" className="text-slate-600 dark:text-slate-300 file:mr-2 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1.5 file:text-slate-700" style={{ fontSize: 13, maxWidth: 220 }} />
+              <select value={entryPerson} onChange={(e) => setEntryPerson(e.target.value)} className="flex-1 min-w-[160px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>
+                <option value="">{entryType === 'student' ? 'Select student…' : 'Select faculty/staff…'}</option>
+                {entryType === 'student'
+                  ? students.map((s) => <option key={s.studentId} value={s.studentId}>{s.name} · {s.studentId}</option>)
+                  : faculty.map((f) => <option key={f.staffId} value={f.staffId}>{f.name} · {f.staffId}</option>)}
+              </select>
+              <input ref={entryFileRef} type="file" className="text-slate-600 dark:text-slate-300 file:mr-2 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1.5 file:text-slate-700" style={{ fontSize: 13, maxWidth: 200 }} />
               <button onClick={() => handleAddEntry(viewForm)} disabled={entryUploading} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-60" style={{ fontSize: 13, fontWeight: 600 }}>
                 {entryUploading ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Add copy
               </button>
             </div>
 
-            {viewForm.entries.length === 0 ? (
-              <p className="py-6 text-center text-slate-400" style={{ fontSize: 13 }}>No student copies yet. Pick a student and upload their filled form above.</p>
+            {shownEntries.length === 0 ? (
+              <p className="py-6 text-center text-slate-400" style={{ fontSize: 13 }}>
+                {viewForm.entries.length === 0 ? 'No copies yet. Pick a person and upload their filled form above.' : 'No copies match this filter.'}
+              </p>
             ) : (
               <ul className="space-y-1.5">
-                {viewForm.entries.map((en) => (
+                {shownEntries.map((en) => (
                   <li key={en.docId} className="flex items-center gap-2 rounded-lg bg-slate-50 dark:bg-slate-700/40 px-3 py-2.5">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600"><FileText size={16} /></div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{en.studentName}</p>
+                      <p className="flex items-center gap-2 truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>
+                        <span className="truncate">{en.studentName}</span>
+                        <span className={`shrink-0 rounded-full px-1.5 ${(en.ownerType || 'student') === 'faculty' ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700'}`} style={{ fontSize: 10, fontWeight: 600 }}>
+                          {(en.ownerType || 'student') === 'faculty' ? 'Faculty/Staff' : 'Student'}
+                        </span>
+                      </p>
                       <p className="truncate text-slate-400" style={{ fontSize: 11 }}>{en.studentId} · {en.fileName}</p>
                     </div>
                     <button onClick={() => setPreview(asDoc(en.docId, en.fileName))} className={`${btnGhost} hover:text-blue-600 hover:bg-blue-50`} title="Preview"><Eye size={15} /></button>
@@ -274,6 +310,8 @@ export function MedicalRecordsModule({ forms, setForms, students, globalSearch, 
               </ul>
             )}
           </div>
+            );
+          })()}
         </div>
       )}
 

@@ -4,39 +4,75 @@ import type { Page } from './App';
 
 export type Role = 'admin' | 'assistant' | 'staff';
 
-export type Account = { username: string; password: string; role: Role };
+// An account. Every field except role/id is AES-encrypted in the database; the
+// backend returns them decrypted (passwords are never returned).
+export type Account = {
+  id?: string;
+  role: Role;
+  empId?: string;
+  username: string;
+  password?: string;
+  firstName?: string;
+  lastName?: string;
+  middleName?: string;
+  birthdate?: string;
+  email?: string;
+  address?: string;
+  contact?: string;
+};
 
-// Built-in seed accounts. The live list is stored in localStorage and managed
-// by the admin in the Accounts page (see load/save/find helpers below).
-export const ACCOUNTS: Account[] = [
+const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
+
+// Offline fallback so the demo can still log in if the backend is unreachable.
+const FALLBACK_ACCOUNTS: Array<{ username: string; password: string; role: Role }> = [
   { username: 'admin', password: 'clinix2024', role: 'admin' },
   { username: 'assistant', password: 'assist2024', role: 'assistant' },
   { username: 'staff', password: 'staff123', role: 'staff' },
 ];
 
-const ACCOUNTS_KEY = 'clinixAccounts';
+export type LoginResult = { role: Role; username: string; name: string };
 
-export function loadAccounts(): Account[] {
+/** Authenticate via the backend — credentials are decrypted server-side (AES). */
+export async function apiLogin(username: string, password: string): Promise<LoginResult | null> {
   try {
-    const raw = localStorage.getItem(ACCOUNTS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length) {
-        return parsed.filter((a) => a && a.username && a.password && isValidRole(a.role));
-      }
-    }
-  } catch { /* fall through to defaults */ }
-  return ACCOUNTS.map((a) => ({ ...a }));
+    const res = await fetch(`${API_URL}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.trim(), password }),
+    });
+    if (res.ok) { const d = await res.json(); return { role: d.role, username: d.username, name: d.name }; }
+    if (res.status === 401 || res.status === 400) return null; // reached backend, wrong creds
+    throw new Error('login failed');
+  } catch {
+    // Backend unreachable — allow the built-in defaults so the app isn't locked out.
+    const a = FALLBACK_ACCOUNTS.find((x) => x.username.toLowerCase() === username.trim().toLowerCase() && x.password === password);
+    return a ? { role: a.role, username: a.username, name: a.username } : null;
+  }
 }
 
-export function saveAccounts(list: Account[]) {
-  try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list)); } catch { /* ignore quota */ }
+export async function listAccountsApi(): Promise<Account[]> {
+  const res = await fetch(`${API_URL}/accounts`);
+  if (!res.ok) throw new Error('Failed to load accounts');
+  return res.json();
 }
 
-export function findAccount(username: string, password: string): Account | undefined {
-  return loadAccounts().find(
-    (a) => a.username.toLowerCase() === username.trim().toLowerCase() && a.password === password,
-  );
+export async function createAccountApi(data: Partial<Account>): Promise<void> {
+  const res = await fetch(`${API_URL}/accounts`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Create failed'); }
+}
+
+export async function updateAccountApi(id: string, data: Partial<Account>): Promise<void> {
+  const res = await fetch(`${API_URL}/accounts/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Update failed');
+}
+
+export async function deleteAccountApi(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/accounts/${id}`, { method: 'DELETE' });
+  if (!res.ok && res.status !== 204) throw new Error('Delete failed');
 }
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -66,12 +102,12 @@ const ALL_PAGES: Page[] = [
 ];
 
 export const ROLE_PAGES: Record<Role, Page[]> = {
-  // Admin also manages user accounts (main-admin only).
-  admin: [...ALL_PAGES, 'accounts'],
-  // Same access as admin; confidential features (Accounts) are NOT included.
+  // Admin manages accounts + does the consultation record intake AND the logs.
+  admin: [...ALL_PAGES, 'consultation-record', 'accounts'],
+  // Assistant evaluates/inputs the consultation logs (no intake record, no accounts).
   assistant: ALL_PAGES,
-  // Staff monitors consultation logs + dashboard + reports only.
-  staff: ['dashboard', 'consultations', 'reports'],
+  // Staff takes the consultation record (intake / vital signs) + dashboard + reports.
+  staff: ['dashboard', 'consultation-record', 'reports'],
 };
 
 export function canAccess(role: Role, page: Page): boolean {

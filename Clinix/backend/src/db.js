@@ -54,6 +54,14 @@ export async function ensureDbUpdates() {
       INDEX idx_owner (owner_type, owner_id)
     )
   `);
+  // Link a document to a medical form (so a student's file also appears as a
+  // compiled copy under that form's original).
+  await pool.query(`
+    ALTER TABLE documents
+      ADD COLUMN IF NOT EXISTS form_id VARCHAR(40) NULL,
+      ADD COLUMN IF NOT EXISTS form_name VARCHAR(255) NULL
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_form ON documents (form_id)').catch(() => {});
   // System-wide settings shared across all users/devices (e.g. feature toggles)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -61,4 +69,37 @@ export async function ensureDbUpdates() {
       setting_value TEXT NULL
     )
   `);
+
+  // User accounts — every personal/credential field is stored AES-encrypted (TEXT).
+  // Only the internal row id and role stay plaintext (role drives access control).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id VARCHAR(40) PRIMARY KEY,
+      role VARCHAR(16) NOT NULL,
+      emp_id TEXT NULL,
+      username TEXT NOT NULL,
+      password TEXT NOT NULL,
+      first_name TEXT NULL,
+      last_name TEXT NULL,
+      middle_name TEXT NULL,
+      birthdate TEXT NULL,
+      email TEXT NULL,
+      address TEXT NULL,
+      contact TEXT NULL
+    )
+  `);
+
+  // ── Widen encrypted columns to TEXT ──
+  // AES-256-GCM ciphertext (base64) is longer than the plaintext, so any column
+  // that now holds encrypted data must be TEXT to avoid truncation. Guarded so a
+  // missing table/column never blocks startup.
+  const widen = async (sql) => { try { await pool.query(sql); } catch { /* table/column may not exist yet */ } };
+  await widen('ALTER TABLE students MODIFY name TEXT, MODIFY last_name TEXT, MODIFY first_name TEXT, MODIFY middle_name TEXT, MODIFY gender TEXT, MODIFY contact_number TEXT, MODIFY medical_conditions TEXT');
+  await widen('ALTER TABLE faculty MODIFY name TEXT, MODIFY role TEXT, MODIFY contact TEXT, MODIFY medical_history TEXT');
+  await widen('ALTER TABLE medical_records MODIFY name TEXT, MODIFY summary TEXT');
+  await widen('ALTER TABLE visits MODIFY student_name TEXT, MODIFY reason TEXT, MODIFY staff TEXT');
+  await widen('ALTER TABLE certificates MODIFY student_name TEXT');
+  await widen('ALTER TABLE consultations MODIFY student_name TEXT, MODIFY summary TEXT, MODIFY outcome TEXT');
+  await widen('ALTER TABLE activities MODIFY msg TEXT');
+  await widen('ALTER TABLE documents MODIFY file_name TEXT, MODIFY form_name TEXT');
 }

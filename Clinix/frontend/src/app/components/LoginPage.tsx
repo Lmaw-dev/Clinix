@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Eye, EyeOff, AlertCircle, User, Lock } from 'lucide-react';
-import { findAccount, Role } from '../auth';
+import { apiLogin, Role } from '../auth';
 import CAMPUS_PHOTO from '../../assets/campus-gate.png';
 
 type Props = { onLogin: (role: Role, username: string) => void };
@@ -25,24 +25,22 @@ export function LoginPage({ onLogin }: Props) {
   const [error, setError]               = useState('');
   const [loading, setLoading]           = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
-    setTimeout(() => {
-      const account = findAccount(username, password);
-      if (account) {
-        try {
-          localStorage.setItem('clinixSession', 'active');
-          localStorage.setItem('clinixRole', account.role);
-          localStorage.setItem('clinixUser', account.username);
-        } catch {}
-        onLogin(account.role, account.username);
-      } else {
-        setError('Incorrect username or password.');
-        setLoading(false);
-      }
-    }, 700);
+    const account = await apiLogin(username, password);
+    if (account) {
+      try {
+        localStorage.setItem('clinixSession', 'active');
+        localStorage.setItem('clinixRole', account.role);
+        localStorage.setItem('clinixUser', account.username);
+      } catch {}
+      onLogin(account.role, account.username);
+    } else {
+      setError('Incorrect username or password.');
+      setLoading(false);
+    }
   }
 
   const disabled = loading || !username || !password;
