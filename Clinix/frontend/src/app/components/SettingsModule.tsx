@@ -140,6 +140,18 @@ type Props = {
 
 const DEFAULT_PROFILE: AdminProfile = { name: 'Clinic Admin', photo: '' };
 
+// ── Settings tabs (keeps the page short instead of one long scroll) ───────────
+type TabId = 'account' | 'security' | 'clinic' | 'prefs' | 'data' | 'about';
+
+const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ size?: number }> }> = [
+  { id: 'account',  label: 'Account',       icon: User },
+  { id: 'security', label: 'Security',      icon: Shield },
+  { id: 'clinic',   label: 'Clinic',        icon: Building2 },
+  { id: 'prefs',    label: 'Preferences',   icon: Monitor },
+  { id: 'data',     label: 'Data & Backup', icon: Database },
+  { id: 'about',    label: 'About',         icon: Info },
+];
+
 
 // ── main component ────────────────────────────────────────────────────────────
 
@@ -147,6 +159,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
   const { isDark, toggle: toggleTheme } = useTheme();
   const isAdmin = canSeeConfidential();
   const photoRef = useRef<HTMLInputElement>(null);
+  const [tab, setTab] = useState<TabId>('account');
 
   // ── Account state
   const [account, setAccount] = useState<AccountData>(() => ls('clinixAccount', {
@@ -303,10 +316,11 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
     { id: 'teal', label: 'Teal', color: '#0D9488' },
   ];
 
-  // ── Section content (all rendered sequentially, no switch needed)
+  // ── Section content — only the active tab's sections are rendered
   function renderSection() {
     return (
       <>
+        {tab === 'account' && (<>
         <SectionCard title="Account Information" desc="Your profile details used across the system">
             {/* Photo */}
             <div className="flex items-center gap-5 mb-6 pb-6 border-b border-slate-100 dark:border-slate-700">
@@ -374,6 +388,9 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             <SaveBar onSave={saveAccount} saved={accountSaved} />
           </SectionCard>
 
+        </>)}
+
+        {tab === 'security' && (<>
         <SectionHeading icon={Shield} label="Security" />
         {/* Change password */}
           <SectionCard title="Change Password"
@@ -450,6 +467,9 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             </div>
           </SectionCard>
 
+        </>)}
+
+        {tab === 'clinic' && (<>
         <SectionHeading icon={Building2} label="Clinic Information" />
         <SectionCard title="Clinic Profile" desc="Official information about the campus clinic">
           <div className="grid grid-cols-2 gap-4">
@@ -552,6 +572,9 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           </div>
         </SectionCard>
 
+        </>)}
+
+        {tab === 'prefs' && (<>
         <SectionHeading icon={FileText} label="Pages & Features" />
         <SectionCard title="Optional Pages" desc="Turn clinic pages on or off for everyone">
           <div className="flex items-center justify-between">
@@ -703,6 +726,9 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             </button>
           </div>
 
+        </>)}
+
+        {tab === 'data' && (<>
         {isAdmin && <>
         <SectionHeading icon={Database} label="Backup & Recovery" />
         <SectionCard title="Database Backup" desc="Create and restore system backups">
@@ -765,6 +791,10 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           )}
         </SectionCard>
 
+        </>)}
+
+        {/* Data Privacy lives on the Security tab */}
+        {tab === 'security' && (<>
         <SectionHeading icon={Lock} label="Data Privacy" />
         <SectionCard title="Privacy & Compliance" desc="Healthcare data protection settings">
           <div className="space-y-4">
@@ -786,6 +816,9 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           <SaveBar onSave={savePrivacy} saved={privSaved} />
         </SectionCard>
 
+        </>)}
+
+        {tab === 'about' && (<>
         <SectionHeading icon={Info} label="About System" />
         <SectionCard title="System Information">
             <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-100 dark:border-slate-700">
@@ -832,6 +865,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               )}
             </div>
           </SectionCard>
+        </>)}
       </>
     );
   }
@@ -844,6 +878,32 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
         <h1 className="text-slate-900 dark:text-white" style={{ fontWeight: 800, fontSize: 22 }}>Settings</h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1" style={{ fontSize: 13 }}>Manage your account, clinic, and system preferences</p>
       </div>
+
+      {/* Tabs — keeps each group short instead of one long scroll */}
+      <div className="mb-5 flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-px">
+        {TABS.map(({ id, label, icon: Icon }) => {
+          const active = tab === id;
+          return (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className="flex items-center gap-2 rounded-t-xl px-4 py-2.5 transition-colors"
+              style={{
+                fontSize: 13,
+                fontWeight: active ? 600 : 500,
+                color: active ? '#2563EB' : '#64748B',
+                background: active ? (isDark ? 'rgba(37,99,235,0.12)' : '#EFF6FF') : 'transparent',
+                borderBottom: `2px solid ${active ? '#2563EB' : 'transparent'}`,
+                marginBottom: -1,
+              }}
+            >
+              <Icon size={15} />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
       {renderSection()}
     </div>
   );

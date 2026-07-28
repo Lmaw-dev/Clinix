@@ -23,19 +23,19 @@ export async function ensureDbUpdates() {
       ADD COLUMN IF NOT EXISTS first_name VARCHAR(80) NULL AFTER last_name,
       ADD COLUMN IF NOT EXISTS middle_name VARCHAR(80) NULL AFTER first_name
   `);
+  // Legacy backfill: split a legacy full "name" into first/last. Skipped for rows
+  // whose name is encrypted — splitting ciphertext would store garbage.
   await pool.query(`
     UPDATE students
     SET
       first_name = COALESCE(NULLIF(first_name, ''), SUBSTRING_INDEX(name, ' ', 1)),
       last_name = COALESCE(NULLIF(last_name, ''), SUBSTRING_INDEX(name, ' ', -1)),
       middle_name = COALESCE(middle_name, '')
+    WHERE name IS NULL OR name NOT LIKE 'enc:v1:%'
   `);
-  await pool.query(`
-    ALTER TABLE students
-      MODIFY last_name VARCHAR(80) NOT NULL,
-      MODIFY first_name VARCHAR(80) NOT NULL,
-      MODIFY middle_name VARCHAR(80) NULL
-  `);
+  // NOTE: these columns are intentionally NOT capped at VARCHAR(80) — they hold
+  // AES ciphertext, which is far longer than the plaintext. They are widened to
+  // TEXT below; capping them here would silently truncate and corrupt the data.
   await pool.query(`
     ALTER TABLE faculty
       ADD COLUMN IF NOT EXISTS photo LONGTEXT NULL

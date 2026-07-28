@@ -46,7 +46,10 @@ export function decrypt(value) {
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
   } catch {
-    return value; // wrong key or corrupted — return as-is rather than crash
+    // Wrong key, or the stored ciphertext was corrupted/truncated. Never leak the
+    // raw "enc:v1:…" blob to the UI — return empty so the field renders as "—".
+    console.warn('[crypto] could not decrypt a stored value (wrong key or corrupted data)');
+    return '';
   }
 }
 
