@@ -549,7 +549,7 @@ export default function App() {
     {!isLoggedIn ? (
       <LoginPage onLogin={handleLogin} />
     ) : (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
+    <div className="flex h-screen overflow-hidden bg-blue-50 dark:bg-blue-950">
       <Sidebar role={role} activePage={activePage} onNavigate={navigate} onLogout={handleLogout} certificatesEnabled={certificatesEnabled} />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -677,7 +677,7 @@ export default function App() {
       {/* Toast */}
       {toast && (
         <div
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl z-[100] pointer-events-none"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-blue-900 text-white px-5 py-3 rounded-xl shadow-2xl z-[100] pointer-events-none"
           style={{ fontSize: 13, fontWeight: 500 }}
         >
           {toast}

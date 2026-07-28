@@ -20,10 +20,10 @@ function nextCertId(certs: Certificate[]) {
 
 function StatusBadge({ status }: { status: string }) {
   const style = status === 'Approved'
-    ? 'bg-green-100 text-green-700'
+    ? 'bg-blue-100 text-blue-700'
     : status === 'Rejected'
     ? 'bg-red-100 text-red-700'
-    : 'bg-amber-100 text-amber-700';
+    : 'bg-yellow-100 text-yellow-700';
   return <span className={`px-2 py-0.5 rounded-full ${style}`} style={{ fontSize: 11, fontWeight: 500 }}>{status}</span>;
 }
 
@@ -68,7 +68,7 @@ export function CertificatesModule({ certificates, setCertificates, globalSearch
     setViewCert(null);
   }
 
-  const fieldClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+  const fieldClass = 'w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 text-black dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
   const labelClass = 'block text-slate-600 dark:text-slate-400 mb-1';
   const pending = certificates.filter((c) => c.status === 'Pending').length;
 
@@ -76,7 +76,7 @@ export function CertificatesModule({ certificates, setCertificates, globalSearch
     <div className="space-y-5 max-w-screen-xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-slate-900 dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Medical Certificate Requests</h1>
+          <h1 className="text-black dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Medical Certificate Requests</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>Manage certificate requests from students</p>
         </div>
         <button onClick={openAdd} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shrink-0" style={{ fontSize: 13 }}>
@@ -85,20 +85,20 @@ export function CertificatesModule({ certificates, setCertificates, globalSearch
       </div>
 
       {pending > 0 && (
-        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-          <CheckCircle2 size={16} className="text-amber-600 shrink-0" />
-          <p className="text-amber-700" style={{ fontSize: 13 }}>{pending} pending request{pending !== 1 ? 's' : ''} awaiting approval</p>
+        <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3">
+          <CheckCircle2 size={16} className="text-yellow-600 shrink-0" />
+          <p className="text-yellow-700" style={{ fontSize: 13 }}>{pending} pending request{pending !== 1 ? 's' : ''} awaiting approval</p>
         </div>
       )}
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
-        <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-blue-100 dark:border-slate-700">
+        <div className="px-5 py-3 border-b border-blue-100 dark:border-slate-700">
           <p className="text-slate-400" style={{ fontSize: 12 }}>{visible.length} request{visible.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700">
+              <tr className="bg-blue-50 dark:bg-slate-800/60 border-b border-blue-100 dark:border-slate-700">
                 {['Req ID', 'Student', 'Date', 'Status', 'Actions'].map((h) => (
                   <th key={h} className="text-left px-5 py-3 text-slate-500 uppercase tracking-wider" style={{ fontSize: 11, fontWeight: 600 }}>{h}</th>
                 ))}
@@ -109,10 +109,10 @@ export function CertificatesModule({ certificates, setCertificates, globalSearch
                 <tr><td colSpan={5} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>No certificate requests</td></tr>
               ) : (
                 visible.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                  <tr key={c.id} className="hover:bg-blue-50 dark:hover:bg-slate-700/30 transition-colors">
                     <td className="px-5 py-3.5 text-slate-500" style={{ fontSize: 12, fontFamily: 'monospace' }}>{c.id}</td>
                     <td className="px-5 py-3.5">
-                      <p className="text-slate-800" style={{ fontSize: 13, fontWeight: 500 }}>{c.studentName || '—'}</p>
+                      <p className="text-black" style={{ fontSize: 13, fontWeight: 500 }}>{c.studentName || '—'}</p>
                       <p className="text-slate-400" style={{ fontSize: 11 }}>ID: {c.studentId}</p>
                     </td>
                     <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap" style={{ fontSize: 13 }}>{c.date}</td>
@@ -121,7 +121,7 @@ export function CertificatesModule({ certificates, setCertificates, globalSearch
                       <div className="flex items-center gap-1">
                         <button onClick={() => setViewCert(c)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Eye size={14} /></button>
                         {c.status === 'Pending' && (
-                          <button onClick={() => handleApprove(c.id)} className="px-2.5 py-1 rounded-md bg-green-50 text-green-600 hover:bg-green-100 transition-colors" style={{ fontSize: 11, fontWeight: 500 }}>Approve</button>
+                          <button onClick={() => handleApprove(c.id)} className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors" style={{ fontSize: 11, fontWeight: 500 }}>Approve</button>
                         )}
                       </div>
                     </td>
@@ -141,7 +141,7 @@ export function CertificatesModule({ certificates, setCertificates, globalSearch
           </div>
           <label><span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Request Date</span><input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} required /></label>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setShowModal(false)} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors" style={{ fontSize: 13 }}>Cancel</button>
+            <button type="button" onClick={() => setShowModal(false)} className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-600 transition-colors" style={{ fontSize: 13 }}>Cancel</button>
             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors" style={{ fontSize: 13 }}>Submit Request</button>
           </div>
         </form>
@@ -151,18 +151,18 @@ export function CertificatesModule({ certificates, setCertificates, globalSearch
         {viewCert && (
           <div className="space-y-3">
             {[['Request ID', viewCert.id], ['Student ID', viewCert.studentId], ['Student Name', viewCert.studentName], ['Date', viewCert.date]].map(([k, v]) => (
-              <div key={k} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+              <div key={k} className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3">
                 <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 500 }}>{k}</p>
-                <p className="text-slate-700" style={{ fontSize: 13 }}>{v || '—'}</p>
+                <p className="text-black" style={{ fontSize: 13 }}>{v || '—'}</p>
               </div>
             ))}
-            <div className="bg-slate-50 rounded-lg p-3 flex items-center gap-2">
+            <div className="bg-blue-50 rounded-lg p-3 flex items-center gap-2">
               <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 500 }}>Status</p>
               <StatusBadge status={viewCert.status} />
             </div>
             {viewCert.status === 'Pending' && (
               <div className="flex justify-end">
-                <button onClick={() => handleApprove(viewCert.id)} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors" style={{ fontSize: 13 }}>Approve Request</button>
+                <button onClick={() => handleApprove(viewCert.id)} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors" style={{ fontSize: 13 }}>Approve Request</button>
               </div>
             )}
           </div>

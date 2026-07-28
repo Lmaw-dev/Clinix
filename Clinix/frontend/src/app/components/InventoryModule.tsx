@@ -39,10 +39,10 @@ const ALERT_LABELS: Record<AlertKey, string> = {
 // Status follows the clinic legend: Expired > No stock > Low stock > Expiring soon (3 mo) > In stock.
 function stockStatus(item: InventoryItem): { label: string; cls: string } {
   if (isExpired(item.expiry)) return { label: 'Expired', cls: 'bg-red-100 text-red-700' };
-  if (item.qty <= 0) return { label: 'No stock', cls: 'bg-slate-100 text-slate-500' };
-  if (isLowStock(item.qty)) return { label: 'Low stock', cls: 'bg-amber-100 text-amber-700' };
+  if (item.qty <= 0) return { label: 'No stock', cls: 'bg-blue-100 text-slate-500' };
+  if (isLowStock(item.qty)) return { label: 'Low stock', cls: 'bg-yellow-100 text-yellow-700' };
   if (isExpiringSoon(item.expiry)) return { label: 'Expiring soon', cls: 'bg-yellow-100 text-yellow-800' };
-  return { label: 'In stock', cls: 'bg-green-100 text-green-700' };
+  return { label: 'In stock', cls: 'bg-blue-100 text-blue-700' };
 }
 
 // ── Monthly Remaining/Dispensed log (matches the "Inventory of Medicines 2026" sheet) ──
@@ -75,22 +75,22 @@ function MonthlyLog({ item, onClose, onSave }: {
   function remainingCls(rem: number | null) {
     if (rem === null) return '';
     if (expired) return 'bg-red-50 text-red-700';
-    if (rem <= 0) return 'bg-slate-100 text-slate-500';
+    if (rem <= 0) return 'bg-blue-100 text-slate-500';
     if (rem < 5) return 'bg-yellow-50 text-yellow-800';
-    return 'bg-green-50 text-green-700';
+    return 'bg-blue-50 text-blue-700';
   }
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 1000, background: 'rgba(15,23,42,0.6)' }} onClick={onClose}>
       <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-800 shadow-2xl" style={{ maxHeight: '88vh' }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-700 px-5 py-4">
+        <div className="flex items-start justify-between gap-3 border-b border-blue-100 dark:border-slate-700 px-5 py-4">
           <div>
-            <p className="text-slate-800 dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>{item.name}</p>
+            <p className="text-black dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>{item.name}</p>
             <p className="text-slate-400" style={{ fontSize: 12 }}>
               Monthly log {INVENTORY_YEAR} · Exp {item.expiry || '—'} · {totalDispensed} dispensed
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700" title="Close"><X size={17} /></button>
+          <button onClick={onClose} className="p-1.5 rounded-md text-slate-400 hover:text-black hover:bg-blue-100 dark:hover:bg-slate-700" title="Close"><X size={17} /></button>
         </div>
 
         <div className="overflow-auto px-5 py-4">
@@ -111,7 +111,7 @@ function MonthlyLog({ item, onClose, onSave }: {
                       type="number" min="0" inputMode="numeric"
                       value={rows[i].remaining ?? ''}
                       onChange={(e) => setCell(i, 'remaining', e.target.value)}
-                      className={`w-full rounded-md border border-slate-200 dark:border-slate-600 px-2 py-1.5 text-center outline-none focus:ring-2 focus:ring-blue-100 dark:bg-slate-700 ${remainingCls(rows[i].remaining)}`}
+                      className={`w-full rounded-md border border-blue-100 dark:border-slate-600 px-2 py-1.5 text-center outline-none focus:ring-2 focus:ring-blue-100 dark:bg-slate-700 ${remainingCls(rows[i].remaining)}`}
                       style={{ fontSize: 13 }}
                       placeholder="—"
                     />
@@ -121,7 +121,7 @@ function MonthlyLog({ item, onClose, onSave }: {
                       type="number" min="0" inputMode="numeric"
                       value={rows[i].dispensed ?? ''}
                       onChange={(e) => setCell(i, 'dispensed', e.target.value)}
-                      className="w-full rounded-md border border-slate-200 dark:border-slate-600 px-2 py-1.5 text-center text-slate-700 dark:text-slate-200 dark:bg-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
+                      className="w-full rounded-md border border-blue-100 dark:border-slate-600 px-2 py-1.5 text-center text-black dark:text-slate-200 dark:bg-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
                       style={{ fontSize: 13 }}
                       placeholder="—"
                     />
@@ -132,8 +132,8 @@ function MonthlyLog({ item, onClose, onSave }: {
           </table>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-slate-100 dark:border-slate-700 px-5 py-3">
-          <button onClick={onClose} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600" style={{ fontSize: 13 }}>Cancel</button>
+        <div className="flex justify-end gap-3 border-t border-blue-100 dark:border-slate-700 px-5 py-3">
+          <button onClick={onClose} className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-600" style={{ fontSize: 13 }}>Cancel</button>
           <button onClick={() => onSave(rows)} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700" style={{ fontSize: 13, fontWeight: 600 }}>Save log</button>
         </div>
       </div>
@@ -227,14 +227,14 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
   const expiredCount = inventory.filter(ALERT_PREDICATES.expired).length;
   const restockCount = inventory.filter(ALERT_PREDICATES.restock).length;
   const expiringCount = inventory.filter(ALERT_PREDICATES.expiring).length;
-  const fieldClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+  const fieldClass = 'w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 text-black dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
   const labelClass = 'block text-slate-600 dark:text-slate-400 mb-1';
 
   return (
     <div className="space-y-5 max-w-screen-xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-slate-900 dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Medicine Inventory</h1>
+          <h1 className="text-black dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Medicine Inventory</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>Stock levels, expiry tracking, and batch management</p>
         </div>
         <button onClick={openAdd} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shrink-0" style={{ fontSize: 13 }}>
@@ -251,7 +251,7 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
             value={localSearch}
             onChange={(e) => setLocalSearch(e.target.value)}
             placeholder="Search by name, code, category, or unit..."
-            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-9 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            className="w-full rounded-xl border border-blue-100 bg-white py-2.5 pl-10 pr-9 text-black outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             style={{ fontSize: 13 }}
           />
           {localSearch && (
@@ -271,9 +271,9 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
             )}
             {restockCount > 0 && (
               <button type="button" onClick={() => toggleAlert('restock')} title="Show low-stock items"
-                className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 transition-colors ${alertFilter === 'restock' ? 'bg-amber-100 border-amber-400 ring-2 ring-amber-200' : 'bg-amber-50 border-amber-200 hover:bg-amber-100'}`}>
-                <AlertTriangle size={15} className="text-amber-600 shrink-0" />
-                <span className="text-amber-700" style={{ fontSize: 13, fontWeight: 500 }}>{restockCount} item{restockCount !== 1 ? 's' : ''} low on stock</span>
+                className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 transition-colors ${alertFilter === 'restock' ? 'bg-yellow-100 border-yellow-400 ring-2 ring-yellow-200' : 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100'}`}>
+                <AlertTriangle size={15} className="text-yellow-600 shrink-0" />
+                <span className="text-yellow-700" style={{ fontSize: 13, fontWeight: 500 }}>{restockCount} item{restockCount !== 1 ? 's' : ''} low on stock</span>
               </button>
             )}
             {expiringCount > 0 && (
@@ -287,8 +287,8 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
         )}
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
-        <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-blue-100 dark:border-slate-700">
+        <div className="px-5 py-3 border-b border-blue-100 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
           <p className="text-slate-400" style={{ fontSize: 12 }}>
             {alertFilter
               ? <>Showing <span className="text-slate-600 dark:text-slate-300 font-semibold">{visible.length}</span> {ALERT_LABELS[alertFilter]}</>
@@ -303,7 +303,7 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                className="rounded-lg border border-blue-100 bg-white px-3 py-1.5 text-black dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
                 style={{ fontSize: 12 }}
               >
                 <option value="">All categories</option>
@@ -315,7 +315,7 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                className="rounded-lg border border-blue-100 bg-white px-3 py-1.5 text-black dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
                 style={{ fontSize: 12 }}
               >
                 <option value="">All statuses</option>
@@ -324,7 +324,7 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
             </label>
             <button
               onClick={() => { setShowArchived((v) => !v); setAlertFilter(''); }}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 transition-colors ${showArchived ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 transition-colors ${showArchived ? 'border-yellow-300 bg-yellow-50 text-yellow-700' : 'border-blue-100 bg-white text-slate-600 hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}
               style={{ fontSize: 12, fontWeight: 600 }}
               title={showArchived ? 'Back to active items' : 'View archived items'}
             >
@@ -341,7 +341,7 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700">
+              <tr className="bg-blue-50 dark:bg-slate-800/60 border-b border-blue-100 dark:border-slate-700">
                 {['Code', 'Item Name', 'Category', 'Qty', 'Unit', 'Expiry', 'Status', 'Actions'].map((h) => (
                   <th key={h} className="text-left px-5 py-3 text-slate-500 uppercase tracking-wider" style={{ fontSize: 11, fontWeight: 600 }}>{h}</th>
                 ))}
@@ -352,14 +352,14 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
                 <tr><td colSpan={8} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>{showArchived ? 'No archived items' : 'No inventory items found'}</td></tr>
               ) : (
                 visible.map((item) => (
-                  <tr key={item.code} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                  <tr key={item.code} className="hover:bg-blue-50 dark:hover:bg-slate-700/30 transition-colors">
                     <td className="px-5 py-3.5 text-slate-500" style={{ fontSize: 12, fontFamily: 'monospace' }}>{item.code.slice(-8)}</td>
-                    <td className="px-5 py-3.5 text-slate-800" style={{ fontSize: 13, fontWeight: 500 }}>{item.name}</td>
+                    <td className="px-5 py-3.5 text-black" style={{ fontSize: 13, fontWeight: 500 }}>{item.name}</td>
                     <td className="px-5 py-3.5" style={{ fontSize: 12 }}>
-                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 whitespace-nowrap" style={{ fontSize: 11, fontWeight: 500 }}>{item.category || '—'}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 whitespace-nowrap" style={{ fontSize: 11, fontWeight: 500 }}>{item.category || '—'}</span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`text-sm ${item.qty <= 0 ? 'text-red-600 font-semibold' : isLowStock(item.qty) ? 'text-amber-600 font-semibold' : 'text-slate-700'}`} style={{ fontSize: 13 }}>
+                      <span className={`text-sm ${item.qty <= 0 ? 'text-red-600 font-semibold' : isLowStock(item.qty) ? 'text-yellow-600 font-semibold' : 'text-black'}`} style={{ fontSize: 13 }}>
                         {item.qty}
                       </span>
                     </td>
@@ -375,11 +375,11 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-1">
                         <button onClick={() => setLogItem(item)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors" title="Monthly log"><CalendarDays size={14} /></button>
-                        <button onClick={() => openEdit(item)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors" title="Edit"><Pencil size={14} /></button>
+                        <button onClick={() => openEdit(item)} className="p-1.5 rounded-md hover:bg-blue-100 text-slate-400 hover:text-black transition-colors" title="Edit"><Pencil size={14} /></button>
                         {item.archived ? (
-                          <button onClick={() => handleRestore(item)} className="p-1.5 rounded-md hover:bg-green-50 text-slate-400 hover:text-green-600 transition-colors" title="Restore from archive"><ArchiveRestore size={14} /></button>
+                          <button onClick={() => handleRestore(item)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors" title="Restore from archive"><ArchiveRestore size={14} /></button>
                         ) : (
-                          <button onClick={() => handleArchive(item)} className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600 transition-colors" title="Archive"><Archive size={14} /></button>
+                          <button onClick={() => handleArchive(item)} className="p-1.5 rounded-md hover:bg-yellow-50 text-slate-400 hover:text-yellow-600 transition-colors" title="Archive"><Archive size={14} /></button>
                         )}
                       </div>
                     </td>
@@ -409,7 +409,7 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
           </div>
           <label className="block"><span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Expiry Date <span className="text-slate-400">(leave blank for supplies)</span></span><input type="date" value={form.expiry} onChange={(e) => setForm((f) => ({ ...f, expiry: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} /></label>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => { setShowModal(false); setForm(defaultForm); setEditingCode(null); }} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors" style={{ fontSize: 13 }}>Cancel</button>
+            <button type="button" onClick={() => { setShowModal(false); setForm(defaultForm); setEditingCode(null); }} className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-600 transition-colors" style={{ fontSize: 13 }}>Cancel</button>
             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors" style={{ fontSize: 13 }}>{editingCode ? 'Update' : 'Save'}</button>
           </div>
         </form>

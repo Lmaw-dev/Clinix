@@ -108,21 +108,21 @@ export function DocPreview({ doc, onClose }: { doc: PersonDoc; onClose: () => vo
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 px-4 py-3">
+        <div className="flex items-center gap-3 border-b border-blue-100 dark:border-slate-700 px-4 py-3">
           <FileText size={16} className="shrink-0 text-blue-600" />
-          <p className="min-w-0 flex-1 truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>
+          <p className="min-w-0 flex-1 truncate text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>
             {doc.fileName}
           </p>
           <a href={fileUrl(doc.id, true)} title="Download" className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-700">
             <Download size={16} />
           </a>
-          <button type="button" onClick={onClose} title="Close" className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700">
+          <button type="button" onClick={onClose} title="Close" className="p-1.5 rounded-md text-slate-400 hover:text-black hover:bg-blue-100 dark:hover:bg-slate-700">
             <X size={17} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-900/40">
+        <div className="flex-1 overflow-auto bg-blue-50 dark:bg-slate-900/40">
           {status === 'loading' && (
             <div className="flex h-full items-center justify-center gap-2 text-slate-400" style={{ fontSize: 13 }}>
               <Loader2 size={16} className="animate-spin" /> {isWord(doc) ? 'Rendering document…' : 'Loading preview…'}
@@ -143,11 +143,11 @@ export function DocPreview({ doc, onClose }: { doc: PersonDoc; onClose: () => vo
             <div ref={docxRef} className="docx-host py-4" />
           )}
           {status === 'ready' && isText(doc) && (
-            <pre className="whitespace-pre-wrap break-words p-5 text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontFamily: 'ui-monospace, monospace' }}>{text}</pre>
+            <pre className="whitespace-pre-wrap break-words p-5 text-black dark:text-slate-100" style={{ fontSize: 13, fontFamily: 'ui-monospace, monospace' }}>{text}</pre>
           )}
           {(status === 'unsupported' || status === 'error') && (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-              <AlertCircle size={22} className="text-amber-500" />
+              <AlertCircle size={22} className="text-yellow-500" />
               <p className="text-slate-600 dark:text-slate-300" style={{ fontSize: 13 }}>
                 {status === 'error' ? 'Could not load this file for preview.' : "This file type can't be previewed in-app."}
               </p>
@@ -227,7 +227,7 @@ export function PersonDocuments({
 
   return (
     <>
-    <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+    <div className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3">
       <div className="flex items-center justify-between mb-2">
         <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 500 }}>
           Documents &amp; Files
@@ -254,7 +254,7 @@ export function PersonDocuments({
           <Loader2 size={14} className="animate-spin" /> Loading documents…
         </div>
       ) : error ? (
-        <div className="flex items-start gap-2 py-2 text-amber-600" style={{ fontSize: 12 }}>
+        <div className="flex items-start gap-2 py-2 text-yellow-600" style={{ fontSize: 12 }}>
           <AlertCircle size={14} className="mt-0.5 shrink-0" />
           <span>{error}</span>
         </div>
@@ -267,16 +267,16 @@ export function PersonDocuments({
       ) : (
         <ul className="space-y-1.5">
           {docs.map((doc) => (
-            <li key={doc.id} className="flex items-center gap-2 rounded-lg bg-white dark:bg-slate-800 px-2.5 py-2 border border-slate-100 dark:border-slate-700">
+            <li key={doc.id} className="flex items-center gap-2 rounded-lg bg-white dark:bg-slate-800 px-2.5 py-2 border border-blue-100 dark:border-slate-700">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/30">
                 <FileText size={15} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 12, fontWeight: 600 }}>{doc.fileName}</p>
+                <p className="truncate text-black dark:text-slate-100" style={{ fontSize: 12, fontWeight: 600 }}>{doc.fileName}</p>
                 <p className="flex items-center gap-1.5 text-slate-400" style={{ fontSize: 11 }}>
                   <span>{formatBytes(doc.size)}{doc.uploadedAt ? ` · ${formatDate(doc.uploadedAt)}` : ''}</span>
                   {doc.formName && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-1.5 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" style={{ fontSize: 10, fontWeight: 600 }}>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-1.5 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" style={{ fontSize: 10, fontWeight: 600 }}>
                       <FolderClosed size={9} /> {doc.formName}
                     </span>
                   )}

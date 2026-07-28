@@ -42,15 +42,15 @@ import { Role, ROLE_LABELS, ROLE_DEFAULT_NAMES, canAccess } from '../auth';
 import { useTheme } from '../ThemeContext';
 import { Modal } from './Modal';
 
-const PIE_COLORS = ['#3B82F6', '#06B6D4', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444'];
+const PIE_COLORS = ['#37479A', '#6C7FC8', '#A9B5E1', '#F5C518', '#C2950A', '#8595D3'];
 
 const ILLNESS_META: Record<string, { label: string; bg: string; text: string; dot: string }> = {
   fever:    { label: 'Fever',     bg: '#FEF2F2', text: '#DC2626', dot: '#EF4444' },
-  cough:    { label: 'Cough',     bg: '#FFF7ED', text: '#C2410C', dot: '#F97316' },
-  headache: { label: 'Headache',  bg: '#FFFBEB', text: '#B45309', dot: '#F59E0B' },
-  allergy:  { label: 'Allergy',   bg: '#F0FDF4', text: '#15803D', dot: '#22C55E' },
-  asthma:   { label: 'Asthma',    bg: '#EFF6FF', text: '#1D4ED8', dot: '#3B82F6' },
-  flu:      { label: 'Flu',       bg: '#F5F3FF', text: '#6D28D9', dot: '#8B5CF6' },
+  cough:    { label: 'Cough',     bg: '#FDFAEC', text: '#9C7708', dot: '#E3B10D' },
+  headache: { label: 'Headache',  bg: '#FCF3CE', text: '#7C5E08', dot: '#C2950A' },
+  allergy:  { label: 'Allergy',   bg: '#EEF1FA', text: '#37479A', dot: '#6C7FC8' },
+  asthma:   { label: 'Asthma',    bg: '#DEE3F5', text: '#273685', dot: '#37479A' },
+  flu:      { label: 'Flu',       bg: '#EEF1FA', text: '#4C5CAE', dot: '#A9B5E1' },
 };
 
 function getGreeting() {
@@ -60,7 +60,7 @@ function getGreeting() {
   return 'Good evening';
 }
 
-function EmptyChart({ icon: Icon, title, subtitle, iconBg = '#F1F5F9', textColor = '#94A3B8' }: {
+function EmptyChart({ icon: Icon, title, subtitle, iconBg = '#EEF1FA', textColor = '#94A3B8' }: {
   icon: React.ComponentType<{ size?: number; className?: string }>;
   title: string;
   subtitle: string;
@@ -76,7 +76,7 @@ function EmptyChart({ icon: Icon, title, subtitle, iconBg = '#F1F5F9', textColor
         <Icon size={20} className="text-slate-300" />
       </div>
       <p style={{ fontSize: 13, fontWeight: 600, color: textColor }}>{title}</p>
-      <p style={{ fontSize: 11, color: '#CBD5E1', marginTop: 4, textAlign: 'center', maxWidth: 180 }}>
+      <p style={{ fontSize: 11, color: '#C6CEEC', marginTop: 4, textAlign: 'center', maxWidth: 180 }}>
         {subtitle}
       </p>
     </div>
@@ -109,20 +109,20 @@ export function Dashboard({
   const roleLabel = ROLE_LABELS[role];
 
   const C = {
-    card:       isDark ? '#1E293B' : '#FFFFFF',
-    cardBorder: isDark ? '#334155' : '#E2E8F0',
-    cardShadow: isDark ? '0 1px 4px rgba(0,0,0,0.4)' : '0 1px 4px rgba(0,0,0,0.06)',
-    txtPrimary: isDark ? '#F1F5F9' : '#0F172A',
-    txtSecond:  isDark ? '#CBD5E1' : '#475569',
-    txtMuted:   isDark ? '#64748B' : '#94A3B8',
-    divider:    isDark ? '#334155' : '#E2E8F0',
-    subtle:     isDark ? '#0F172A' : '#F8FAFC',
-    subtleBorder: isDark ? '#1E293B' : '#E2E8F0',
-    activityDot: isDark ? '#3B82F6' : '#3B82F6',
-    tableTh:    isDark ? '#1A2744' : '#F8FAFC',
-    chipHoverBg: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
-    axisColor:  isDark ? '#475569' : '#94A3B8',
-    gridColor:  isDark ? '#1E293B' : '#F8FAFC',
+    card:       isDark ? '#161F49' : '#FFFFFF',
+    cardBorder: isDark ? '#1B2A6E' : '#DEE3F5',
+    cardShadow: isDark ? '0 1px 4px rgba(0,0,0,0.4)' : '0 1px 4px rgba(27,42,110,0.08)',
+    txtPrimary: isDark ? '#FFFFFF' : '#000000',
+    txtSecond:  isDark ? '#C6CEEC' : '#1B2A6E',
+    txtMuted:   isDark ? '#A9B5E1' : '#64748B',
+    divider:    isDark ? '#1B2A6E' : '#DEE3F5',
+    subtle:     isDark ? '#0D1230' : '#EEF1FA',
+    subtleBorder: isDark ? '#131D4D' : '#DEE3F5',
+    activityDot: isDark ? '#F5C518' : '#F5C518',
+    tableTh:    isDark ? '#131D4D' : '#EEF1FA',
+    chipHoverBg: isDark ? 'rgba(255,255,255,0.05)' : '#EEF1FA',
+    axisColor:  isDark ? '#A9B5E1' : '#64748B',
+    gridColor:  isDark ? '#131D4D' : '#EEF1FA',
   };
 
   const tooltipStyle = {
@@ -178,17 +178,17 @@ export function Dashboard({
   const lowStock = inventory.filter((i) => !i.archived && i.category !== 'Medication (Old)' && i.qty > 0 && i.qty < 5);
 
   const statCards = [
-    { label: 'Enrolled Students', value: enrolledCount, icon: GraduationCap, iconBg: '#EFF6FF', iconColor: '#2563EB', sub: `${students.length} total records` },
-    { label: 'Faculty & Staff', value: faculty.length, icon: Users, iconBg: '#F0FDF4', iconColor: '#16A34A', sub: 'Active personnel' },
-    { label: 'Consultations', value: consultations.length, icon: Stethoscope, iconBg: '#F5F3FF', iconColor: '#7C3AED', sub: 'Total logged' },
-    { label: 'Medical Forms', value: medForms.length, icon: FileText, iconBg: '#FFF7ED', iconColor: '#C2410C', sub: `${medForms.reduce((n, f) => n + f.entries.length, 0)} student copies` },
+    { label: 'Enrolled Students', value: enrolledCount, icon: GraduationCap, iconBg: '#EEF1FA', iconColor: '#4C5CAE', sub: `${students.length} total records` },
+    { label: 'Faculty & Staff', value: faculty.length, icon: Users, iconBg: '#FCF3CE', iconColor: '#C2950A', sub: 'Active personnel' },
+    { label: 'Consultations', value: consultations.length, icon: Stethoscope, iconBg: '#DEE3F5', iconColor: '#37479A', sub: 'Total logged' },
+    { label: 'Medical Forms', value: medForms.length, icon: FileText, iconBg: '#FDFAEC', iconColor: '#9C7708', sub: `${medForms.reduce((n, f) => n + f.entries.length, 0)} student copies` },
   ];
 
   const quickActions = [
-    { label: 'Add Student', desc: 'Register a new student', icon: UserPlus, page: 'students' as Page, iconBg: '#EFF6FF', iconColor: '#2563EB', badge: 0 },
-    { label: 'New Consultation', desc: 'Log a consultation', icon: Stethoscope, page: 'consultations' as Page, iconBg: '#F5F3FF', iconColor: '#7C3AED', badge: 0 },
-    { label: 'Add Medicine', desc: lowStock.length > 0 ? `${lowStock.length} item${lowStock.length !== 1 ? 's' : ''} low on stock` : 'Update inventory', icon: Pill, page: 'inventory' as Page, iconBg: '#FFFBEB', iconColor: '#B45309', badge: lowStock.length },
-    { label: 'Generate Report', desc: 'View statistics', icon: BarChart2, page: 'reports' as Page, iconBg: '#F0FDF4', iconColor: '#16A34A', badge: 0 },
+    { label: 'Add Student', desc: 'Register a new student', icon: UserPlus, page: 'students' as Page, iconBg: '#EEF1FA', iconColor: '#4C5CAE', badge: 0 },
+    { label: 'New Consultation', desc: 'Log a consultation', icon: Stethoscope, page: 'consultations' as Page, iconBg: '#DEE3F5', iconColor: '#37479A', badge: 0 },
+    { label: 'Add Medicine', desc: lowStock.length > 0 ? `${lowStock.length} item${lowStock.length !== 1 ? 's' : ''} low on stock` : 'Update inventory', icon: Pill, page: 'inventory' as Page, iconBg: '#FDFAEC', iconColor: '#9C7708', badge: lowStock.length },
+    { label: 'Generate Report', desc: 'View statistics', icon: BarChart2, page: 'reports' as Page, iconBg: '#FCF3CE', iconColor: '#C2950A', badge: 0 },
   ].filter((a) => canAccess(role, a.page));
 
   const [now, setNow] = useState(() => new Date());
@@ -245,7 +245,7 @@ export function Dashboard({
               value={quickSearch}
               onChange={(e) => setQuickSearch(e.target.value)}
               placeholder="Quick search..."
-              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              className="w-full rounded-xl border border-blue-100 bg-white py-2 pl-9 pr-8 text-black outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               style={{ fontSize: 13 }}
             />
             {quickSearch && <button onClick={() => setQuickSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600" aria-label="Clear search"><X size={16} /></button>}
@@ -261,7 +261,7 @@ export function Dashboard({
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600"><UserRound size={17} /></div>
                       )}
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{person.name}</span>
+                        <span className="block truncate text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{person.name}</span>
                         <span className="block truncate text-slate-500" style={{ fontSize: 12 }}>{result.type === 'Student' ? `${result.person.studentId} · ${result.person.course || 'No course'} · ${result.person.yearLevel || 'No year level'}` : `${result.person.staffId} · ${result.person.role}`}</span>
                       </span>
                       <span className="text-slate-400" style={{ fontSize: 11 }}>{result.type}</span>
@@ -295,16 +295,16 @@ export function Dashboard({
               height: 36,
               borderRadius: 10,
               background: C.subtle,
-              border: '1px solid #E2E8F0',
+              border: '1px solid #DEE3F5',
               color: C.txtMuted,
               cursor: 'pointer',
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = '#F1F5F9';
-              (e.currentTarget as HTMLElement).style.color = '#334155';
+              (e.currentTarget as HTMLElement).style.background = '#EEF1FA';
+              (e.currentTarget as HTMLElement).style.color = '#1B2A6E';
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = '#F8FAFC';
+              (e.currentTarget as HTMLElement).style.background = '#EEF1FA';
               (e.currentTarget as HTMLElement).style.color = '#64748B';
             }}
           >
@@ -326,7 +326,7 @@ export function Dashboard({
                   width: 36,
                   height: 36,
                   borderRadius: 10,
-                  background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+                  background: 'linear-gradient(135deg, #6C7FC8, #37479A)',
                   fontSize: 11,
                   fontWeight: 700,
                 }}
@@ -363,7 +363,7 @@ export function Dashboard({
               background: C.card,
               borderRadius: 14,
               padding: '20px 20px 18px',
-              border: '1px solid #E2E8F0',
+              border: '1px solid #DEE3F5',
               boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
               display: 'flex',
               flexDirection: 'column',
@@ -377,7 +377,7 @@ export function Dashboard({
               >
                 <Icon size={20} style={{ color: iconColor }} />
               </div>
-              <TrendingUp size={14} style={{ color: '#CBD5E1' }} />
+              <TrendingUp size={14} style={{ color: '#C6CEEC' }} />
             </div>
             <div>
               <p style={{ fontSize: 30, fontWeight: 800, color: C.txtPrimary, lineHeight: 1 }}>{value}</p>
@@ -397,7 +397,7 @@ export function Dashboard({
             className="relative text-left transition-all"
             style={{
               background: C.card,
-              border: badge > 0 ? '1px solid #FED7AA' : '1px solid #E2E8F0',
+              border: badge > 0 ? '1px solid #FAE79C' : '1px solid #DEE3F5',
               borderRadius: 14,
               padding: '14px 16px',
               boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
@@ -417,8 +417,8 @@ export function Dashboard({
                 className="absolute flex items-center gap-1"
                 style={{
                   top: 12, right: 12,
-                  background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 999,
-                  padding: '2px 8px', fontSize: 11, fontWeight: 700, color: '#C2410C',
+                  background: '#FDFAEC', border: '1px solid #FAE79C', borderRadius: 999,
+                  padding: '2px 8px', fontSize: 11, fontWeight: 700, color: '#9C7708',
                 }}
               >
                 <AlertCircle size={11} />
@@ -432,7 +432,7 @@ export function Dashboard({
               <Icon size={16} style={{ color: iconColor }} />
             </div>
             <p style={{ fontSize: 13, fontWeight: 700, color: C.txtPrimary, lineHeight: 1.2 }}>{label}</p>
-            <p style={{ fontSize: 11, color: badge > 0 ? '#C2410C' : C.txtMuted, marginTop: 3, fontWeight: badge > 0 ? 600 : 400 }}>{desc}</p>
+            <p style={{ fontSize: 11, color: badge > 0 ? '#9C7708' : C.txtMuted, marginTop: 3, fontWeight: badge > 0 ? 600 : 400 }}>{desc}</p>
           </button>
         ))}
       </div>
@@ -461,9 +461,9 @@ export function Dashboard({
                 <Line
                   type="monotone"
                   dataKey="value"
-                  stroke="#3B82F6"
+                  stroke="#6C7FC8"
                   strokeWidth={2.5}
-                  dot={{ fill: '#3B82F6', r: 4, strokeWidth: 2, stroke: '#fff' }}
+                  dot={{ fill: '#6C7FC8', r: 4, strokeWidth: 2, stroke: '#fff' }}
                   activeDot={{ r: 6 }}
                   isAnimationActive={false}
                 />
@@ -501,7 +501,7 @@ export function Dashboard({
                 <XAxis dataKey="name" tick={{ ...axisStyle, fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={tooltipStyle} />
-                <Bar dataKey="value" fill="#3B82F6" radius={[6, 6, 0, 0]} isAnimationActive={false} />
+                <Bar dataKey="value" fill="#6C7FC8" radius={[6, 6, 0, 0]} isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -538,11 +538,11 @@ export function Dashboard({
             <div className="flex flex-col items-center justify-center py-8">
               <div
                 className="flex items-center justify-center rounded-full mb-3"
-                style={{ width: 40, height: 40, background: '#F8FAFC' }}
+                style={{ width: 40, height: 40, background: '#EEF1FA' }}
               >
                 <FileText size={18} className="text-slate-300" />
               </div>
-              <p style={{ fontSize: 13, color: '#CBD5E1', fontWeight: 500 }}>No recent activities</p>
+              <p style={{ fontSize: 13, color: '#C6CEEC', fontWeight: 500 }}>No recent activities</p>
             </div>
           ) : (
             <ul style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -550,7 +550,7 @@ export function Dashboard({
                 <li key={`activity-${i}`} className="flex items-start gap-3">
                   <div
                     className="shrink-0 rounded-full"
-                    style={{ width: 8, height: 8, background: '#3B82F6', marginTop: 5 }}
+                    style={{ width: 8, height: 8, background: '#6C7FC8', marginTop: 5 }}
                   />
                   <div className="flex-1 min-w-0">
                     <p style={{ fontSize: 13, color: C.txtSecond, lineHeight: 1.4 }}>{a.msg}</p>
@@ -647,9 +647,9 @@ export function Dashboard({
               ) : (
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white"><UserRound size={22} /></div>
               )}
-              <div><p className="text-slate-900 dark:text-white" style={{ fontSize: 16, fontWeight: 700 }}>{person.name}</p><p className="text-slate-500" style={{ fontSize: 12 }}>{selectedPerson.type}</p></div>
+              <div><p className="text-black dark:text-white" style={{ fontSize: 16, fontWeight: 700 }}>{person.name}</p><p className="text-slate-500" style={{ fontSize: 12 }}>{selectedPerson.type}</p></div>
             </div>
-            <dl className="divide-y divide-slate-100 dark:divide-slate-700">{details.map(([label, value]) => <div key={label} className="flex gap-4 py-2.5"><dt className="w-32 shrink-0 text-slate-400" style={{ fontSize: 12 }}>{label}</dt><dd className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 500 }}>{value || '—'}</dd></div>)}</dl>
+            <dl className="divide-y divide-slate-100 dark:divide-slate-700">{details.map(([label, value]) => <div key={label} className="flex gap-4 py-2.5"><dt className="w-32 shrink-0 text-slate-400" style={{ fontSize: 12 }}>{label}</dt><dd className="text-black dark:text-slate-200" style={{ fontSize: 13, fontWeight: 500 }}>{value || '—'}</dd></div>)}</dl>
           </div>;
         })()}
       </Modal>

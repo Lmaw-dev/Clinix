@@ -145,16 +145,16 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 min-w-0">
           {viewForm && (
-            <button onClick={() => setViewId(null)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700" title="Back to Medical Forms">
+            <button onClick={() => setViewId(null)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-100 dark:border-slate-600 text-slate-500 hover:bg-blue-50 dark:hover:bg-slate-700" title="Back to Medical Forms">
               <ArrowLeft size={16} />
             </button>
           )}
           <nav className="flex items-center gap-1.5 min-w-0">
-            <button onClick={() => setViewId(null)} disabled={!viewForm} className={`shrink-0 ${viewForm ? 'text-slate-500 hover:text-blue-600' : 'text-slate-900 dark:text-white'}`} style={{ fontSize: viewForm ? 14 : 20, fontWeight: 700 }}>
+            <button onClick={() => setViewId(null)} disabled={!viewForm} className={`shrink-0 ${viewForm ? 'text-slate-500 hover:text-blue-600' : 'text-black dark:text-white'}`} style={{ fontSize: viewForm ? 14 : 20, fontWeight: 700 }}>
               Medical Forms
             </button>
             {viewForm && <ChevronRight size={16} className="shrink-0 text-slate-300" />}
-            {viewForm && <span className="truncate text-slate-900 dark:text-white" style={{ fontSize: 14, fontWeight: 700 }}>{viewForm.name}</span>}
+            {viewForm && <span className="truncate text-black dark:text-white" style={{ fontSize: 14, fontWeight: 700 }}>{viewForm.name}</span>}
           </nav>
         </div>
         {!viewForm ? (
@@ -175,8 +175,8 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
         </p>
       )}
       {!viewForm && (visible.length === 0 ? (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 py-16 text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-700/40">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 py-16 text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 dark:bg-slate-700/40">
             <FolderOpen size={24} className="text-slate-300" />
           </div>
           <p className="text-slate-500" style={{ fontSize: 14, fontWeight: 600 }}>No forms yet</p>
@@ -188,17 +188,17 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
             <button
               key={f.id}
               onClick={() => setViewId(f.id)}
-              className="text-left bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 hover:border-blue-300 hover:shadow-md transition-all"
+              className="text-left bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-5 hover:border-blue-300 hover:shadow-md transition-all"
             >
               <div className="flex items-start justify-between">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 dark:bg-orange-900/20">
-                  <FolderOpen size={20} className="text-orange-600" />
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-yellow-50 dark:bg-yellow-900/20">
+                  <FolderOpen size={20} className="text-yellow-600" />
                 </div>
-                <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2.5 py-1 text-slate-600 dark:text-slate-300" style={{ fontSize: 11, fontWeight: 600 }}>
+                <span className="rounded-full bg-blue-100 dark:bg-slate-700 px-2.5 py-1 text-slate-600 dark:text-slate-300" style={{ fontSize: 11, fontWeight: 600 }}>
                   {f.entries.length} cop{f.entries.length === 1 ? 'y' : 'ies'}
                 </span>
               </div>
-              <p className="mt-3 text-slate-800 dark:text-slate-100 truncate" style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</p>
+              <p className="mt-3 text-black dark:text-slate-100 truncate" style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</p>
               <p className="text-slate-400 line-clamp-2" style={{ fontSize: 12, minHeight: 32 }}>{f.description || f.templateFileName}</p>
               <p className="mt-2 text-slate-400" style={{ fontSize: 11 }}>Uploaded {fmtDate(f.date)}</p>
             </button>
@@ -211,18 +211,18 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
         <form onSubmit={handleUploadForm} className="space-y-4">
           <label className="block">
             <span className="block text-slate-600 dark:text-slate-400 mb-1" style={{ fontSize: 12, fontWeight: 500 }}>Form Name</span>
-            <input value={uName} onChange={(e) => setUName(e.target.value)} placeholder="e.g. Clinic Consultation Record" className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" style={{ fontSize: 13 }} required />
+            <input value={uName} onChange={(e) => setUName(e.target.value)} placeholder="e.g. Clinic Consultation Record" className="w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-black dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" style={{ fontSize: 13 }} required />
           </label>
           <label className="block">
             <span className="block text-slate-600 dark:text-slate-400 mb-1" style={{ fontSize: 12, fontWeight: 500 }}>Description <span className="text-slate-400">(optional)</span></span>
-            <input value={uDesc} onChange={(e) => setUDesc(e.target.value)} placeholder="What this form is for" className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" style={{ fontSize: 13 }} />
+            <input value={uDesc} onChange={(e) => setUDesc(e.target.value)} placeholder="What this form is for" className="w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-black dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" style={{ fontSize: 13 }} />
           </label>
           <label className="block">
             <span className="block text-slate-600 dark:text-slate-400 mb-1" style={{ fontSize: 12, fontWeight: 500 }}>Form File <span className="text-slate-400">(the original / blank copy)</span></span>
             <input ref={uFileRef} type="file" className="block w-full text-slate-600 dark:text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-blue-700 hover:file:bg-blue-100" style={{ fontSize: 13 }} required />
           </label>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setShowUpload(false)} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50" style={{ fontSize: 13 }}>Cancel</button>
+            <button type="button" onClick={() => setShowUpload(false)} className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50" style={{ fontSize: 13 }}>Cancel</button>
             <button type="submit" disabled={uploading} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2" style={{ fontSize: 13 }}>
               {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
               {uploading ? 'Uploading…' : 'Upload'}
@@ -237,11 +237,11 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
           {viewForm.description && <p className="text-slate-500" style={{ fontSize: 13, marginTop: -8 }}>{viewForm.description}</p>}
 
           {/* Original copy */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-5">
             <p className="text-slate-400 mb-2" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Original copy</p>
-            <div className="flex items-center gap-2 rounded-lg bg-slate-50 dark:bg-slate-700/40 px-3 py-2.5">
-              <FileText size={16} className="shrink-0 text-orange-600" />
-              <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewForm.templateFileName}</span>
+            <div className="flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-slate-700/40 px-3 py-2.5">
+              <FileText size={16} className="shrink-0 text-yellow-600" />
+              <span className="min-w-0 flex-1 truncate text-black dark:text-slate-200" style={{ fontSize: 13 }}>{viewForm.templateFileName}</span>
               <button onClick={() => setPreview(asDoc(viewForm.templateDocId, viewForm.templateFileName))} className={`${btnGhost} hover:text-blue-600 hover:bg-blue-50`} title="Preview"><Eye size={15} /></button>
               <a href={fileUrl(viewForm.templateDocId, true)} className={`${btnGhost} hover:text-blue-600 hover:bg-blue-50`} title="Download"><Download size={15} /></a>
             </div>
@@ -251,14 +251,14 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
           {(() => {
             const shownEntries = viewForm.entries.filter((en) => !copyFilter || (en.ownerType || 'student') === copyFilter);
             return (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Compiled copies · {shownEntries.length}
               </p>
               <label className="flex items-center gap-2 text-slate-500" style={{ fontSize: 12, fontWeight: 600 }}>
                 Show
-                <select value={copyFilter} onChange={(e) => setCopyFilter(e.target.value as '' | OwnerType)} className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-slate-700 dark:text-slate-200" style={{ fontSize: 12 }}>
+                <select value={copyFilter} onChange={(e) => setCopyFilter(e.target.value as '' | OwnerType)} className="rounded-lg border border-blue-100 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-black dark:text-slate-200" style={{ fontSize: 12 }}>
                   <option value="">All</option>
                   <option value="student">Students</option>
                   <option value="faculty">Faculty &amp; Staff</option>
@@ -268,17 +268,17 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
 
             {/* Add a copy — pick type, then person */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
-              <select value={entryType} onChange={(e) => { setEntryType(e.target.value as OwnerType); setEntryPerson(''); }} className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>
+              <select value={entryType} onChange={(e) => { setEntryType(e.target.value as OwnerType); setEntryPerson(''); }} className="rounded-lg border border-blue-100 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-black dark:text-slate-200" style={{ fontSize: 13 }}>
                 <option value="student">Student</option>
                 <option value="faculty">Faculty &amp; Staff</option>
               </select>
-              <select value={entryPerson} onChange={(e) => setEntryPerson(e.target.value)} className="flex-1 min-w-[160px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>
+              <select value={entryPerson} onChange={(e) => setEntryPerson(e.target.value)} className="flex-1 min-w-[160px] rounded-lg border border-blue-100 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-black dark:text-slate-200" style={{ fontSize: 13 }}>
                 <option value="">{entryType === 'student' ? 'Select student…' : 'Select faculty/staff…'}</option>
                 {entryType === 'student'
                   ? students.map((s) => <option key={s.studentId} value={s.studentId}>{s.name} · {s.studentId}</option>)
                   : faculty.map((f) => <option key={f.staffId} value={f.staffId}>{f.name} · {f.staffId}</option>)}
               </select>
-              <input ref={entryFileRef} type="file" className="text-slate-600 dark:text-slate-300 file:mr-2 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1.5 file:text-slate-700" style={{ fontSize: 13, maxWidth: 200 }} />
+              <input ref={entryFileRef} type="file" className="text-slate-600 dark:text-slate-300 file:mr-2 file:rounded-md file:border-0 file:bg-blue-100 file:px-2 file:py-1.5 file:text-black" style={{ fontSize: 13, maxWidth: 200 }} />
               <button onClick={() => handleAddEntry(viewForm)} disabled={entryUploading} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-60" style={{ fontSize: 13, fontWeight: 600 }}>
                 {entryUploading ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Add copy
               </button>
@@ -291,12 +291,12 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
             ) : (
               <ul className="space-y-1.5">
                 {shownEntries.map((en) => (
-                  <li key={en.docId} className="flex items-center gap-2 rounded-lg bg-slate-50 dark:bg-slate-700/40 px-3 py-2.5">
+                  <li key={en.docId} className="flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-slate-700/40 px-3 py-2.5">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600"><FileText size={16} /></div>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>
+                      <p className="flex items-center gap-2 truncate text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>
                         <span className="truncate">{en.studentName}</span>
-                        <span className={`shrink-0 rounded-full px-1.5 ${(en.ownerType || 'student') === 'faculty' ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700'}`} style={{ fontSize: 10, fontWeight: 600 }}>
+                        <span className={`shrink-0 rounded-full px-1.5 ${(en.ownerType || 'student') === 'faculty' ? 'bg-blue-100 text-blue-700' : 'bg-blue-100 text-blue-700'}`} style={{ fontSize: 10, fontWeight: 600 }}>
                           {(en.ownerType || 'student') === 'faculty' ? 'Faculty/Staff' : 'Student'}
                         </span>
                       </p>

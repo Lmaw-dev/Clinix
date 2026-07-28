@@ -6,16 +6,16 @@ import CAMPUS_PHOTO from '../../assets/campus-gate.png';
 type Props = { onLogin: (role: Role, username: string) => void };
 
 const SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif";
-const PAGE  = '#0F172A'; // sidebar navy (slate-900)
-const INK   = '#F8FAFC'; // light primary text on navy
-const MUTED = '#94A3B8'; // slate-400
-const LABEL = '#CBD5E1'; // slate-300
-const LINE  = '#334155'; // slate-700 border
-const INPUT_BG = '#1E293B'; // slate-800 input fill
-const BLUE  = '#2563EB'; // blue-600
-const BLUE_DK = '#1D4ED8'; // blue-700
-const BLUE_FOCUS = '#3B82F6'; // blue-500
-const LINK  = '#60A5FA'; // blue-400 (readable on navy)
+const PAGE  = '#1B2A6E'; // brand deep blue (blue-900)
+const INK   = '#FFFFFF'; // white primary text on blue
+const MUTED = '#C6CEEC'; // blue-200
+const LABEL = '#DEE3F5'; // blue-100
+const LINE  = 'rgba(169,181,225,0.35)'; // blue-300 border
+const INPUT_BG = '#273685'; // blue-800 input fill
+const BLUE  = '#4C5CAE'; // blue-600
+const YELLOW = '#F5C518'; // brand yellow (yellow-400)
+const YELLOW_DK = '#E3B10D'; // yellow-500
+const LINK  = '#F5C518'; // yellow (readable on blue)
 
 export function LoginPage({ onLogin }: Props) {
   const [username, setUsername]         = useState('');
@@ -57,8 +57,8 @@ export function LoginPage({ onLogin }: Props) {
     fontSize: 14, color: INK, minWidth: 0,
   };
   function focusBox(el: HTMLElement) {
-    el.style.borderColor = BLUE_FOCUS;
-    el.style.boxShadow   = '0 0 0 3px rgba(59,130,246,0.28)';
+    el.style.borderColor = YELLOW;
+    el.style.boxShadow   = '0 0 0 3px rgba(245,197,24,0.25)';
   }
   function blurBox(el: HTMLElement) {
     el.style.borderColor = LINE;
@@ -75,22 +75,22 @@ export function LoginPage({ onLogin }: Props) {
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
 
         {/* top & bottom scrims — keep brand/caption legible without a card */}
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(15,23,42,0.42) 0%, transparent 22%, transparent 62%, rgba(15,23,42,0.55) 100%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(27,42,110,0.42) 0%, transparent 22%, transparent 62%, rgba(27,42,110,0.55) 100%)', pointerEvents: 'none' }} />
 
         {/* SMOOTH BLEND — right edge dissolves into the navy form background */}
-        <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, transparent 0%, transparent 42%, rgba(15,23,42,0.35) 66%, rgba(15,23,42,0.85) 88%, ${PAGE} 100%)`, pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, transparent 0%, transparent 42%, rgba(27,42,110,0.35) 66%, rgba(27,42,110,0.85) 88%, ${PAGE} 100%)`, pointerEvents: 'none' }} />
 
         {/* Brand — top-left over image */}
         <div className="clx-in" style={{ position: 'absolute', top: 34, left: 40, zIndex: 2, animationDelay: '0.05s' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: SERIF, fontSize: 20, fontWeight: 700, color: '#F8FAFC', letterSpacing: '-0.01em', textShadow: '0 2px 10px rgba(0,0,0,0.4)' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: BLUE_FOCUS, display: 'inline-block' }} />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: SERIF, fontSize: 20, fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.01em', textShadow: '0 2px 10px rgba(0,0,0,0.4)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: YELLOW, display: 'inline-block' }} />
             Clinix
           </span>
         </div>
 
         {/* Caption — bottom-left over image */}
         <div style={{ position: 'absolute', left: 40, right: 120, bottom: 34, zIndex: 2 }}>
-          <p style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, color: '#F8FAFC', lineHeight: 1.15, letterSpacing: '-0.01em', textShadow: '0 2px 12px rgba(0,0,0,0.45)' }}>
+          <p style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, color: '#EEF1FA', lineHeight: 1.15, letterSpacing: '-0.01em', textShadow: '0 2px 12px rgba(0,0,0,0.45)' }}>
             Bohol Island State University
           </p>
           <p style={{ fontSize: 13, color: 'rgba(248,250,252,0.90)', marginTop: 5, fontWeight: 500, textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>
@@ -106,7 +106,7 @@ export function LoginPage({ onLogin }: Props) {
           {/* mobile brand */}
           <div className="lg:hidden" style={{ marginBottom: 28 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: SERIF, fontSize: 20, fontWeight: 700, color: INK, letterSpacing: '-0.01em' }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: BLUE, display: 'inline-block' }} />
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: YELLOW, display: 'inline-block' }} />
               Clinix
             </span>
           </div>
@@ -169,15 +169,15 @@ export function LoginPage({ onLogin }: Props) {
             <button type="submit" disabled={disabled}
               className="clx-submit flex items-center justify-center gap-2 w-full"
               style={{
-                padding: '13px', borderRadius: 10, fontSize: 14.5, fontWeight: 600,
-                color: '#FFFFFF', border: 'none',
+                padding: '13px', borderRadius: 10, fontSize: 14.5, fontWeight: 700,
+                color: '#000000', border: 'none',
                 cursor: disabled ? 'not-allowed' : 'pointer',
-                background: disabled ? '#1E3A8A' : BLUE,
-                boxShadow: disabled ? 'none' : '0 4px 14px rgba(37,99,235,0.30)',
+                background: disabled ? 'rgba(245,197,24,0.35)' : YELLOW,
+                boxShadow: disabled ? 'none' : '0 4px 14px rgba(245,197,24,0.30)',
                 transition: 'background 0.2s, transform 0.18s, box-shadow 0.18s',
               }}>
               {loading
-                ? <><span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#FFFFFF', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} /> Signing in…</>
+                ? <><span style={{ width: 14, height: 14, border: '2px solid rgba(0,0,0,0.35)', borderTopColor: '#000000', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} /> Signing in…</>
                 : 'Log in'}
             </button>
           </form>
@@ -187,7 +187,7 @@ export function LoginPage({ onLogin }: Props) {
 
           {/* Demo access */}
           <div className="clx-demo" style={{ border: `1px solid ${LINE}`, borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '7px 14px', fontSize: 10.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.09em', borderBottom: `1px solid ${LINE}`, background: '#1E293B' }}>
+            <div style={{ padding: '7px 14px', fontSize: 10.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.09em', borderBottom: `1px solid ${LINE}`, background: '#273685' }}>
               Demo Access
             </div>
             {[
@@ -235,7 +235,7 @@ export function LoginPage({ onLogin }: Props) {
         .clx-photo { animation: clxPhotoIn 1.1s cubic-bezier(.16,.84,.44,1) both; }
         .clx-error { animation: clxErrIn 0.45s ease both; }
 
-        .clx-submit:not(:disabled):hover  { background: ${BLUE_DK} !important; transform: translateY(-1px); box-shadow: 0 8px 22px rgba(37,99,235,0.38) !important; }
+        .clx-submit:not(:disabled):hover  { background: ${YELLOW_DK} !important; transform: translateY(-1px); box-shadow: 0 8px 22px rgba(245,197,24,0.38) !important; }
         .clx-submit:not(:disabled):active { transform: translateY(0); }
 
         .clx-link { transition: opacity 0.15s ease; }

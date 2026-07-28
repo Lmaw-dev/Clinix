@@ -84,9 +84,9 @@ function StudentAvatar({
 
 function StatusBadge({ status }: { status: Student['status'] }) {
   const styles: Record<string, string> = {
-    enrolled: 'bg-green-100 text-green-700',
-    'not enrolled': 'bg-slate-100 text-slate-600',
-    dropped: 'bg-amber-100 text-amber-700',
+    enrolled: 'bg-blue-100 text-blue-700',
+    'not enrolled': 'bg-blue-100 text-slate-600',
+    dropped: 'bg-yellow-100 text-yellow-700',
   };
   return (
     <span
@@ -452,19 +452,19 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   }
 
   const fieldClass =
-    'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+    'w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 text-black dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
   const labelClass = 'block text-slate-600 dark:text-slate-400 mb-1';
   const btnPrimary =
     'bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors';
   const btnSecondary =
-    'bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors';
+    'bg-white border border-blue-100 text-black px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors';
 
   function studentTable(rows: Student[], title: string) {
     const sortedRows = sortRows(rows);
     return (
-      <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <p className="text-slate-800" style={{ fontSize: 14, fontWeight: 600 }}>
+      <div className="mt-3 overflow-hidden rounded-xl border border-blue-100 bg-white">
+        <div className="px-5 py-4 border-b border-blue-100">
+          <p className="text-black" style={{ fontSize: 14, fontWeight: 600 }}>
             {title}
           </p>
           <p className="text-slate-400" style={{ fontSize: 12 }}>
@@ -475,7 +475,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px]">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
+              <tr className="bg-blue-50 border-b border-blue-100">
                 {[
                   'Profile', 'ID', 'Last Name', 'First Name', 'M.I.', 'Course', 'Year', 'Contact',
                   'Medical Conditions', 'Status', 'Actions',
@@ -499,7 +499,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 </tr>
               ) : (
                 sortedRows.map((s) => (
-                  <tr key={s.studentId} className="hover:bg-slate-50 transition-colors">
+                  <tr key={s.studentId} className="hover:bg-blue-50 transition-colors">
                     <td className="px-4 py-3">
                       <StudentAvatar photo={s.photo} name={s.name} size="sm" />
                     </td>
@@ -508,7 +508,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     </td>
                     <td className="px-4 py-3">
                       <div>
-                        <p className="text-slate-800" style={{ fontSize: 13, fontWeight: 500 }}>
+                        <p className="text-black" style={{ fontSize: 13, fontWeight: 500 }}>
                           {s.lastName}
                         </p>
                         <p className="text-slate-400" style={{ fontSize: 11 }}>
@@ -548,14 +548,14 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                         </button>
                         <button
                           onClick={() => openEdit(s)}
-                          className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                          className="p-1.5 rounded-md hover:bg-blue-100 text-slate-400 hover:text-black transition-colors"
                           title="Edit"
                         >
                           <Pencil size={14} />
                         </button>
                         <button
                           onClick={() => handleArchive(s)}
-                          className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600 transition-colors"
+                          className="p-1.5 rounded-md hover:bg-yellow-50 text-slate-400 hover:text-yellow-600 transition-colors"
                           title="Archive"
                         >
                           <Archive size={14} />
@@ -579,7 +579,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-slate-900 dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Students</h1>
+          <h1 className="text-black dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Students</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>
             Manage student records, profiles, and enrollment status
           </p>
@@ -587,7 +587,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => exportRows(sortRows(visible), tableTitle)}
-            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-blue-100 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             style={{ fontSize: 13 }}
             title="Export CSV"
           >
@@ -596,7 +596,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
           </button>
           <button
             onClick={() => printRows(sortRows(visible), tableTitle)}
-            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-blue-100 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             style={{ fontSize: 13 }}
             title="Print student list"
           >
@@ -605,7 +605,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
           </button>
           <button
             onClick={() => setShowImportModal(true)}
-            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-blue-100 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             style={{ fontSize: 13 }}
             title="Import CSV"
           >
@@ -625,8 +625,8 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
 
       {/* ── LIST TAB ── */}
       {tab === 'list' && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
-          <div className="px-5 py-4 border-b border-slate-100">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-blue-100 dark:border-slate-700">
+          <div className="px-5 py-4 border-b border-blue-100">
             <div className="flex flex-wrap items-center gap-3">
               {/* Search — upper left, grows to fill available width */}
               <div className="relative flex-1 min-w-[240px]">
@@ -660,7 +660,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                         >
                           <StudentAvatar photo={s.photo} name={s.name} size="sm" />
                           <span className="min-w-0 flex-1">
-                            <span className="block text-slate-800 truncate" style={{ fontSize: 13, fontWeight: 600 }}>
+                            <span className="block text-black truncate" style={{ fontSize: 13, fontWeight: 600 }}>
                               {s.name}
                             </span>
                             <span className="block text-slate-500 truncate" style={{ fontSize: 12 }}>
@@ -685,7 +685,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   <select
                     value={courseFilter}
                     onChange={(e) => setCourseFilter(e.target.value)}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700"
+                    className="rounded-lg border border-blue-100 bg-white px-3 py-1.5 text-black"
                     style={{ fontSize: 12 }}
                   >
                     <option value="">All courses</option>
@@ -701,7 +701,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   <select
                     value={yearFilter}
                     onChange={(e) => setYearFilter(e.target.value)}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700"
+                    className="rounded-lg border border-blue-100 bg-white px-3 py-1.5 text-black"
                     style={{ fontSize: 12 }}
                   >
                     <option value="">All year levels</option>
@@ -713,7 +713,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   <select
                     value={sortOrder}
                     onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700"
+                    className="rounded-lg border border-blue-100 bg-white px-3 py-1.5 text-black"
                     style={{ fontSize: 12 }}
                   >
                     <option value="name-asc">Name A-Z</option>
@@ -747,10 +747,10 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
         title={editingId ? 'Edit Student' : 'Add Student'}
         onClose={() => { setForm(defaultForm); setEditingId(null); setShowFormModal(false); }}
       >
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 w-full">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-blue-100 dark:border-slate-700 w-full">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <p className="text-slate-900" style={{ fontSize: 15, fontWeight: 600 }}>
+              <p className="text-black" style={{ fontSize: 15, fontWeight: 600 }}>
                 {editingId ? 'Edit Student' : 'Add Student'}
               </p>
               <p className="text-slate-400" style={{ fontSize: 12 }}>
@@ -760,7 +760,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
               </p>
             </div>
             <span
-              className="px-2.5 py-1 rounded-full bg-green-100 text-green-700"
+              className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700"
               style={{ fontSize: 11, fontWeight: 500 }}
             >
               {editingId ? 'Editing' : 'New record'}
@@ -775,10 +775,10 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   <img
                     src={form.photo}
                     alt="Student profile"
-                    className="w-20 h-20 rounded-full object-cover border-2 border-slate-200"
+                    className="w-20 h-20 rounded-full object-cover border-2 border-blue-100"
                   />
                 ) : (
-                  <div className="w-20 h-20 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center">
+                  <div className="w-20 h-20 rounded-full bg-blue-100 border-2 border-dashed border-blue-200 flex items-center justify-center">
                     <User size={28} className="text-slate-400" />
                   </div>
                 )}
@@ -799,7 +799,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 />
               </div>
               <div>
-                <p className="text-slate-700" style={{ fontSize: 13, fontWeight: 500 }}>
+                <p className="text-black" style={{ fontSize: 13, fontWeight: 500 }}>
                   Profile
                 </p>
                 <p className="text-slate-400 mt-0.5" style={{ fontSize: 12 }}>
@@ -818,7 +818,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
               </div>
             </div>
 
-            <div className="border-t border-slate-100 pt-4">
+            <div className="border-t border-blue-100 pt-4">
               <div className="grid grid-cols-2 gap-4">
                 <label>
                   <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
@@ -1077,7 +1077,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   <PersonDocuments ownerType="student" ownerId={editingId} showToast={showToast} canEdit />
                 </div>
               ) : (
-                <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2.5 text-slate-400" style={{ fontSize: 12 }}>
+                <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2.5 text-slate-400" style={{ fontSize: 12 }}>
                   Save this student first, then edit the record to attach files.
                 </p>
               )}
@@ -1106,23 +1106,23 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
         title="Import CSV"
         onClose={() => setShowImportModal(false)}
       >
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 w-full">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-blue-100 dark:border-slate-700 w-full">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-slate-900" style={{ fontSize: 15, fontWeight: 600 }}>Import CSV</p>
+              <p className="text-black" style={{ fontSize: 15, fontWeight: 600 }}>Import CSV</p>
               <p className="text-slate-400" style={{ fontSize: 12 }}>
                 Upload a CSV file to add multiple student records at once
               </p>
             </div>
             <span
-              className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-700"
+              className="px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-700"
               style={{ fontSize: 11, fontWeight: 500 }}
             >
               CSV upload
             </span>
           </div>
 
-          <label className="block border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
+          <label className="block border-2 border-dashed border-blue-100 rounded-xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
             <Upload size={28} className="mx-auto text-slate-300 mb-3" />
             <p className="text-slate-600" style={{ fontSize: 13, fontWeight: 500 }}>
               {csvFileName || 'Click to select a CSV file'}
@@ -1134,9 +1134,9 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
           </label>
 
           {pendingCsv.length > 0 && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-              <CheckCircle2 size={16} className="text-green-600 shrink-0" />
-              <p className="text-green-700" style={{ fontSize: 13 }}>
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-blue-600 shrink-0" />
+              <p className="text-blue-700" style={{ fontSize: 13 }}>
                 {pendingCsv.length} valid record{pendingCsv.length !== 1 ? 's' : ''} ready to import
               </p>
             </div>
@@ -1178,7 +1178,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 ) : (
                   <div
                     className="w-24 h-24 rounded-full bg-blue-100 border-4 border-white shadow-lg flex items-center justify-center"
-                    style={{ fontSize: 28, fontWeight: 700, color: '#2563EB' }}
+                    style={{ fontSize: 28, fontWeight: 700, color: '#4C5CAE' }}
                   >
                     {avatarInitials(viewStudent.name) || <User size={32} className="text-blue-400" />}
                   </div>
@@ -1191,7 +1191,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   <Camera size={13} />
                 </button>
               </div>
-              <p className="text-slate-900" style={{ fontSize: 17, fontWeight: 700 }}>
+              <p className="text-black" style={{ fontSize: 17, fontWeight: 700 }}>
                 {viewStudent.name}
               </p>
               <p className="text-slate-500 mt-0.5" style={{ fontSize: 12 }}>
@@ -1217,36 +1217,36 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 ['Home Address', viewStudent.homeAddress, true],
                 ['Present Address', viewStudent.presentAddress, true],
               ] as [string, string, boolean][]).map(([k, v, conf]) => (
-                <div key={k} className="bg-slate-50 rounded-lg p-3">
+                <div key={k} className="bg-blue-50 rounded-lg p-3">
                   <p className="text-slate-400 flex items-center gap-1" style={{ fontSize: 11, fontWeight: 500 }}>
                     {conf && <Lock size={10} />}{k}
                   </p>
                   {conf && !isAdmin ? (
                     <p className="text-slate-400 italic" style={{ fontSize: 12 }}>Admin only</p>
                   ) : (
-                    <p className="text-slate-700" style={{ fontSize: 13 }}>{v || '—'}</p>
+                    <p className="text-black" style={{ fontSize: 13 }}>{v || '—'}</p>
                   )}
                 </div>
               ))}
             </div>
 
             {/* Medical conditions */}
-            <div className="bg-slate-50 rounded-lg p-3">
+            <div className="bg-blue-50 rounded-lg p-3">
               <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>
                 Medical Conditions
               </p>
-              <p className="text-slate-700" style={{ fontSize: 13 }}>
+              <p className="text-black" style={{ fontSize: 13 }}>
                 {viewStudent.medicalConditions || 'None recorded'}
               </p>
             </div>
 
             {/* Confidential notes — admin only */}
             {isAdmin && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-amber-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600 }}>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-yellow-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600 }}>
                   <Lock size={11} /> Confidential Notes (admin only)
                 </p>
-                <p className="text-slate-700" style={{ fontSize: 13 }}>
+                <p className="text-black" style={{ fontSize: 13 }}>
                   {viewStudent.confidentialNotes || 'None recorded'}
                 </p>
               </div>

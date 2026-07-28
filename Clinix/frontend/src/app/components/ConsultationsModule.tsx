@@ -16,9 +16,9 @@ type Props = {
 };
 
 const STATUS_STYLES: Record<string, string> = {
-  Pending: 'bg-amber-100 text-amber-700',
+  Pending: 'bg-yellow-100 text-yellow-700',
   Evaluated: 'bg-blue-100 text-blue-700',
-  Confirmed: 'bg-green-100 text-green-700',
+  Confirmed: 'bg-blue-100 text-blue-700',
 };
 function StatusBadge({ status }: { status?: string }) {
   const s = status || 'Pending';
@@ -140,7 +140,7 @@ export function ConsultationsModule({ consultations, setConsultations, students,
     setForm(defaultForm);
   }
 
-  const fieldClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+  const fieldClass = 'w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 text-black dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
   const labelClass = 'block text-slate-600 dark:text-slate-400 mb-1';
   const td = 'px-4 py-3 text-slate-600';
 
@@ -148,7 +148,7 @@ export function ConsultationsModule({ consultations, setConsultations, students,
     <div className="space-y-5 max-w-screen-xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-slate-900 dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Consultation Logs</h1>
+          <h1 className="text-black dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Consultation Logs</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>Daily treatment record of clinic visits</p>
         </div>
         <button onClick={openAdd} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shrink-0" style={{ fontSize: 13 }}>
@@ -156,14 +156,14 @@ export function ConsultationsModule({ consultations, setConsultations, students,
         </button>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
-        <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-blue-100 dark:border-slate-700">
+        <div className="px-5 py-3 border-b border-blue-100 dark:border-slate-700">
           <p className="text-slate-400" style={{ fontSize: 12 }}>{visible.length} record{visible.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px]">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700">
+              <tr className="bg-blue-50 dark:bg-slate-800/60 border-b border-blue-100 dark:border-slate-700">
                 {['Date', 'Time', 'ID', 'Name', 'Age', 'Sex', 'Course & Year / Office', 'Purpose of Visit / Chief Complaint', 'Management', 'Status', ''].map((h, i) => (
                   <th key={i} className="text-left px-4 py-3 text-slate-500 uppercase tracking-wider whitespace-nowrap" style={{ fontSize: 11, fontWeight: 600 }}>{h}</th>
                 ))}
@@ -174,11 +174,11 @@ export function ConsultationsModule({ consultations, setConsultations, students,
                 <tr><td colSpan={11} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>No records logged</td></tr>
               ) : (
                 visible.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                  <tr key={c.id} className="hover:bg-blue-50 dark:hover:bg-slate-700/30 transition-colors">
                     <td className={`${td} whitespace-nowrap`} style={{ fontSize: 13 }}>{c.date || '—'}</td>
                     <td className={`${td} whitespace-nowrap`} style={{ fontSize: 13 }}>{c.time || '—'}</td>
                     <td className="px-4 py-3 text-slate-500" style={{ fontSize: 12, fontFamily: 'monospace' }}>{c.studentId || '—'}</td>
-                    <td className="px-4 py-3 text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 500 }}>{c.studentName || '—'}</td>
+                    <td className="px-4 py-3 text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 500 }}>{c.studentName || '—'}</td>
                     <td className={td} style={{ fontSize: 13 }}>{c.age || '—'}</td>
                     <td className={td} style={{ fontSize: 13 }}>{c.sex || '—'}</td>
                     <td className={`${td} max-w-[160px] truncate`} style={{ fontSize: 13 }}>{c.courseOrOffice || '—'}</td>
@@ -228,7 +228,7 @@ export function ConsultationsModule({ consultations, setConsultations, students,
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600"><UserRound size={15} /></div>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
+                        <span className="block truncate text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
                         <span className="block truncate text-slate-500" style={{ fontSize: 12 }}>{s.studentId} · {[s.course, s.yearLevel].filter(Boolean).join(' ') || 'No course'}</span>
                       </span>
                     </button>
@@ -265,7 +265,7 @@ export function ConsultationsModule({ consultations, setConsultations, students,
           <label><span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Management</span><textarea value={form.management} onChange={(e) => setForm((f) => ({ ...f, management: e.target.value }))} placeholder="Treatment given, medication, referral…" className={`${fieldClass} resize-none`} rows={2} style={{ fontSize: 13 }} /></label>
 
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setShowModal(false)} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors" style={{ fontSize: 13 }}>Cancel</button>
+            <button type="button" onClick={() => setShowModal(false)} className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-600 transition-colors" style={{ fontSize: 13 }}>Cancel</button>
             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors" style={{ fontSize: 13 }}>Save</button>
           </div>
         </form>
@@ -277,31 +277,31 @@ export function ConsultationsModule({ consultations, setConsultations, students,
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-900 dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>{viewConsult.studentName || '—'}</p>
+                <p className="text-black dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>{viewConsult.studentName || '—'}</p>
                 <p className="text-slate-500" style={{ fontSize: 12 }}>{viewConsult.studentId || '—'} · {viewConsult.courseOrOffice || '—'}</p>
               </div>
               <StatusBadge status={viewConsult.consultStatus} />
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[['Date', viewConsult.date], ['Time', viewConsult.time], ['Age', viewConsult.age], ['Sex', viewConsult.sex], ['Blood Type', viewConsult.bloodType]].map(([k, v]) => (
-                <div key={k} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-2.5">
+                <div key={k} className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-2.5">
                   <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 500 }}>{k}</p>
-                  <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{v || '—'}</p>
+                  <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{v || '—'}</p>
                 </div>
               ))}
             </div>
             {/* Initial vital signs (from staff intake) */}
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+            <div className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3">
               <p className="text-slate-400 mb-1.5" style={{ fontSize: 11, fontWeight: 600 }}>Initial Vital Signs</p>
               <div className="grid grid-cols-5 gap-2 text-center">
                 {([['BP', viewConsult.bp], ['RR', viewConsult.rr], ['PR', viewConsult.pr], ['Temp', viewConsult.temp], ['O₂', viewConsult.o2sat]] as const).map(([k, v]) => (
-                  <div key={k}><p className="text-slate-400" style={{ fontSize: 10 }}>{k}</p><p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>{v || '—'}</p></div>
+                  <div key={k}><p className="text-slate-400" style={{ fontSize: 10 }}>{k}</p><p className="text-black dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>{v || '—'}</p></div>
                 ))}
               </div>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+            <div className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3">
               <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>Purpose of Visit / Chief Complaint</p>
-              <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewConsult.chiefComplaint || viewConsult.reason || 'Not recorded'}</p>
+              <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{viewConsult.chiefComplaint || viewConsult.reason || 'Not recorded'}</p>
             </div>
 
             {/* Management & treatment — admin edits, others read-only */}
@@ -311,9 +311,9 @@ export function ConsultationsModule({ consultations, setConsultations, students,
                 <textarea value={mgmtDraft} onChange={(e) => setMgmtDraft(e.target.value)} placeholder="Treatment given, medication, referral…" className={`${fieldClass} resize-none`} rows={2} style={{ fontSize: 13 }} />
               </div>
             ) : (
-              <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+              <div className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3">
                 <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>Management &amp; Treatment</p>
-                <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewConsult.management || viewConsult.outcome || 'Awaiting admin'}</p>
+                <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{viewConsult.management || viewConsult.outcome || 'Awaiting admin'}</p>
               </div>
             )}
 
@@ -325,12 +325,12 @@ export function ConsultationsModule({ consultations, setConsultations, students,
                 </button>
               )}
               {isAdmin && (
-                <button onClick={() => saveManagement(viewConsult)} className="rounded-lg border border-slate-200 dark:border-slate-600 px-4 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700" style={{ fontSize: 13, fontWeight: 600 }}>
+                <button onClick={() => saveManagement(viewConsult)} className="rounded-lg border border-blue-100 dark:border-slate-600 px-4 py-2 text-black dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700" style={{ fontSize: 13, fontWeight: 600 }}>
                   Save management
                 </button>
               )}
               {isAdmin && viewConsult.consultStatus !== 'Confirmed' && (
-                <button onClick={() => confirmLog(viewConsult)} className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700" style={{ fontSize: 13, fontWeight: 600 }}>
+                <button onClick={() => confirmLog(viewConsult)} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700" style={{ fontSize: 13, fontWeight: 600 }}>
                   <CheckCircle2 size={15} /> Confirm log
                 </button>
               )}

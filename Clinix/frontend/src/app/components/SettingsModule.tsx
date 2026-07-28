@@ -60,10 +60,10 @@ function SectionCard({ title, desc, children, action }: {
   action?: React.ReactNode;
 }) {
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden mb-5">
-      <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between gap-4">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 overflow-hidden mb-5">
+      <div className="px-6 py-4 border-b border-blue-100 dark:border-slate-700 flex items-center justify-between gap-4">
         <div>
-          <p className="text-slate-900 dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>{title}</p>
+          <p className="text-black dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>{title}</p>
           {desc && <p className="text-slate-400 dark:text-slate-500 mt-0.5" style={{ fontSize: 12 }}>{desc}</p>}
         </div>
         {action}
@@ -82,14 +82,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const INPUT = 'w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500';
+const INPUT = 'w-full border border-blue-100 dark:border-slate-600 rounded-xl px-3.5 py-2.5 text-black dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button
       onClick={onToggle}
       className="relative shrink-0 transition-colors focus:outline-none"
-      style={{ width: 44, height: 24, borderRadius: 12, background: on ? '#2563EB' : '#CBD5E1' }}
+      style={{ width: 44, height: 24, borderRadius: 12, background: on ? '#4C5CAE' : '#C6CEEC' }}
     >
       <span
         style={{
@@ -118,7 +118,7 @@ function SaveBar({ onSave, saved }: { onSave: () => void; saved: boolean }) {
       <button
         onClick={onSave}
         className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all"
-        style={{ fontSize: 13, fontWeight: 600, background: saved ? '#16A34A' : '#2563EB' }}
+        style={{ fontSize: 13, fontWeight: 600, background: saved ? '#4C5CAE' : '#4C5CAE' }}
       >
         {saved && <Check size={14} />}
         {saved ? 'Saved!' : 'Save Changes'}
@@ -298,9 +298,9 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
   // ── Render helpers
   const selClass = `${INPUT} appearance-none`;
   const accentOptions: Array<{ id: SysPrefs['accent']; label: string; color: string }> = [
-    { id: 'blue', label: 'Blue', color: '#2563EB' },
-    { id: 'green', label: 'Green', color: '#16A34A' },
-    { id: 'teal', label: 'Teal', color: '#0D9488' },
+    { id: 'blue', label: 'Azul Brant', color: '#1B2A6E' },
+    { id: 'green', label: 'Horizonte Claro', color: '#6C7FC8' },
+    { id: 'teal', label: 'Sol de Minas', color: '#F5C518' },
   ];
 
   // ── Section content (all rendered sequentially, no switch needed)
@@ -309,12 +309,12 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
       <>
         <SectionCard title="Account Information" desc="Your profile details used across the system">
             {/* Photo */}
-            <div className="flex items-center gap-5 mb-6 pb-6 border-b border-slate-100 dark:border-slate-700">
+            <div className="flex items-center gap-5 mb-6 pb-6 border-b border-blue-100 dark:border-slate-700">
               <div className="relative shrink-0">
                 {accountPhoto ? (
-                  <img src={accountPhoto} alt="Profile" className="w-20 h-20 rounded-2xl object-cover border-2 border-slate-200 dark:border-slate-600 shadow" />
+                  <img src={accountPhoto} alt="Profile" className="w-20 h-20 rounded-2xl object-cover border-2 border-blue-100 dark:border-slate-600 shadow" />
                 ) : (
-                  <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white shadow" style={{ background: 'linear-gradient(135deg,#3B82F6,#1D4ED8)', fontSize: 24, fontWeight: 700 }}>{initials}</div>
+                  <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white shadow" style={{ background: 'linear-gradient(135deg,#6C7FC8,#37479A)', fontSize: 24, fontWeight: 700 }}>{initials}</div>
                 )}
                 <button onClick={() => photoRef.current?.click()} className="absolute -bottom-1.5 -right-1.5 w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow border-2 border-white dark:border-slate-800 hover:bg-blue-700 transition-colors">
                   <Camera size={13} />
@@ -322,10 +322,10 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 <input ref={photoRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-slate-800 dark:text-slate-100" style={{ fontSize: 16, fontWeight: 700 }}>{account.fullName || 'Clinic Admin'}</p>
+                <p className="text-black dark:text-slate-100" style={{ fontSize: 16, fontWeight: 700 }}>{account.fullName || 'Clinic Admin'}</p>
                 <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: 12 }}>{account.role} · {account.department}</p>
                 <div className="flex items-center gap-2 mt-2">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${account.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{account.status === 'active' ? 'Active' : 'Inactive'}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${account.status === 'active' ? 'bg-blue-100 text-blue-700' : 'bg-blue-100 text-slate-500'}`}>{account.status === 'active' ? 'Active' : 'Inactive'}</span>
                 </div>
               </div>
               {accountPhoto && <button onClick={() => setAccountPhoto('')} className="text-red-500 hover:text-red-600 text-xs transition-colors">Remove photo</button>}
@@ -363,8 +363,8 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                   {(['active', 'inactive'] as const).map(s => (
                     <button key={s} onClick={() => setAccount(a => ({ ...a, status: s }))}
                       className="flex items-center gap-2 px-4 py-2 rounded-xl border transition-colors"
-                      style={{ fontSize: 13, fontWeight: 500, borderColor: account.status === s ? '#2563EB' : '#E2E8F0', background: account.status === s ? '#EFF6FF' : 'transparent', color: account.status === s ? '#2563EB' : '#64748B' }}>
-                      <span className="w-3 h-3 rounded-full border-2" style={{ borderColor: account.status === s ? '#2563EB' : '#CBD5E1', background: account.status === s ? '#2563EB' : 'transparent' }} />
+                      style={{ fontSize: 13, fontWeight: 500, borderColor: account.status === s ? '#4C5CAE' : '#DEE3F5', background: account.status === s ? '#EEF1FA' : 'transparent', color: account.status === s ? '#4C5CAE' : '#64748B' }}>
+                      <span className="w-3 h-3 rounded-full border-2" style={{ borderColor: account.status === s ? '#4C5CAE' : '#C6CEEC', background: account.status === s ? '#4C5CAE' : 'transparent' }} />
                       {s.charAt(0).toUpperCase() + s.slice(1)}
                     </button>
                   ))}
@@ -377,7 +377,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
         <SectionHeading icon={Shield} label="Security" />
         {/* Change password */}
           <SectionCard title="Change Password"
-            action={<button onClick={() => setShowPwForm(v => !v)} className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13 }}>{showPwForm ? 'Cancel' : 'Change Password'}</button>}>
+            action={<button onClick={() => setShowPwForm(v => !v)} className="px-4 py-2 rounded-xl border border-blue-100 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13 }}>{showPwForm ? 'Cancel' : 'Change Password'}</button>}>
             {!showPwForm ? (
               <p className="text-slate-400" style={{ fontSize: 13 }}>Password was last changed on your account creation date.</p>
             ) : (
@@ -405,11 +405,11 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           <SectionCard title="Two-Factor Authentication" desc="Add an extra layer of security to your account">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>2FA Status</p>
+                <p className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>2FA Status</p>
                 <p className="text-slate-400" style={{ fontSize: 12 }}>{twoFa ? 'Enabled — your account is protected' : 'Disabled — your account is less secure'}</p>
               </div>
               <div className="flex items-center gap-3">
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${twoFa ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{twoFa ? 'Enabled' : 'Disabled'}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${twoFa ? 'bg-blue-100 text-blue-700' : 'bg-blue-100 text-slate-500'}`}>{twoFa ? 'Enabled' : 'Disabled'}</span>
                 <Toggle on={twoFa} onToggle={() => { setTwoFa(v => !v); }} />
               </div>
             </div>
@@ -417,23 +417,23 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
 
           {/* Session */}
           <SectionCard title="Session Management">
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-xl p-4 mb-4">
+            <div className="bg-blue-50 dark:bg-slate-700/40 rounded-xl p-4 mb-4">
               <p className="text-slate-500 dark:text-slate-400 mb-3" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Current Session</p>
               <div className="grid grid-cols-3 gap-4">
                 {[['Device', 'Windows 11 / Chrome'], ['Last Login', 'July 8, 2026 · 8:42 AM'], ['Location', 'BISU Calape Campus']].map(([k, v]) => (
                   <div key={k}>
                     <p className="text-slate-400" style={{ fontSize: 11 }}>{k}</p>
-                    <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>{v}</p>
+                    <p className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>{v}</p>
                   </div>
                 ))}
               </div>
             </div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>Automatic Logout</p>
+                <p className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>Automatic Logout</p>
                 <p className="text-slate-400" style={{ fontSize: 12 }}>Sign out after period of inactivity</p>
               </div>
-              <select value={autoLogout} onChange={e => setAutoLogout(e.target.value)} className="border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" style={{ fontSize: 13 }}>
+              <select value={autoLogout} onChange={e => setAutoLogout(e.target.value)} className="border border-blue-100 dark:border-slate-600 rounded-xl px-3 py-2 bg-white dark:bg-slate-700 text-black dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" style={{ fontSize: 13 }}>
                 <option value="10">10 minutes</option>
                 <option value="15">15 minutes</option>
                 <option value="30">30 minutes</option>
@@ -444,7 +444,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               <button onClick={() => showToast('All other sessions signed out')} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" style={{ fontSize: 13 }}>
                 <LogOut size={14} />Sign Out All Devices
               </button>
-              <button onClick={saveSec} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all" style={{ fontSize: 13, fontWeight: 600, background: secSaved ? '#16A34A' : '#2563EB' }}>
+              <button onClick={saveSec} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all" style={{ fontSize: 13, fontWeight: 600, background: secSaved ? '#4C5CAE' : '#4C5CAE' }}>
                 {secSaved && <Check size={14} />}{secSaved ? 'Saved!' : 'Save Settings'}
               </button>
             </div>
@@ -484,7 +484,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           title="Colleges & Courses"
           desc="Add or remove colleges and their courses. Changes apply to the Student and Faculty forms and filters instantly."
           action={
-            <button onClick={handleResetColleges} className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13 }}>
+            <button onClick={handleResetColleges} className="px-4 py-2 rounded-xl border border-blue-100 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13 }}>
               Restore defaults
             </button>
           }
@@ -510,9 +510,9 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               <p className="text-slate-400 text-center py-6" style={{ fontSize: 13 }}>No colleges yet — add one above.</p>
             )}
             {collegesList.map((col) => (
-              <div key={col.name} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+              <div key={col.name} className="rounded-xl border border-blue-100 dark:border-slate-700 p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 700 }}>{col.name}</p>
+                  <p className="text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 700 }}>{col.name}</p>
                   <button onClick={() => handleRemoveCollege(col.name)} title="Remove college" className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                     <Trash2 size={15} />
                   </button>
@@ -524,7 +524,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                     <span className="text-slate-400" style={{ fontSize: 12 }}>No courses yet</span>
                   )}
                   {col.courses.map((course) => (
-                    <span key={course} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 px-2.5 py-1 text-slate-700 dark:text-slate-200" style={{ fontSize: 12, fontWeight: 500 }}>
+                    <span key={course} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-100 dark:bg-slate-700 px-2.5 py-1 text-black dark:text-slate-200" style={{ fontSize: 12, fontWeight: 500 }}>
                       {course}
                       <button onClick={() => handleRemoveCourse(col.name, course)} title="Remove course" className="text-slate-400 hover:text-red-600 transition-colors">
                         <X size={13} />
@@ -543,7 +543,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                     className={INPUT}
                     style={{ fontSize: 12 }}
                   />
-                  <button onClick={() => handleAddCourse(col.name)} className="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-600 px-3 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 12, fontWeight: 600 }}>
+                  <button onClick={() => handleAddCourse(col.name)} className="flex shrink-0 items-center gap-1.5 rounded-xl border border-blue-100 dark:border-slate-600 px-3 text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 12, fontWeight: 600 }}>
                     <Plus size={14} /> Add
                   </button>
                 </div>
@@ -556,7 +556,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
         <SectionCard title="Optional Pages" desc="Turn clinic pages on or off for everyone">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>Medical Certificates page</p>
+              <p className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>Medical Certificates page</p>
               <p className="text-slate-400" style={{ fontSize: 12 }}>
                 {certificatesEnabled ? 'Shown in the sidebar and accessible.' : 'Hidden from the sidebar for all users.'}
               </p>
@@ -578,10 +578,10 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 {([['light', Sun, 'Light'], ['dark', Moon, 'Dark']] as const).map(([id, Icon, label]) => (
                   <button key={id} onClick={() => { if ((id === 'dark') !== isDark) toggleTheme(); }}
                     className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all"
-                    style={{ borderColor: (id === 'dark') === isDark ? '#2563EB' : '#E2E8F0', background: (id === 'dark') === isDark ? '#EFF6FF' : 'transparent' }}>
-                    <Icon size={16} style={{ color: (id === 'dark') === isDark ? '#2563EB' : '#94A3B8' }} />
-                    <span style={{ fontSize: 13, fontWeight: 500, color: (id === 'dark') === isDark ? '#2563EB' : '#64748B' }}>{label}</span>
-                    {(id === 'dark') === isDark && <Check size={14} style={{ color: '#2563EB', marginLeft: 'auto' }} />}
+                    style={{ borderColor: (id === 'dark') === isDark ? '#4C5CAE' : '#DEE3F5', background: (id === 'dark') === isDark ? '#EEF1FA' : 'transparent' }}>
+                    <Icon size={16} style={{ color: (id === 'dark') === isDark ? '#4C5CAE' : '#94A3B8' }} />
+                    <span style={{ fontSize: 13, fontWeight: 500, color: (id === 'dark') === isDark ? '#4C5CAE' : '#64748B' }}>{label}</span>
+                    {(id === 'dark') === isDark && <Check size={14} style={{ color: '#4C5CAE', marginLeft: 'auto' }} />}
                   </button>
                 ))}
               </div>
@@ -594,7 +594,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 {accentOptions.map(({ id, label, color }) => (
                   <button key={id} onClick={() => setSysPrefs(p => ({ ...p, accent: id }))}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all"
-                    style={{ borderColor: sysPrefs.accent === id ? color : '#E2E8F0', background: sysPrefs.accent === id ? `${color}15` : 'transparent' }}>
+                    style={{ borderColor: sysPrefs.accent === id ? color : '#DEE3F5', background: sysPrefs.accent === id ? `${color}15` : 'transparent' }}>
                     <span className="w-4 h-4 rounded-full" style={{ background: color }} />
                     <span style={{ fontSize: 13, fontWeight: 500, color: sysPrefs.accent === id ? color : '#64748B' }}>{label}</span>
                   </button>
@@ -609,7 +609,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 {(['small', 'medium', 'large'] as const).map(s => (
                   <button key={s} onClick={() => setSysPrefs(p => ({ ...p, fontSize: s }))}
                     className="flex-1 py-2.5 rounded-xl border-2 transition-all"
-                    style={{ fontSize: s === 'small' ? 11 : s === 'medium' ? 13 : 15, fontWeight: 500, borderColor: sysPrefs.fontSize === s ? '#2563EB' : '#E2E8F0', color: sysPrefs.fontSize === s ? '#2563EB' : '#64748B', background: sysPrefs.fontSize === s ? '#EFF6FF' : 'transparent' }}>
+                    style={{ fontSize: s === 'small' ? 11 : s === 'medium' ? 13 : 15, fontWeight: 500, borderColor: sysPrefs.fontSize === s ? '#4C5CAE' : '#DEE3F5', color: sysPrefs.fontSize === s ? '#4C5CAE' : '#64748B', background: sysPrefs.fontSize === s ? '#EEF1FA' : 'transparent' }}>
                     {s.charAt(0).toUpperCase() + s.slice(1)}
                   </button>
                 ))}
@@ -623,7 +623,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 {(['english', 'filipino'] as const).map(l => (
                   <button key={l} onClick={() => setSysPrefs(p => ({ ...p, language: l }))}
                     className="flex-1 py-2.5 rounded-xl border-2 transition-all"
-                    style={{ fontSize: 13, fontWeight: 500, borderColor: sysPrefs.language === l ? '#2563EB' : '#E2E8F0', color: sysPrefs.language === l ? '#2563EB' : '#64748B', background: sysPrefs.language === l ? '#EFF6FF' : 'transparent' }}>
+                    style={{ fontSize: 13, fontWeight: 500, borderColor: sysPrefs.language === l ? '#4C5CAE' : '#DEE3F5', color: sysPrefs.language === l ? '#4C5CAE' : '#64748B', background: sysPrefs.language === l ? '#EEF1FA' : 'transparent' }}>
                     {l === 'english' ? '🇺🇸 English' : '🇵🇭 Filipino'}
                   </button>
                 ))}
@@ -631,7 +631,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             </div>
           </SectionCard>
           <div className="flex justify-end">
-            <button onClick={savePrefs} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all" style={{ fontSize: 13, fontWeight: 600, background: prefsSaved ? '#16A34A' : '#2563EB' }}>
+            <button onClick={savePrefs} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all" style={{ fontSize: 13, fontWeight: 600, background: prefsSaved ? '#4C5CAE' : '#4C5CAE' }}>
               {prefsSaved && <Check size={14} />}{prefsSaved ? 'Saved!' : 'Save Preferences'}
             </button>
           </div>
@@ -649,7 +649,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             ].map(({ key, label, desc }) => (
               <div key={key} className="flex items-center justify-between py-1">
                 <div>
-                  <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>{label}</p>
+                  <p className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>{label}</p>
                   <p className="text-slate-400" style={{ fontSize: 12 }}>{desc}</p>
                 </div>
                 <Toggle on={recPrefs[key]} onToggle={() => setRecPrefs(p => ({ ...p, [key]: !p[key] }))} />
@@ -657,10 +657,10 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             ))}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>Archive Inactive Records After</p>
+                <p className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>Archive Inactive Records After</p>
                 <p className="text-slate-400" style={{ fontSize: 12 }}>Records with no activity will be moved to archive</p>
               </div>
-              <select value={recPrefs.archiveAfter} onChange={e => setRecPrefs(p => ({ ...p, archiveAfter: e.target.value }))} className="border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none" style={{ fontSize: 13 }}>
+              <select value={recPrefs.archiveAfter} onChange={e => setRecPrefs(p => ({ ...p, archiveAfter: e.target.value }))} className="border border-blue-100 dark:border-slate-600 rounded-xl px-3 py-2 bg-white dark:bg-slate-700 text-black dark:text-slate-200 focus:outline-none" style={{ fontSize: 13 }}>
                 <option value="1">1 year</option>
                 <option value="2">2 years</option>
                 <option value="3">3 years</option>
@@ -682,7 +682,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 ['emailUpdates', 'System Updates'],
               ] as [keyof NotifPrefs, string][]).map(([key, label]) => (
                 <div key={key} className="flex items-center justify-between py-1.5">
-                  <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>{label}</p>
+                  <p className="text-black dark:text-slate-300" style={{ fontSize: 13 }}>{label}</p>
                   <Toggle on={notif[key] as boolean} onToggle={() => setNotif(n => ({ ...n, [key]: !n[key] }))} />
                 </div>
               ))}
@@ -691,14 +691,14 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           <SectionCard title="Desktop Notifications">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>Desktop Notifications</p>
+                <p className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>Desktop Notifications</p>
                 <p className="text-slate-400" style={{ fontSize: 12 }}>Show system notifications in your browser</p>
               </div>
               <Toggle on={notif.desktop} onToggle={() => setNotif(n => ({ ...n, desktop: !n.desktop }))} />
             </div>
           </SectionCard>
           <div className="flex justify-end">
-            <button onClick={saveNotif} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all" style={{ fontSize: 13, fontWeight: 600, background: notifSaved ? '#16A34A' : '#2563EB' }}>
+            <button onClick={saveNotif} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all" style={{ fontSize: 13, fontWeight: 600, background: notifSaved ? '#4C5CAE' : '#4C5CAE' }}>
               {notifSaved && <Check size={14} />}{notifSaved ? 'Saved!' : 'Save Notifications'}
             </button>
           </div>
@@ -706,20 +706,20 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
         {isAdmin && <>
         <SectionHeading icon={Database} label="Backup & Recovery" />
         <SectionCard title="Database Backup" desc="Create and restore system backups">
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-xl p-4 mb-5 flex items-center justify-between">
+            <div className="bg-blue-50 dark:bg-slate-700/40 rounded-xl p-4 mb-5 flex items-center justify-between">
               <div>
                 <p className="text-slate-400" style={{ fontSize: 11, fontWeight: 500 }}>Last Backup</p>
-                <p className="text-slate-800 dark:text-slate-200" style={{ fontSize: 14, fontWeight: 600 }}>{backupPrefs.lastBackup || 'Never'}</p>
+                <p className="text-black dark:text-slate-200" style={{ fontSize: 14, fontWeight: 600 }}>{backupPrefs.lastBackup || 'Never'}</p>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
-                <Database size={18} className="text-green-600" />
+              <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                <Database size={18} className="text-blue-600" />
               </div>
             </div>
             <div className="flex gap-3">
               <button onClick={createBackup} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>
                 <Download size={15} />Create Backup
               </button>
-              <button onClick={() => showToast('Restore: select a backup file to continue')} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>
+              <button onClick={() => showToast('Restore: select a backup file to continue')} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>
                 <Upload size={15} />Restore Backup
               </button>
             </div>
@@ -729,7 +729,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               {(['daily', 'weekly', 'monthly'] as const).map(f => (
                 <button key={f} onClick={() => { setBackupPrefs(p => ({ ...p, frequency: f })); lsSave('clinixBackupPrefs', { ...backupPrefs, frequency: f }); showToast(`Auto backup set to ${f}`); }}
                   className="flex-1 py-3 rounded-xl border-2 transition-all"
-                  style={{ fontSize: 13, fontWeight: 500, borderColor: backupPrefs.frequency === f ? '#2563EB' : '#E2E8F0', color: backupPrefs.frequency === f ? '#2563EB' : '#64748B', background: backupPrefs.frequency === f ? '#EFF6FF' : 'transparent' }}>
+                  style={{ fontSize: 13, fontWeight: 500, borderColor: backupPrefs.frequency === f ? '#4C5CAE' : '#DEE3F5', color: backupPrefs.frequency === f ? '#4C5CAE' : '#64748B', background: backupPrefs.frequency === f ? '#EEF1FA' : 'transparent' }}>
                   {f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
@@ -744,12 +744,12 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           ) : (
             <ul className="space-y-3">
               {activities.slice(0, 15).map((a, i) => (
-                <li key={i} className="flex items-start gap-3 pb-3 border-b border-slate-100 dark:border-slate-700 last:border-0 last:pb-0">
+                <li key={i} className="flex items-start gap-3 pb-3 border-b border-blue-100 dark:border-slate-700 last:border-0 last:pb-0">
                   <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0" style={{ fontSize: 11, fontWeight: 700 }}>
                     {account.fullName.split(' ').filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase() || 'AD'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>{a.msg}</p>
+                    <p className="text-black dark:text-slate-300" style={{ fontSize: 13 }}>{a.msg}</p>
                     <p className="text-slate-400" style={{ fontSize: 11 }}>{a.ts}</p>
                   </div>
                 </li>
@@ -774,9 +774,9 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               ['hideSensitive', 'Hide Sensitive Information', 'Mask sensitive fields in table views'],
               ['recordActivity', 'Record User Activity', 'Log all system actions in the audit trail'],
             ] as [keyof PrivacyPrefs, string, string][]).map(([key, label, desc]) => (
-              <div key={key} className="flex items-start justify-between gap-4 py-2 border-b border-slate-100 dark:border-slate-700 last:border-0">
+              <div key={key} className="flex items-start justify-between gap-4 py-2 border-b border-blue-100 dark:border-slate-700 last:border-0">
                 <div>
-                  <p className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>{label}</p>
+                  <p className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>{label}</p>
                   <p className="text-slate-400" style={{ fontSize: 12 }}>{desc}</p>
                 </div>
                 <Toggle on={privacy[key] as boolean} onToggle={() => setPrivacy(p => ({ ...p, [key]: !p[key] }))} />
@@ -788,12 +788,12 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
 
         <SectionHeading icon={Info} label="About System" />
         <SectionCard title="System Information">
-            <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-100 dark:border-slate-700">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#3B82F6,#1D4ED8)' }}>
+            <div className="flex items-center gap-4 mb-6 pb-6 border-b border-blue-100 dark:border-slate-700">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#6C7FC8,#37479A)' }}>
                 <Activity size={24} className="text-white" />
               </div>
               <div>
-                <p className="text-slate-900 dark:text-white" style={{ fontSize: 18, fontWeight: 800 }}>Clinix</p>
+                <p className="text-black dark:text-white" style={{ fontSize: 18, fontWeight: 800 }}>Clinix</p>
                 <p className="text-slate-500" style={{ fontSize: 13 }}>Clinic Records Management System</p>
               </div>
             </div>
@@ -806,9 +806,9 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 ['Institution', 'BISU Calape Campus'],
                 ['License', 'Educational Use'],
               ].map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700 last:border-0">
+                <div key={k} className="flex items-center justify-between py-2 border-b border-blue-100 dark:border-slate-700 last:border-0">
                   <span className="text-slate-500 dark:text-slate-400" style={{ fontSize: 13 }}>{k}</span>
-                  <span className="text-slate-700 dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>{v}</span>
+                  <span className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>{v}</span>
                 </div>
               ))}
             </div>
@@ -822,7 +822,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           {/* Data management */}
           <SectionCard title="Data Management">
             <div className="flex flex-wrap gap-3">
-              <button onClick={() => { onNavigate('dashboard'); showToast('Dashboard opened'); }} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13 }}>
+              <button onClick={() => { onNavigate('dashboard'); showToast('Dashboard opened'); }} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13 }}>
                 Back to Dashboard
               </button>
               {isAdmin && (
@@ -841,7 +841,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
   return (
     <div className="w-full max-w-screen-xl">
       <div className="mb-6">
-        <h1 className="text-slate-900 dark:text-white" style={{ fontWeight: 800, fontSize: 22 }}>Settings</h1>
+        <h1 className="text-black dark:text-white" style={{ fontWeight: 800, fontSize: 22 }}>Settings</h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1" style={{ fontSize: 13 }}>Manage your account, clinic, and system preferences</p>
       </div>
       {renderSection()}

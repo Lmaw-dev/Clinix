@@ -53,13 +53,13 @@ export function Sidebar({
     canAccess(role, item.id) && (item.id !== 'certificates' || certificatesEnabled),
   );
 
-  const bg        = isDark ? '#020817' : '#0F172A';
-  const divider   = isDark ? '#0F172A' : '#1E293B';
-  const itemInactive = '#64748B';
-  const itemHoverBg  = 'rgba(255,255,255,0.05)';
-  const itemHoverColor = '#CBD5E1';
-  const activeBg  = 'rgba(59,130,246,0.18)';
-  const activeBorder = 'rgba(59,130,246,0.25)';
+  const bg        = isDark ? '#0D1230' : '#1B2A6E';
+  const divider   = isDark ? '#131D4D' : '#273685';
+  const itemInactive = '#A9B5E1';
+  const itemHoverBg  = 'rgba(255,255,255,0.08)';
+  const itemHoverColor = '#FFFFFF';
+  const activeBg  = 'rgba(245,197,24,0.15)';
+  const activeBorder = 'rgba(245,197,24,0.35)';
 
   return (
     <aside
@@ -71,13 +71,13 @@ export function Sidebar({
         <div className="flex items-center gap-3">
           <div
             className="flex items-center justify-center shrink-0 rounded-xl"
-            style={{ width: 36, height: 36, background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)' }}
+            style={{ width: 36, height: 36, background: 'linear-gradient(135deg, #F5C518, #E3B10D)' }}
           >
-            <Activity size={17} className="text-white" />
+            <Activity size={17} style={{ color: '#1B2A6E' }} />
           </div>
           <div>
-            <p style={{ fontWeight: 700, fontSize: 14, color: '#F8FAFC', lineHeight: 1.2 }}>Clinix</p>
-            <p style={{ fontSize: 10, color: '#64748B', lineHeight: 1.3 }}>BISU Calape Campus</p>
+            <p style={{ fontWeight: 700, fontSize: 14, color: '#FFFFFF', lineHeight: 1.2 }}>Clinix</p>
+            <p style={{ fontSize: 10, color: '#F5C518', lineHeight: 1.3 }}>BISU Calape Campus</p>
           </div>
         </div>
       </div>
@@ -88,7 +88,7 @@ export function Sidebar({
       <nav className="flex-1 min-h-0 px-3 pb-2 flex flex-col justify-start" style={{ overflow: 'hidden' }}>
         <p
           className="px-3 mb-1.5 mt-1 uppercase"
-          style={{ fontSize: 9, fontWeight: 700, color: '#334155', letterSpacing: '0.1em' }}
+          style={{ fontSize: 9, fontWeight: 700, color: '#C6CEEC', letterSpacing: '0.1em' }}
         >
           Workspace
         </p>
@@ -124,9 +124,9 @@ export function Sidebar({
                   {active ? (
                     <span
                       className="flex items-center justify-center shrink-0 rounded-lg"
-                      style={{ width: 24, height: 24, background: 'rgba(59,130,246,0.3)' }}
+                      style={{ width: 24, height: 24, background: 'rgba(245,197,24,0.9)' }}
                     >
-                      <Icon size={13} className="text-blue-300" />
+                      <Icon size={13} style={{ color: '#1B2A6E' }} />
                     </span>
                   ) : (
                     <span style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

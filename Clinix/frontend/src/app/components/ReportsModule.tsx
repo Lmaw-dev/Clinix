@@ -36,8 +36,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'exports', label: 'Exports' },
 ];
 
-const ILLNESS_COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#F97316'];
-const BAR_COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#06B6D4'];
+const ILLNESS_COLORS = ['#37479A', '#6C7FC8', '#A9B5E1', '#F5C518', '#EF4444', '#8595D3', '#C2950A'];
+const BAR_COLORS = ['#37479A', '#6C7FC8', '#A9B5E1', '#F5C518', '#EF4444', '#C2950A'];
 
 function isToday(dateStr: string) {
   return new Date(dateStr).toDateString() === new Date().toDateString();
@@ -70,18 +70,18 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
 
   const C = {
-    card: isDark ? '#1E293B' : '#FFFFFF',
-    cardBorder: isDark ? '#334155' : '#E2E8F0',
-    bg: isDark ? '#0F172A' : '#F8FAFC',
-    txtPrimary: isDark ? '#F1F5F9' : '#0F172A',
-    txtSecond: isDark ? '#CBD5E1' : '#475569',
-    txtMuted: isDark ? '#64748B' : '#94A3B8',
-    grid: isDark ? '#1E293B' : '#F1F5F9',
-    axis: isDark ? '#475569' : '#94A3B8',
-    tableTh: isDark ? '#1A2744' : '#F8FAFC',
-    divider: isDark ? '#1E293B' : '#F1F5F9',
-    inputBg: isDark ? '#0F172A' : '#F8FAFC',
-    inputBorder: isDark ? '#334155' : '#E2E8F0',
+    card: isDark ? '#161F49' : '#FFFFFF',
+    cardBorder: isDark ? '#1B2A6E' : '#DEE3F5',
+    bg: isDark ? '#0D1230' : '#EEF1FA',
+    txtPrimary: isDark ? '#FFFFFF' : '#000000',
+    txtSecond: isDark ? '#C6CEEC' : '#1B2A6E',
+    txtMuted: isDark ? '#A9B5E1' : '#64748B',
+    grid: isDark ? '#131D4D' : '#DEE3F5',
+    axis: isDark ? '#A9B5E1' : '#64748B',
+    tableTh: isDark ? '#131D4D' : '#EEF1FA',
+    divider: isDark ? '#131D4D' : '#DEE3F5',
+    inputBg: isDark ? '#0D1230' : '#EEF1FA',
+    inputBorder: isDark ? '#1B2A6E' : '#DEE3F5',
   };
 
   // ── Derived stats ────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
       const key = d.toISOString().slice(0, 10);
       const label = d.toLocaleDateString('en', { weekday: 'short' });
       const value = consultations.filter(c => c.date === key).length;
-      days.push({ date: key, label, value, fill: '#3B82F6' });
+      days.push({ date: key, label, value, fill: '#6C7FC8' });
     }
     return days;
   }, [consultations]);
@@ -178,8 +178,8 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
     trend?: string; trendDir?: 'up' | 'down' | 'neutral';
     accent?: string; badge?: { text: string; color: string };
   }) {
-    const accentColor = accent || '#3B82F6';
-    const trendColor = trendDir === 'up' ? '#10B981' : trendDir === 'down' ? '#EF4444' : '#94A3B8';
+    const accentColor = accent || '#6C7FC8';
+    const trendColor = trendDir === 'up' ? '#6C7FC8' : trendDir === 'down' ? '#EF4444' : '#94A3B8';
     return (
       <div className={card} style={{ ...cardStyle, transition: 'box-shadow 0.2s, transform 0.2s' }}
         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 25px rgba(0,0,0,0.12)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; }}
@@ -261,21 +261,21 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <KpiCard icon={GraduationCap} label="Total Students" value={students.length.toLocaleString()}
             sub={`${enrolled.length} enrolled · ${dropped.length} archived`}
-            trend="+4%" trendDir="up" accent="#3B82F6" />
+            trend="+4%" trendDir="up" accent="#6C7FC8" />
           <KpiCard icon={Users} label="Faculty & Staff" value={faculty.length}
-            sub="Active personnel" trend="+6%" trendDir="up" accent="#8B5CF6" />
+            sub="Active personnel" trend="+6%" trendDir="up" accent="#8595D3" />
           <KpiCard icon={Stethoscope} label="Consultations" value={consultations.length.toLocaleString()}
-            sub={`${consultToday} today`} trend="+8%" trendDir="up" accent="#10B981" />
+            sub={`${consultToday} today`} trend="+8%" trendDir="up" accent="#6C7FC8" />
           <KpiCard icon={FileText} label="Medical Forms" value={medForms.length.toLocaleString()}
-            sub={`${formCopies} student copies`} trend="6" trendDir="neutral" accent="#F59E0B" />
+            sub={`${formCopies} student copies`} trend="6" trendDir="neutral" accent="#E3B10D" />
           <KpiCard icon={Pill} label="Medicine Inventory" value={inventory.length}
             sub={`${lowStock.length} low stock`}
-            badge={lowStock.length > 0 ? { text: `${lowStock.length} Low`, color: '#F59E0B' } : undefined}
+            badge={lowStock.length > 0 ? { text: `${lowStock.length} Low`, color: '#E3B10D' } : undefined}
             accent="#EF4444" />
           <KpiCard icon={Award} label="Certificates" value={certificates.length}
             sub={`${pending.length} pending approval`}
-            badge={pending.length > 0 ? { text: `${pending.length} Pending`, color: '#3B82F6' } : undefined}
-            accent="#06B6D4" />
+            badge={pending.length > 0 ? { text: `${pending.length} Pending`, color: '#6C7FC8' } : undefined}
+            accent="#8595D3" />
         </div>
 
         {/* Alerts */}
@@ -284,22 +284,22 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
             <p style={{ fontSize: 14, fontWeight: 600, color: C.txtPrimary, marginBottom: 12 }}>Action Required</p>
             <div className="space-y-3">
               {lowStock.length > 0 && (
-                <div className="flex items-start gap-3 rounded-xl p-3" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
-                  <AlertTriangle size={15} className="shrink-0 mt-0.5" style={{ color: '#D97706' }} />
+                <div className="flex items-start gap-3 rounded-xl p-3" style={{ background: '#FDFAEC', border: '1px solid #FAE79C' }}>
+                  <AlertTriangle size={15} className="shrink-0 mt-0.5" style={{ color: '#C2950A' }} />
                   <div>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: '#92400E' }}>Low Stock Alert</p>
-                    <p style={{ fontSize: 12, color: '#B45309', marginTop: 2 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#7C5E08' }}>Low Stock Alert</p>
+                    <p style={{ fontSize: 12, color: '#9C7708', marginTop: 2 }}>
                       {lowStock.map(i => `${i.name} (${i.qty} ${i.unit || 'units'})`).join(' · ')}
                     </p>
                   </div>
                 </div>
               )}
               {pending.length > 0 && (
-                <div className="flex items-start gap-3 rounded-xl p-3" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                  <Clock size={15} className="shrink-0 mt-0.5" style={{ color: '#2563EB' }} />
+                <div className="flex items-start gap-3 rounded-xl p-3" style={{ background: '#EEF1FA', border: '1px solid #C6CEEC' }}>
+                  <Clock size={15} className="shrink-0 mt-0.5" style={{ color: '#4C5CAE' }} />
                   <div>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: '#1E40AF' }}>Pending Certificate Requests</p>
-                    <p style={{ fontSize: 12, color: '#3B82F6', marginTop: 2 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#273685' }}>Pending Certificate Requests</p>
+                    <p style={{ fontSize: 12, color: '#6C7FC8', marginTop: 2 }}>
                       {pending.length} request{pending.length !== 1 ? 's' : ''} awaiting approval
                     </p>
                   </div>
@@ -319,7 +319,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 12 }} />
-                  <Line type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2.5} dot={{ fill: '#3B82F6', r: 3 }} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="value" stroke="#6C7FC8" strokeWidth={2.5} dot={{ fill: '#6C7FC8', r: 3 }} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -333,7 +333,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                   <XAxis type="number" tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} width={60} />
                   <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 12 }} />
-                  <Bar dataKey="value" fill="#3B82F6" radius={[0, 5, 5, 0]} isAnimationActive={false} />
+                  <Bar dataKey="value" fill="#6C7FC8" radius={[0, 5, 5, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -373,7 +373,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                   <XAxis dataKey="name" tick={{ fontSize: 10, fill: C.axis }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 12 }} />
-                  <Bar dataKey="value" radius={[5, 5, 0, 0]} fill="#3B82F6" isAnimationActive={false} />
+                  <Bar dataKey="value" radius={[5, 5, 0, 0]} fill="#6C7FC8" isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -388,8 +388,8 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
             <div className="space-y-0">
               {activities.slice(0, 8).map((a, i) => {
                 const color = a.msg.toLowerCase().includes('low') || a.msg.toLowerCase().includes('error') ? '#EF4444'
-                  : a.msg.toLowerCase().includes('pending') || a.msg.toLowerCase().includes('update') ? '#F59E0B'
-                    : '#10B981';
+                  : a.msg.toLowerCase().includes('pending') || a.msg.toLowerCase().includes('update') ? '#E3B10D'
+                    : '#6C7FC8';
                 return (
                   <div key={i} className="flex items-start gap-3 py-3" style={{ borderBottom: i < Math.min(activities.length, 8) - 1 ? `1px solid ${C.divider}` : 'none' }}>
                     <span className="mt-1.5 shrink-0 rounded-full" style={{ width: 8, height: 8, background: color }} />
@@ -412,13 +412,13 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
     return (
       <div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          <KpiCard icon={Stethoscope} label="Today's Consultations" value={consultToday} accent="#3B82F6" />
-          <KpiCard icon={Stethoscope} label="This Week" value={consultWeek} accent="#8B5CF6" />
-          <KpiCard icon={Stethoscope} label="This Month" value={consultMonth} accent="#10B981" />
+          <KpiCard icon={Stethoscope} label="Today's Consultations" value={consultToday} accent="#6C7FC8" />
+          <KpiCard icon={Stethoscope} label="This Week" value={consultWeek} accent="#8595D3" />
+          <KpiCard icon={Stethoscope} label="This Month" value={consultMonth} accent="#6C7FC8" />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <SectionCard title="Consultation Summary">
-            <StatRow label="Today" value={consultToday} color="#3B82F6" />
+            <StatRow label="Today" value={consultToday} color="#6C7FC8" />
             <StatRow label="This Week" value={consultWeek} />
             <StatRow label="This Month" value={consultMonth} />
             <StatRow label="Total All-Time" value={consultations.length} />
@@ -435,7 +435,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                     <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 12 }} />
-                    <Line type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2.5} dot={{ fill: '#3B82F6', r: 3 }} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="value" stroke="#6C7FC8" strokeWidth={2.5} dot={{ fill: '#6C7FC8', r: 3 }} isAnimationActive={false} />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -465,7 +465,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                     <td className="px-4 py-3" style={{ fontSize: 13, color: C.txtSecond }}>{c.date}</td>
                     <td className="px-4 py-3" style={{ fontSize: 13, color: C.txtSecond, maxWidth: 200 }}><p className="truncate">{c.summary || '—'}</p></td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600, background: c.outcome === 'Referred' ? '#FEF3C7' : '#DCFCE7', color: c.outcome === 'Referred' ? '#D97706' : '#16A34A' }}>
+                      <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600, background: c.outcome === 'Referred' ? '#FCF3CE' : '#DEE3F5', color: c.outcome === 'Referred' ? '#C2950A' : '#4C5CAE' }}>
                         {c.outcome || 'Treated'}
                       </span>
                     </td>
@@ -485,14 +485,14 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
     return (
       <div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard icon={GraduationCap} label="Total Students" value={students.length} accent="#3B82F6" />
-          <KpiCard icon={GraduationCap} label="Enrolled" value={enrolled.length} sub="Active" accent="#10B981" />
-          <KpiCard icon={GraduationCap} label="Archived" value={dropped.length} sub="Dropped / inactive" accent="#F59E0B" />
-          <KpiCard icon={GraduationCap} label="Avg. Consultations/Student" value={students.length ? (consultations.length / students.length).toFixed(1) : '0'} accent="#8B5CF6" />
+          <KpiCard icon={GraduationCap} label="Total Students" value={students.length} accent="#6C7FC8" />
+          <KpiCard icon={GraduationCap} label="Enrolled" value={enrolled.length} sub="Active" accent="#6C7FC8" />
+          <KpiCard icon={GraduationCap} label="Archived" value={dropped.length} sub="Dropped / inactive" accent="#E3B10D" />
+          <KpiCard icon={GraduationCap} label="Avg. Consultations/Student" value={students.length ? (consultations.length / students.length).toFixed(1) : '0'} accent="#8595D3" />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <SectionCard title="Student Statistics">
-            <StatRow label="Most Active Program" value={mostActive} color="#3B82F6" />
+            <StatRow label="Most Active Program" value={mostActive} color="#6C7FC8" />
             <StatRow label="Avg. Consultations / Student" value={students.length ? (consultations.length / students.length).toFixed(1) : '—'} />
             <StatRow label="Total Consultations" value={consultations.length} />
             <StatRow label="Today's Consultations" value={consultToday} />
@@ -507,7 +507,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                     <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 12 }} />
-                    <Bar dataKey="value" fill="#3B82F6" radius={[5, 5, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="value" fill="#6C7FC8" radius={[5, 5, 0, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -528,7 +528,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                       <span style={{ fontSize: 12, color: C.txtMuted }}>{count} ({pct}%)</span>
                     </div>
                     <div className="rounded-full overflow-hidden" style={{ height: 6, background: C.grid }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: '#3B82F6' }} />
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: '#6C7FC8' }} />
                     </div>
                   </div>
                 );
@@ -545,19 +545,19 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
     return (
       <div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard icon={Pill} label="Total Medicines" value={inventory.length} accent="#3B82F6" />
+          <KpiCard icon={Pill} label="Total Medicines" value={inventory.length} accent="#6C7FC8" />
           <KpiCard icon={Pill} label="Low Stock" value={lowStock.length}
-            badge={lowStock.length > 0 ? { text: 'Warning', color: '#F59E0B' } : undefined} accent="#F59E0B" />
+            badge={lowStock.length > 0 ? { text: 'Warning', color: '#E3B10D' } : undefined} accent="#E3B10D" />
           <KpiCard icon={Pill} label="Expired" value={expiredMeds.length}
             badge={expiredMeds.length > 0 ? { text: 'Critical', color: '#EF4444' } : undefined} accent="#EF4444" />
-          <KpiCard icon={Pill} label="Expiring in 30 Days" value={expiringSoon.length} accent="#8B5CF6" />
+          <KpiCard icon={Pill} label="Expiring in 30 Days" value={expiringSoon.length} accent="#8595D3" />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <SectionCard title="Inventory Summary">
             <StatRow label="Total Medicines" value={inventory.length} />
-            <StatRow label="Low Stock (< 5 units)" value={lowStock.length} color={lowStock.length > 0 ? '#F59E0B' : undefined} />
+            <StatRow label="Low Stock (< 5 units)" value={lowStock.length} color={lowStock.length > 0 ? '#E3B10D' : undefined} />
             <StatRow label="Expired" value={expiredMeds.length} color={expiredMeds.length > 0 ? '#EF4444' : undefined} />
-            <StatRow label="Expiring in 30 Days" value={expiringSoon.length} color={expiringSoon.length > 0 ? '#8B5CF6' : undefined} />
+            <StatRow label="Expiring in 30 Days" value={expiringSoon.length} color={expiringSoon.length > 0 ? '#8595D3' : undefined} />
           </SectionCard>
           <div className="lg:col-span-2">
             <SectionCard title="Medicine Stock Levels">
@@ -568,7 +568,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                     <XAxis dataKey="name" tick={{ fontSize: 10, fill: C.axis }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 12 }} />
-                    <Bar dataKey="value" fill="#3B82F6" radius={[5, 5, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="value" fill="#6C7FC8" radius={[5, 5, 0, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -593,7 +593,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                     <td className="px-4 py-3" style={{ fontSize: 13, color: C.txtSecond }}>{item.unit}</td>
                     <td className="px-4 py-3" style={{ fontSize: 13, color: C.txtSecond }}>{item.expiry || '—'}</td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600, background: '#FEF3C7', color: '#D97706' }}>Low Stock</span>
+                      <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600, background: '#FCF3CE', color: '#C2950A' }}>Low Stock</span>
                     </td>
                   </tr>
                 ))}
@@ -610,17 +610,17 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
     return (
       <div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard icon={Award} label="Total Issued" value={certificates.length} accent="#3B82F6" />
-          <KpiCard icon={CheckCircle} label="Approved" value={approved.length} accent="#10B981" />
+          <KpiCard icon={Award} label="Total Issued" value={certificates.length} accent="#6C7FC8" />
+          <KpiCard icon={CheckCircle} label="Approved" value={approved.length} accent="#6C7FC8" />
           <KpiCard icon={Clock} label="Pending" value={pending.length}
-            badge={pending.length > 0 ? { text: 'Pending', color: '#3B82F6' } : undefined} accent="#F59E0B" />
+            badge={pending.length > 0 ? { text: 'Pending', color: '#6C7FC8' } : undefined} accent="#E3B10D" />
           <KpiCard icon={XCircle} label="Rejected" value={rejected.length} accent="#EF4444" />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <SectionCard title="Certificate Summary">
             <StatRow label="Total" value={certificates.length} />
-            <StatRow label="Approved" value={approved.length} color="#10B981" />
-            <StatRow label="Pending" value={pending.length} color="#F59E0B" />
+            <StatRow label="Approved" value={approved.length} color="#6C7FC8" />
+            <StatRow label="Pending" value={pending.length} color="#E3B10D" />
             <StatRow label="Rejected" value={rejected.length} color="#EF4444" />
             <StatRow label="Issued Today" value={certificates.filter(c => c.date === today).length} />
           </SectionCard>
@@ -628,8 +628,8 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
             <SectionCard title="Status Distribution">
               {certificates.length === 0 ? <EmptyChart title="No certificate data" /> : (() => {
                 const pieData = [
-                  { name: 'Approved', value: approved.length, fill: '#10B981' },
-                  { name: 'Pending', value: pending.length, fill: '#F59E0B' },
+                  { name: 'Approved', value: approved.length, fill: '#6C7FC8' },
+                  { name: 'Pending', value: pending.length, fill: '#E3B10D' },
                   { name: 'Rejected', value: rejected.length, fill: '#EF4444' },
                 ].filter(d => d.value > 0);
                 return (
@@ -676,7 +676,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                     </td>
                     <td className="px-4 py-3" style={{ fontSize: 13, color: C.txtSecond }}>{c.date}</td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600, background: '#EFF6FF', color: '#2563EB' }}>Pending</span>
+                      <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600, background: '#EEF1FA', color: '#4C5CAE' }}>Pending</span>
                     </td>
                   </tr>
                 ))}
@@ -701,7 +701,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 12 }} />
-                  <Line type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2.5} dot={{ fill: '#3B82F6', r: 3 }} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="value" stroke="#6C7FC8" strokeWidth={2.5} dot={{ fill: '#6C7FC8', r: 3 }} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -736,7 +736,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                   <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 12 }} />
-                  <Bar dataKey="value" fill="#8B5CF6" radius={[5, 5, 0, 0]} isAnimationActive={false} />
+                  <Bar dataKey="value" fill="#8595D3" radius={[5, 5, 0, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -749,7 +749,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                   <XAxis dataKey="name" tick={{ fontSize: 10, fill: C.axis }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: C.axis }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 12 }} />
-                  <Bar dataKey="value" fill="#10B981" radius={[5, 5, 0, 0]} isAnimationActive={false} />
+                  <Bar dataKey="value" fill="#6C7FC8" radius={[5, 5, 0, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -796,9 +796,9 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
                     className="px-4 py-2 rounded-lg uppercase font-semibold transition-colors"
                     style={{
                       fontSize: 11, letterSpacing: '0.05em',
-                      background: exportFormat === fmt ? '#3B82F6' : C.inputBg,
+                      background: exportFormat === fmt ? '#6C7FC8' : C.inputBg,
                       color: exportFormat === fmt ? '#fff' : C.txtSecond,
-                      border: `1px solid ${exportFormat === fmt ? '#3B82F6' : C.inputBorder}`,
+                      border: `1px solid ${exportFormat === fmt ? '#6C7FC8' : C.inputBorder}`,
                     }}>
                     {fmt}
                   </button>
@@ -806,7 +806,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
               </div>
               <div className="flex gap-3">
                 <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold transition-colors"
-                  style={{ background: '#3B82F6', color: '#fff', fontSize: 13 }}>
+                  style={{ background: '#6C7FC8', color: '#fff', fontSize: 13 }}>
                   <Download size={14} /> Generate Report
                 </button>
                 <button className="px-4 py-2.5 rounded-xl font-semibold transition-colors"
@@ -851,7 +851,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
               <Printer size={13} /> Print
             </button>
             <button className="flex items-center gap-1.5 rounded-xl px-4 py-2 font-semibold"
-              style={{ background: '#3B82F6', color: '#fff', fontSize: 12 }}>
+              style={{ background: '#6C7FC8', color: '#fff', fontSize: 12 }}>
               <Download size={13} /> Export
             </button>
           </div>
@@ -913,7 +913,7 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
           </div>
           <div className="flex items-end gap-2">
             <button className="px-4 rounded-lg font-semibold transition-colors"
-              style={{ fontSize: 13, background: '#3B82F6', color: '#fff', padding: '8px 16px' }}>
+              style={{ fontSize: 13, background: '#6C7FC8', color: '#fff', padding: '8px 16px' }}>
               Apply Filters
             </button>
             <button onClick={() => { setDateFilter('month'); setCustomFrom(''); setCustomTo(''); }}
@@ -932,8 +932,8 @@ export function ReportsModule({ students, faculty, medRecords, medForms, invento
             className="px-4 py-2.5 whitespace-nowrap font-medium transition-colors relative"
             style={{
               fontSize: 13,
-              color: activeTab === tab.id ? '#3B82F6' : C.txtMuted,
-              borderBottom: activeTab === tab.id ? '2px solid #3B82F6' : '2px solid transparent',
+              color: activeTab === tab.id ? '#6C7FC8' : C.txtMuted,
+              borderBottom: activeTab === tab.id ? '2px solid #6C7FC8' : '2px solid transparent',
               marginBottom: -1,
             }}>
             {tab.label}

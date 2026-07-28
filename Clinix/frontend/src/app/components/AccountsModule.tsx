@@ -14,8 +14,8 @@ const CREATABLE_ROLES: Role[] = ['assistant', 'staff'];
 
 const ROLE_BADGE: Record<Role, string> = {
   admin: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  assistant: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  staff: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  assistant: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  staff: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
 };
 
 const emptyForm = {
@@ -45,8 +45,8 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
   if (role !== 'admin') {
     return (
       <div className="max-w-screen-xl">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 py-16 text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-700/40"><Lock size={22} className="text-slate-300" /></div>
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 py-16 text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 dark:bg-slate-700/40"><Lock size={22} className="text-slate-300" /></div>
           <p className="text-slate-500" style={{ fontSize: 14, fontWeight: 600 }}>Restricted</p>
           <p className="text-slate-400 mt-1" style={{ fontSize: 12 }}>Only the main administrator can manage accounts.</p>
         </div>
@@ -101,14 +101,14 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
     } catch { showToast('Update failed'); }
   }
 
-  const field = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const field = 'w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-black dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500';
   const label = 'block text-slate-600 dark:text-slate-400 mb-1';
 
   return (
     <div className="space-y-5 max-w-screen-xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-slate-900 dark:text-white flex items-center gap-2" style={{ fontWeight: 700, fontSize: 20 }}>
+          <h1 className="text-black dark:text-white flex items-center gap-2" style={{ fontWeight: 700, fontSize: 20 }}>
             <ShieldCheck size={20} className="text-blue-600" /> Accounts
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>
@@ -120,19 +120,19 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
         </button>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
-        <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-blue-100 dark:border-slate-700">
+        <div className="px-5 py-3 border-b border-blue-100 dark:border-slate-700">
           <p className="text-slate-400" style={{ fontSize: 12 }}>{accounts.length} account{accounts.length !== 1 ? 's' : ''}</p>
         </div>
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-12 text-slate-400" style={{ fontSize: 13 }}><Loader2 size={16} className="animate-spin" /> Loading accounts…</div>
         ) : error ? (
-          <div className="flex items-center justify-center gap-2 py-12 text-amber-600" style={{ fontSize: 13 }}><AlertCircle size={16} /> {error}</div>
+          <div className="flex items-center justify-center gap-2 py-12 text-yellow-600" style={{ fontSize: 13 }}><AlertCircle size={16} /> {error}</div>
         ) : (
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700">
+              <tr className="bg-blue-50 dark:bg-slate-800/60 border-b border-blue-100 dark:border-slate-700">
                 {['Username', 'Name', 'Role', 'Email / Contact', 'Actions'].map((h) => (
                   <th key={h} className="text-left px-5 py-3 text-slate-500 uppercase tracking-wider" style={{ fontSize: 11, fontWeight: 600 }}>{h}</th>
                 ))}
@@ -140,11 +140,11 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {accounts.map((a) => (
-                <tr key={a.id || a.username} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                <tr key={a.id || a.username} className="hover:bg-blue-50 dark:hover:bg-slate-700/30 transition-colors">
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2.5">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500"><UserCog size={15} /></div>
-                      <span className="text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-slate-700 text-slate-500"><UserCog size={15} /></div>
+                      <span className="text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>
                         {a.username}{a.username === currentUser && <span className="ml-2 text-slate-400" style={{ fontSize: 11, fontWeight: 400 }}>(you)</span>}
                       </span>
                     </div>
@@ -194,7 +194,7 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
           <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>Address</span><input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className={field} style={{ fontSize: 13 }} /></label>
           <p className="flex items-center gap-1.5 text-slate-400" style={{ fontSize: 11 }}><Lock size={11} /> All of these fields are stored AES-256 encrypted in the database.</p>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setShowCreate(false)} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50" style={{ fontSize: 13 }}>Cancel</button>
+            <button type="button" onClick={() => setShowCreate(false)} className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50" style={{ fontSize: 13 }}>Cancel</button>
             <button type="submit" disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2" style={{ fontSize: 13 }}>{saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create</button>
           </div>
         </form>
@@ -207,7 +207,7 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
             <input value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="At least 4 characters" className={field} style={{ fontSize: 13 }} required autoFocus />
           </label>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setResetFor(null)} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50" style={{ fontSize: 13 }}>Cancel</button>
+            <button type="button" onClick={() => setResetFor(null)} className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50" style={{ fontSize: 13 }}>Cancel</button>
             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2" style={{ fontSize: 13 }}><KeyRound size={14} /> Update</button>
           </div>
         </form>

@@ -70,7 +70,7 @@ function FacultyAvatar({ photo, name, size = 'md', className = '' }: { photo?: s
     return <img src={photo} alt={name} className={`${dims} shrink-0 rounded-full object-cover ${className}`} />;
   }
   return (
-    <div className={`flex ${dims} shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-700 ${className}`} style={{ fontSize: textSize, fontWeight: 700 }}>
+    <div className={`flex ${dims} shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 ${className}`} style={{ fontSize: textSize, fontWeight: 700 }}>
       {avatarInitials(name) || <User size={textSize} />}
     </div>
   );
@@ -79,11 +79,11 @@ function FacultyAvatar({ photo, name, size = 'md', className = '' }: { photo?: s
 // Colors keyed off employment classification, used for the avatar ring and status pill
 // in the personnel list card (see facultyTable()).
 const CLASSIFICATION_STYLES: Record<string, { ring: string; badge: string; dot: string }> = {
-  Teaching: { ring: 'ring-indigo-200 dark:ring-indigo-800', badge: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300', dot: 'bg-indigo-400' },
-  'Non-teaching': { ring: 'ring-teal-200 dark:ring-teal-800', badge: 'bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-300', dot: 'bg-teal-400' },
-  Agency: { ring: 'ring-amber-200 dark:ring-amber-800', badge: 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300', dot: 'bg-amber-400' },
+  Teaching: { ring: 'ring-blue-200 dark:ring-blue-800', badge: 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300', dot: 'bg-blue-400' },
+  'Non-teaching': { ring: 'ring-blue-200 dark:ring-blue-800', badge: 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300', dot: 'bg-blue-400' },
+  Agency: { ring: 'ring-yellow-200 dark:ring-yellow-800', badge: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-300', dot: 'bg-yellow-400' },
 };
-const DEFAULT_CLASSIFICATION_STYLE = { ring: 'ring-slate-200 dark:ring-slate-600', badge: 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300', dot: 'bg-slate-300' };
+const DEFAULT_CLASSIFICATION_STYLE = { ring: 'ring-slate-200 dark:ring-slate-600', badge: 'bg-blue-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300', dot: 'bg-slate-300' };
 function classificationStyle(category?: string) {
   return (category && CLASSIFICATION_STYLES[category]) || DEFAULT_CLASSIFICATION_STYLE;
 }
@@ -380,10 +380,10 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
   function facultyTable(rows: FacultyMember[], title: string) {
     const sortedRows = sortFaculty(rows, sortOrder);
     return (
-      <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-slate-700">
+      <div className="mt-3 overflow-hidden rounded-xl border border-blue-100 bg-white dark:border-slate-700 dark:bg-slate-800">
+        <div className="flex items-center justify-between gap-4 border-b border-blue-100 px-5 py-4 dark:border-slate-700">
           <div>
-            <p className="text-slate-800 dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>{title}</p>
+            <p className="text-black dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>{title}</p>
             <p className="text-slate-400" style={{ fontSize: 12 }}>{sortedRows.length} personnel record{sortedRows.length !== 1 ? 's' : ''}</p>
           </div>
         </div>
@@ -398,17 +398,17 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
                 <div
                   key={member.staffId}
                   onClick={() => setViewMember(member)}
-                  className="group flex cursor-pointer items-center gap-4 px-5 py-4 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/30"
+                  className="group flex cursor-pointer items-center gap-4 px-5 py-4 transition-colors hover:bg-blue-50 dark:hover:bg-slate-700/30"
                 >
                   <FacultyAvatar photo={member.photo} name={member.name} className={`ring-2 ring-offset-2 dark:ring-offset-slate-800 ${style.ring}`} />
 
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>
+                    <p className="truncate text-black dark:text-slate-100" style={{ fontSize: 14, fontWeight: 600 }}>
                       {member.name}
                       {member.role && (
                         <>
                           <span className="mx-1.5 text-slate-300 dark:text-slate-600">•</span>
-                          <span className="text-indigo-500 dark:text-indigo-300" style={{ fontSize: 12, fontWeight: 500 }}>{member.role}</span>
+                          <span className="text-blue-500 dark:text-blue-300" style={{ fontSize: 12, fontWeight: 500 }}>{member.role}</span>
                         </>
                       )}
                     </p>
@@ -431,7 +431,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
                     <button onClick={(e) => { e.stopPropagation(); setViewMember(member); }} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600" title="View">
                       <Eye size={14} />
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); openEdit(member); }} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" title="Edit">
+                    <button onClick={(e) => { e.stopPropagation(); openEdit(member); }} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-100 hover:text-black" title="Edit">
                       <Pencil size={14} />
                     </button>
                   </div>
@@ -444,20 +444,20 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
     );
   }
 
-  const fieldClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+  const fieldClass = 'w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 text-black dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
   const labelClass = 'block text-slate-600 dark:text-slate-400 mb-1';
 
   return (
     <div className="space-y-5 max-w-screen-xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-slate-900 dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Faculty & Staff</h1>
+          <h1 className="text-black dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Faculty & Staff</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>Manage personnel records and medical history</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => exportRows(faculty, 'faculty-staff')}
-            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-blue-100 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             style={{ fontSize: 13 }}
             title="Export CSV"
           >
@@ -466,7 +466,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           </button>
           <button
             onClick={() => printRows(faculty, 'Faculty & Staff')}
-            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-blue-100 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             style={{ fontSize: 13 }}
             title="Print faculty list"
           >
@@ -475,7 +475,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           </button>
           <button
             onClick={() => setShowImportModal(true)}
-            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-blue-100 bg-white px-4 py-2 text-slate-600 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             style={{ fontSize: 13 }}
             title="Import CSV"
           >
@@ -493,8 +493,8 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-        <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-700 dark:bg-slate-800/50">
+      <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white dark:border-slate-700 dark:bg-slate-800">
+        <div className="border-b border-blue-100 px-5 py-4 dark:border-slate-700 dark:bg-slate-800/50">
           <div className="flex flex-wrap items-center gap-3">
             {/* Search — upper left, grows to fill available width */}
             <div className="relative flex-1 min-w-[240px]">
@@ -528,7 +528,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
                       >
                         <FacultyAvatar photo={member.photo} name={member.name} size="sm" />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{member.name}</span>
+                          <span className="block truncate text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{member.name}</span>
                           <span className="block truncate text-slate-500" style={{ fontSize: 12 }}>
                             {member.role || 'No designation'} · {normalizeCollegeName(member.college) || 'No college'}
                           </span>
@@ -549,7 +549,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
                 <select
                   value={classFilter}
                   onChange={(e) => setClassFilter(e.target.value)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                  className="rounded-lg border border-blue-100 bg-white px-3 py-1.5 text-black dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
                   style={{ fontSize: 12 }}
                 >
                   <option value="">All classifications</option>
@@ -561,7 +561,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
                 <select
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                  className="rounded-lg border border-blue-100 bg-white px-3 py-1.5 text-black dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
                   style={{ fontSize: 12 }}
                 >
                   <option value="name-asc">Name A-Z</option>
@@ -599,9 +599,9 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           <div className="flex items-center gap-5">
             <div className="relative shrink-0">
               {form.photo ? (
-                <img src={form.photo} alt="Profile" className="h-20 w-20 rounded-full border-2 border-slate-200 object-cover dark:border-slate-600" />
+                <img src={form.photo} alt="Profile" className="h-20 w-20 rounded-full border-2 border-blue-100 object-cover dark:border-slate-600" />
               ) : (
-                <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-blue-200 bg-blue-100 dark:border-slate-600 dark:bg-slate-700">
                   <User size={28} className="text-slate-400" />
                 </div>
               )}
@@ -616,7 +616,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
               <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
             </div>
             <div>
-              <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 500 }}>Profile photo</p>
+              <p className="text-black dark:text-slate-200" style={{ fontSize: 13, fontWeight: 500 }}>Profile photo</p>
               <p className="mt-0.5 text-slate-400" style={{ fontSize: 12 }}>Click the camera icon to upload. JPG, PNG up to 8 MB — auto-resized for storage.</p>
               {form.photo && (
                 <button
@@ -831,7 +831,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           {editingId ? (
             <PersonDocuments ownerType="faculty" ownerId={editingId} showToast={showToast} canEdit />
           ) : (
-            <p className="rounded-lg bg-slate-50 dark:bg-slate-700/40 px-3 py-2.5 text-slate-400" style={{ fontSize: 12 }}>
+            <p className="rounded-lg bg-blue-50 dark:bg-slate-700/40 px-3 py-2.5 text-slate-400" style={{ fontSize: 12 }}>
               Save this record first, then edit it to attach files.
             </p>
           )}
@@ -840,7 +840,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
             <button
               type="button"
               onClick={() => { setShowModal(false); setForm(defaultForm); setEditingId(null); }}
-              className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
+              className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-600 transition-colors"
               style={{ fontSize: 13 }}
             >
               Cancel
@@ -858,17 +858,17 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
         onClose={() => setShowImportModal(false)}
       >
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center dark:border-slate-700 dark:bg-slate-800/60">
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-center dark:border-slate-700 dark:bg-slate-800/60">
             <Upload size={28} className="mx-auto mb-3 text-slate-300" />
-            <p className="text-slate-900 dark:text-slate-100" style={{ fontSize: 15, fontWeight: 600 }}>Import CSV</p>
+            <p className="text-black dark:text-slate-100" style={{ fontSize: 15, fontWeight: 600 }}>Import CSV</p>
             <p className="text-slate-500 dark:text-slate-400 mt-1" style={{ fontSize: 12 }}>Upload a CSV file to add or update personnel records.</p>
             <input ref={csvInputRef} type="file" accept=".csv,text/csv" onChange={handleCsvFile} className="mt-4 block w-full text-sm text-slate-500 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-white hover:file:bg-blue-700" />
             {csvFileName && <p className="mt-2 text-slate-500" style={{ fontSize: 12 }}>{csvFileName}</p>}
           </div>
 
           {pendingCsv.length > 0 && (
-            <div className="rounded-xl border border-green-100 bg-green-50 p-3 dark:border-green-900/40 dark:bg-green-900/20">
-              <div className="flex items-center gap-2 text-green-700 dark:text-green-300" style={{ fontSize: 12, fontWeight: 600 }}>
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 dark:border-blue-900/40 dark:bg-blue-900/20">
+              <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300" style={{ fontSize: 12, fontWeight: 600 }}>
                 <CheckCircle2 size={16} />
                 {pendingCsv.length} valid record{pendingCsv.length !== 1 ? 's' : ''} ready to import
               </div>
@@ -876,7 +876,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           )}
 
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setShowImportModal(false)} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+            <button type="button" onClick={() => setShowImportModal(false)} className="rounded-lg border border-blue-100 bg-white px-4 py-2 text-black hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
               Cancel
             </button>
             <button type="button" onClick={handleCsvImport} className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700" style={{ fontSize: 13 }}>
@@ -897,7 +897,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
             <div className="flex items-center gap-3">
               <FacultyAvatar photo={viewMember.photo} name={viewMember.name} size="lg" />
               <div>
-                <p className="text-slate-900" style={{ fontSize: 15, fontWeight: 600 }}>{viewMember.name}</p>
+                <p className="text-black" style={{ fontSize: 15, fontWeight: 600 }}>{viewMember.name}</p>
                 <p className="text-slate-500" style={{ fontSize: 12 }}>
                   {viewMember.staffId} • {viewMember.role || 'No role assigned'}
                 </p>
@@ -917,25 +917,25 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
                 ['Home Address', viewMember.homeAddress, true],
                 ['Present Address', viewMember.presentAddress, true],
               ] as [string, string | undefined, boolean][]).map(([k, v, conf]) => (
-                <div key={k} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+                <div key={k} className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3">
                   <p className="text-slate-400 flex items-center gap-1" style={{ fontSize: 11, fontWeight: 500 }}>{conf && <Lock size={10} />}{k}</p>
                   {conf && !isAdmin ? (
                     <p className="text-slate-400 italic" style={{ fontSize: 12 }}>Admin only</p>
                   ) : (
-                    <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{v || '—'}</p>
+                    <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{v || '—'}</p>
                   )}
                 </div>
               ))}
             </div>
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+            <div className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3">
               <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>Medical History</p>
-              <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewMember.medicalHistory || 'No entries'}</p>
+              <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{viewMember.medicalHistory || 'No entries'}</p>
             </div>
 
             {isAdmin && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-amber-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600 }}><Lock size={11} /> Confidential Notes (admin only)</p>
-                <p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewMember.confidentialNotes || 'None recorded'}</p>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-yellow-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600 }}><Lock size={11} /> Confidential Notes (admin only)</p>
+                <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{viewMember.confidentialNotes || 'None recorded'}</p>
               </div>
             )}
 

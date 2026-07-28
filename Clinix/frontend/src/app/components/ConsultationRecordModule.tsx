@@ -34,9 +34,9 @@ function ageFromBirthdate(bd?: string) {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  Pending: 'bg-amber-100 text-amber-700',
+  Pending: 'bg-yellow-100 text-yellow-700',
   Evaluated: 'bg-blue-100 text-blue-700',
-  Confirmed: 'bg-green-100 text-green-700',
+  Confirmed: 'bg-blue-100 text-blue-700',
 };
 function StatusBadge({ status }: { status?: string }) {
   const s = status || 'Pending';
@@ -128,7 +128,7 @@ export function ConsultationRecordModule({ consultations, setConsultations, stud
     setEditingId(null);
   }
 
-  const fieldClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const fieldClass = 'w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 text-black dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500';
   const labelClass = 'block text-slate-600 dark:text-slate-400 mb-1';
   const td = 'px-4 py-3 text-slate-600';
 
@@ -136,7 +136,7 @@ export function ConsultationRecordModule({ consultations, setConsultations, stud
     <div className="space-y-5 max-w-screen-xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-slate-900 dark:text-white flex items-center gap-2" style={{ fontWeight: 700, fontSize: 20 }}>
+          <h1 className="text-black dark:text-white flex items-center gap-2" style={{ fontWeight: 700, fontSize: 20 }}>
             <Activity size={19} className="text-blue-600" /> Consultation Record
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>
@@ -148,14 +148,14 @@ export function ConsultationRecordModule({ consultations, setConsultations, stud
         </button>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
-        <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-blue-100 dark:border-slate-700">
+        <div className="px-5 py-3 border-b border-blue-100 dark:border-slate-700">
           <p className="text-slate-400" style={{ fontSize: 12 }}>{visible.length} record{visible.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px]">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700">
+              <tr className="bg-blue-50 dark:bg-slate-800/60 border-b border-blue-100 dark:border-slate-700">
                 {['Date', 'Time', 'Name', 'Chief Complaint', 'Vital Signs', 'Status', ''].map((h, i) => (
                   <th key={i} className="text-left px-4 py-3 text-slate-500 uppercase tracking-wider whitespace-nowrap" style={{ fontSize: 11, fontWeight: 600 }}>{h}</th>
                 ))}
@@ -166,10 +166,10 @@ export function ConsultationRecordModule({ consultations, setConsultations, stud
                 <tr><td colSpan={7} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>No records yet</td></tr>
               ) : (
                 visible.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                  <tr key={c.id} className="hover:bg-blue-50 dark:hover:bg-slate-700/30 transition-colors">
                     <td className={`${td} whitespace-nowrap`} style={{ fontSize: 13 }}>{c.date || '—'}</td>
                     <td className={`${td} whitespace-nowrap`} style={{ fontSize: 13 }}>{c.time || '—'}</td>
-                    <td className="px-4 py-3 text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 500 }}>{c.studentName || '—'}</td>
+                    <td className="px-4 py-3 text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 500 }}>{c.studentName || '—'}</td>
                     <td className={`${td} max-w-[200px] truncate`} style={{ fontSize: 13 }}>{c.chiefComplaint || '—'}</td>
                     <td className={`${td} whitespace-nowrap`} style={{ fontSize: 12 }}>
                       {[c.bp && `BP ${c.bp}`, c.temp && `T ${c.temp}°`, c.pr && `PR ${c.pr}`].filter(Boolean).join(' · ') || '—'}
@@ -179,7 +179,7 @@ export function ConsultationRecordModule({ consultations, setConsultations, stud
                       <div className="flex items-center gap-1">
                         <button onClick={() => setViewRec(c)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors" title="View"><Eye size={14} /></button>
                         {(c.consultStatus || 'Pending') === 'Pending' && (
-                          <button onClick={() => openEdit(c)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors" title="Edit"><Pencil size={14} /></button>
+                          <button onClick={() => openEdit(c)} className="p-1.5 rounded-md hover:bg-blue-100 text-slate-400 hover:text-black transition-colors" title="Edit"><Pencil size={14} /></button>
                         )}
                       </div>
                     </td>
@@ -212,7 +212,7 @@ export function ConsultationRecordModule({ consultations, setConsultations, stud
                     {personMatches.map((p) => (
                       <button key={p.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pickPerson(p)} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-slate-700">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600"><UserRound size={15} /></div>
-                        <span className="min-w-0 flex-1"><span className="block truncate text-slate-800 dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</span><span className="block truncate text-slate-500" style={{ fontSize: 12 }}>{p.id} · {p.sub || '—'}</span></span>
+                        <span className="min-w-0 flex-1"><span className="block truncate text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</span><span className="block truncate text-slate-500" style={{ fontSize: 12 }}>{p.id} · {p.sub || '—'}</span></span>
                       </button>
                     ))}
                   </div>
@@ -253,7 +253,7 @@ export function ConsultationRecordModule({ consultations, setConsultations, stud
           </label>
 
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setShowModal(false)} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50" style={{ fontSize: 13 }}>Cancel</button>
+            <button type="button" onClick={() => setShowModal(false)} className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50" style={{ fontSize: 13 }}>Cancel</button>
             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700" style={{ fontSize: 13 }}>{editingId ? 'Update' : 'Save record'}</button>
           </div>
         </form>
@@ -265,27 +265,27 @@ export function ConsultationRecordModule({ consultations, setConsultations, stud
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-900 dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>{viewRec.studentName}</p>
+                <p className="text-black dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>{viewRec.studentName}</p>
                 <p className="text-slate-500" style={{ fontSize: 12 }}>{viewRec.studentId} · {viewRec.courseOrOffice || '—'}</p>
               </div>
               <StatusBadge status={viewRec.consultStatus} />
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[['Date', viewRec.date], ['Time', viewRec.time], ['Age', viewRec.age], ['Sex', viewRec.sex], ['Blood Type', viewRec.bloodType]].map(([k, v]) => (
-                <div key={k} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-2.5"><p className="text-slate-400" style={{ fontSize: 11 }}>{k}</p><p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{v || '—'}</p></div>
+                <div key={k} className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-2.5"><p className="text-slate-400" style={{ fontSize: 11 }}>{k}</p><p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{v || '—'}</p></div>
               ))}
             </div>
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3">
+            <div className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3">
               <p className="text-slate-400 mb-1.5" style={{ fontSize: 11, fontWeight: 600 }}>Initial Vital Signs</p>
               <div className="grid grid-cols-5 gap-2 text-center">
                 {([['BP', viewRec.bp], ['RR', viewRec.rr], ['PR', viewRec.pr], ['Temp', viewRec.temp], ['O₂', viewRec.o2sat]] as const).map(([k, v]) => (
-                  <div key={k}><p className="text-slate-400" style={{ fontSize: 10 }}>{k}</p><p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>{v || '—'}</p></div>
+                  <div key={k}><p className="text-slate-400" style={{ fontSize: 10 }}>{k}</p><p className="text-black dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>{v || '—'}</p></div>
                 ))}
               </div>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg p-3"><p className="text-slate-400 mb-1" style={{ fontSize: 11 }}>Chief Complaint</p><p className="text-slate-700 dark:text-slate-200" style={{ fontSize: 13 }}>{viewRec.chiefComplaint || '—'}</p></div>
+            <div className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3"><p className="text-slate-400 mb-1" style={{ fontSize: 11 }}>Chief Complaint</p><p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{viewRec.chiefComplaint || '—'}</p></div>
             {viewRec.management && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3"><p className="text-green-700 mb-1" style={{ fontSize: 11, fontWeight: 600 }}>Management & Treatment</p><p className="text-slate-700" style={{ fontSize: 13 }}>{viewRec.management}</p></div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3"><p className="text-blue-700 mb-1" style={{ fontSize: 11, fontWeight: 600 }}>Management & Treatment</p><p className="text-black" style={{ fontSize: 13 }}>{viewRec.management}</p></div>
             )}
           </div>
         )}

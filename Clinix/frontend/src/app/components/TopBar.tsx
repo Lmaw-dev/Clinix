@@ -25,8 +25,8 @@ export function TopBar({
       style={{
         height: 60,
         background: '#FFFFFF',
-        borderBottom: '1px solid #F1F5F9',
-        boxShadow: '0 1px 3px 0 rgba(0,0,0,0.04)',
+        borderBottom: '2px solid #F5C518',
+        boxShadow: '0 1px 3px 0 rgba(27,42,110,0.08)',
       }}
     >
       {/* Spacer — pushes right-side content to the right */}
@@ -40,9 +40,9 @@ export function TopBar({
             className="hidden sm:flex items-center"
             style={{
               fontSize: 12,
-              color: '#64748B',
-              background: '#F8FAFC',
-              border: '1px solid #E2E8F0',
+              color: '#000000',
+              background: '#EEF1FA',
+              border: '1px solid #C6CEEC',
               borderRadius: 20,
               padding: '5px 12px',
               fontWeight: 500,
@@ -58,17 +58,17 @@ export function TopBar({
               width: 36,
               height: 36,
               borderRadius: 10,
-              background: '#F8FAFC',
-              border: '1px solid #E2E8F0',
-              color: '#64748B',
+              background: '#EEF1FA',
+              border: '1px solid #C6CEEC',
+              color: '#37479A',
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = '#F1F5F9';
-              (e.currentTarget as HTMLElement).style.color = '#334155';
+              (e.currentTarget as HTMLElement).style.background = '#FCF3CE';
+              (e.currentTarget as HTMLElement).style.color = '#000000';
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = '#F8FAFC';
-              (e.currentTarget as HTMLElement).style.color = '#64748B';
+              (e.currentTarget as HTMLElement).style.background = '#EEF1FA';
+              (e.currentTarget as HTMLElement).style.color = '#37479A';
             }}
           >
             <Bell size={15} />
@@ -82,7 +82,7 @@ export function TopBar({
                 width: 34,
                 height: 34,
                 borderRadius: 10,
-                background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+                background: 'linear-gradient(135deg, #6C7FC8, #37479A)',
                 fontSize: 11,
                 fontWeight: 700,
               }}
@@ -90,10 +90,10 @@ export function TopBar({
               AD
             </div>
             <div className="hidden md:block">
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#1E293B', lineHeight: 1.2 }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#000000', lineHeight: 1.2 }}>
                 Clinic Admin
               </p>
-              <p style={{ fontSize: 10, color: '#94A3B8', lineHeight: 1.2 }}>Administrator</p>
+              <p style={{ fontSize: 10, color: '#37479A', lineHeight: 1.2 }}>Administrator</p>
             </div>
           </div>
         </div>
