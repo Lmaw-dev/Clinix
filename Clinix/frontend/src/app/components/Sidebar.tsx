@@ -9,7 +9,6 @@ import {
   BarChart2,
   Settings,
   ShieldCheck,
-  ClipboardList,
   LogOut,
   Activity,
 } from 'lucide-react';
@@ -20,7 +19,7 @@ import { useTheme } from '../ThemeContext';
 const NAV_ITEMS: Array<{
   id: Page;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>;
 }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'Students', icon: GraduationCap },
@@ -28,7 +27,6 @@ const NAV_ITEMS: Array<{
   { id: 'medical-records', label: 'Medical Forms', icon: FileText },
   { id: 'inventory', label: 'Medicine Inventory', icon: Pill },
   { id: 'certificates', label: 'Medical Certificates', icon: Award },
-  { id: 'consultation-record', label: 'Consultation Record', icon: ClipboardList },
   { id: 'consultations', label: 'Consultation Logs', icon: MessageSquare },
   { id: 'reports', label: 'Reports & Statistics', icon: BarChart2 },
   { id: 'accounts', label: 'Accounts', icon: ShieldCheck },

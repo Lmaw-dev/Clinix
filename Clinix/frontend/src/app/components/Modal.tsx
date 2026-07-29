@@ -5,9 +5,13 @@ type ModalProps = {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Tailwind max-width class for the panel (default: max-w-lg) */
+  maxWidth?: string;
+  /** Keep the panel size fixed and scroll only the content area (scrollbar hidden) */
+  scrollBody?: boolean;
 };
 
-export function Modal({ isOpen, title, onClose, children }: ModalProps) {
+export function Modal({ isOpen, title, onClose, children, maxWidth = 'max-w-lg', scrollBody = false }: ModalProps) {
   if (!isOpen) return null;
 
   return (
@@ -16,8 +20,8 @@ export function Modal({ isOpen, title, onClose, children }: ModalProps) {
         className="absolute inset-0 bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto border border-blue-100 dark:border-slate-700">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-blue-100 dark:border-slate-700">
+      <div className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full ${maxWidth} mx-4 max-h-[90vh] border border-blue-100 dark:border-slate-700 ${scrollBody ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-blue-100 dark:border-slate-700 shrink-0">
           <h3
             className="text-black dark:text-slate-100 text-base"
             style={{ fontWeight: 600 }}
@@ -25,7 +29,7 @@ export function Modal({ isOpen, title, onClose, children }: ModalProps) {
             {title}
           </h3>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className={`px-6 py-5 ${scrollBody ? 'flex-1 min-h-0 overflow-y-auto no-scrollbar' : ''}`}>{children}</div>
       </div>
     </div>
   );

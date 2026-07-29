@@ -102,12 +102,12 @@ const ALL_PAGES: Page[] = [
 ];
 
 export const ROLE_PAGES: Record<Role, Page[]> = {
-  // Admin manages accounts + does the consultation record intake AND the logs.
-  admin: [...ALL_PAGES, 'consultation-record', 'accounts'],
-  // Assistant evaluates/inputs the consultation logs (no intake record, no accounts).
+  // Admin manages accounts + the consultation logs.
+  admin: [...ALL_PAGES, 'accounts'],
+  // Assistant evaluates/inputs the consultation logs (no accounts).
   assistant: ALL_PAGES,
-  // Staff takes the consultation record (intake / vital signs) + dashboard + reports.
-  staff: ['dashboard', 'consultation-record', 'reports'],
+  // Staff gets dashboard + reports.
+  staff: ['dashboard', 'reports'],
 };
 
 export function canAccess(role: Role, page: Page): boolean {

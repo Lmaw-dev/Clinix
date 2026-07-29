@@ -197,7 +197,7 @@ export function ConsultationsModule({ consultations, setConsultations, students,
       </div>
 
       {/* New consultation */}
-      <Modal isOpen={showModal} title="New Consultation" onClose={() => setShowModal(false)}>
+      <Modal isOpen={showModal} title="New Consultation" onClose={() => setShowModal(false)} maxWidth="max-w-3xl" scrollBody>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Quick-fill from a student record — type to search */}
           <label className="block">

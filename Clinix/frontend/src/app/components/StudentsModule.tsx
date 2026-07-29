@@ -1,5 +1,8 @@
-import { useState, useMemo, useRef } from 'react';
-import { Plus, Search, Pencil, Archive, Eye, Upload, CheckCircle2, Camera, User, Download, Printer, Filter, X, Lock } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import {
+  Plus, Search, Pencil, Archive, Upload, CheckCircle2, Camera, User, Download, Printer, Filter, X, Lock,
+  ArrowLeft, Phone, Mail, CalendarDays, GraduationCap, BookOpen, HeartPulse, Users, Home, MapPin, FileText, Building2,
+} from 'lucide-react';
 import { Student, normalizeStudent } from '../App';
 import { Modal } from './Modal';
 import { PersonDocuments } from './PersonDocuments';
@@ -14,6 +17,9 @@ type Props = {
   globalSearch: string;
   showToast: (m: string) => void;
   addActivity: (m: string) => void;
+  /** Student ID whose full profile should open on mount (e.g. from Dashboard search) */
+  openProfileId?: string | null;
+  onProfileOpened?: () => void;
 };
 
 type TabId = 'list' | 'form' | 'import';
@@ -28,6 +34,7 @@ const defaultForm = {
   yearLevel: '',
   gender: '',
   contactNumber: '',
+  email: '',
   medicalConditions: '',
   photo: '',
   birthdate: '',
@@ -36,11 +43,43 @@ const defaultForm = {
   homeAddress: '',
   presentAddress: '',
   guardianName: '',
+  guardianRelationship: '',
   guardianContact: '',
   confidentialNotes: '',
+  allergies: '',
+  currentMedications: '',
+  medicalOthers: '',
+  height: '',
+  weight: '',
+  currentProvince: '',
+  currentCity: '',
+  currentBarangay: '',
+  currentPurok: '',
+  currentZip: '',
+  homeProvince: '',
+  homeCity: '',
+  homeBarangay: '',
+  homePurok: '',
+  homeZip: '',
+  isBoarding: false,
+  boardingHouseName: '',
+  boardingHouseAddress: '',
+  landlordName: '',
+  landlordContact: '',
 };
 
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+// Height in cm, weight in kg — BMI is derived, never stored.
+function computeBmi(heightCm?: string, weightKg?: string): { value: string; category: string } | null {
+  const h = parseFloat(heightCm || '');
+  const w = parseFloat(weightKg || '');
+  if (!h || !w || h <= 0 || w <= 0) return null;
+  const m = h / 100;
+  const bmi = w / (m * m);
+  const category = bmi < 18.5 ? 'Underweight' : bmi < 25 ? 'Normal' : bmi < 30 ? 'Overweight' : 'Obese';
+  return { value: bmi.toFixed(1), category };
+}
 
 function avatarInitials(name: string) {
   return name
@@ -133,6 +172,7 @@ function parseCsv(text: string): Record<string, unknown>[] {
     studentid: 'studentId', id: 'studentId', name: 'name', course: 'course',
     yearlevel: 'yearLevel', year: 'yearLevel', gender: 'gender', sex: 'gender',
     contactnumber: 'contactNumber', contact: 'contactNumber',
+    email: 'email', emailaddress: 'email',
     medicalconditions: 'medicalConditions', conditions: 'medicalConditions',
     lastname: 'lastName', surname: 'lastName',
     firstname: 'firstName', fullname: 'name',
@@ -141,9 +181,21 @@ function parseCsv(text: string): Record<string, unknown>[] {
     bloodtype: 'bloodType',
     schoolyear: 'schoolYear',
     guardianname: 'guardianName', parentname: 'guardianName',
+    guardianrelationship: 'guardianRelationship', relationship: 'guardianRelationship',
     guardiancontact: 'guardianContact', parentcontact: 'guardianContact',
     homeaddress: 'homeAddress',
     presentaddress: 'presentAddress',
+    allergies: 'allergies',
+    currentmedications: 'currentMedications', medications: 'currentMedications',
+    medicalothers: 'medicalOthers', others: 'medicalOthers',
+    height: 'height', heightcm: 'height',
+    weight: 'weight', weightkg: 'weight',
+    currentprovince: 'currentProvince', currentcity: 'currentCity', currentmunicipalitycity: 'currentCity',
+    currentbarangay: 'currentBarangay', currentpurok: 'currentPurok', currentpurokstreet: 'currentPurok', currentzip: 'currentZip', currentzipcode: 'currentZip',
+    homeprovince: 'homeProvince', homecity: 'homeCity', homemunicipalitycity: 'homeCity',
+    homebarangay: 'homeBarangay', homepurok: 'homePurok', homepurokstreet: 'homePurok', homezip: 'homeZip', homezipcode: 'homeZip',
+    isboarding: 'isBoarding', boardinghousename: 'boardingHouseName', boardinghouseaddress: 'boardingHouseAddress',
+    landlordname: 'landlordName', landlordcontact: 'landlordContact', landlordcontactnumber: 'landlordContact',
   };
   const lines = text.replace(/\r/g, '').split('\n').filter((l) => l.trim());
   if (!lines.length) return [];
@@ -201,7 +253,7 @@ async function saveStudentApi(student: Student, editingId?: string | null) {
   }
 }
 
-export function StudentsModule({ students, setStudents, globalSearch, showToast, addActivity }: Props) {
+export function StudentsModule({ students, setStudents, globalSearch, showToast, addActivity, openProfileId, onProfileOpened }: Props) {
   const colleges = useColleges();
   const isAdmin = canSeeConfidential();
   const [tab, setTab] = useState<TabId>('list');
@@ -210,6 +262,16 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewStudent, setViewStudent] = useState<Student | null>(null);
+
+  // Open the full profile when another module (e.g. Dashboard search) requests it
+  useEffect(() => {
+    if (!openProfileId) return;
+    const target = students.find((s) => s.studentId === openProfileId);
+    if (target) {
+      setViewStudent(target);
+      onProfileOpened?.();
+    }
+  }, [openProfileId, students, onProfileOpened]);
   const [showFormModal, setShowFormModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [pendingCsv, setPendingCsv] = useState<Student[]>([]);
@@ -268,6 +330,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       yearLevel: s.yearLevel,
       gender: s.gender,
       contactNumber: s.contactNumber,
+      email: s.email || '',
       medicalConditions: s.medicalConditions,
       photo: s.photo || '',
       birthdate: s.birthdate || '',
@@ -276,8 +339,29 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       homeAddress: s.homeAddress || '',
       presentAddress: s.presentAddress || '',
       guardianName: s.guardianName || '',
+      guardianRelationship: s.guardianRelationship || '',
       guardianContact: s.guardianContact || '',
       confidentialNotes: s.confidentialNotes || '',
+      allergies: s.allergies || '',
+      currentMedications: s.currentMedications || '',
+      medicalOthers: s.medicalOthers || '',
+      height: s.height || '',
+      weight: s.weight || '',
+      currentProvince: s.currentProvince || '',
+      currentCity: s.currentCity || '',
+      currentBarangay: s.currentBarangay || '',
+      currentPurok: s.currentPurok || '',
+      currentZip: s.currentZip || '',
+      homeProvince: s.homeProvince || '',
+      homeCity: s.homeCity || '',
+      homeBarangay: s.homeBarangay || '',
+      homePurok: s.homePurok || '',
+      homeZip: s.homeZip || '',
+      isBoarding: s.isBoarding || false,
+      boardingHouseName: s.boardingHouseName === 'N/A' ? '' : (s.boardingHouseName || ''),
+      boardingHouseAddress: s.boardingHouseAddress === 'N/A' ? '' : (s.boardingHouseAddress || ''),
+      landlordName: s.landlordName === 'N/A' ? '' : (s.landlordName || ''),
+      landlordContact: s.landlordContact === 'N/A' ? '' : (s.landlordContact || ''),
     });
     setEditingId(s.studentId);
     setShowFormModal(true);
@@ -299,8 +383,21 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (form.isBoarding && (!form.boardingHouseName.trim() || !form.boardingHouseAddress.trim() || !form.landlordName.trim() || !form.landlordContact.trim())) {
+      showToast('Boarding house information is required because the student is staying in a boarding house / dormitory / apartment.');
+      return;
+    }
+    // Living with family → boarding house details are recorded as "N/A"
+    const boarding = form.isBoarding
+      ? {
+          boardingHouseName: form.boardingHouseName.trim(),
+          boardingHouseAddress: form.boardingHouseAddress.trim(),
+          landlordName: form.landlordName.trim(),
+          landlordContact: form.landlordContact.trim(),
+        }
+      : { boardingHouseName: 'N/A', boardingHouseAddress: 'N/A', landlordName: 'N/A', landlordContact: 'N/A' };
     const current = editingId ? students.find((s) => s.studentId === editingId) : null;
-    const record = normalizeStudent({ ...form, status: current?.status || 'enrolled' } as Record<string, unknown>);
+    const record = normalizeStudent({ ...form, ...boarding, status: current?.status || 'enrolled' } as Record<string, unknown>);
     if (!record.studentId || !record.lastName || !record.firstName) {
       showToast('Student ID, first name, and last name are required');
       return;
@@ -407,9 +504,21 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   }
 
   function exportRows(rows: Student[], title: string) {
-    const headers = ['Student ID', 'Last Name', 'First Name', 'M.I.', 'Name', 'Course', 'Year Level', 'Sex', 'Contact Number', 'Birthdate', 'Blood Type', 'School Year', 'Guardian Name', 'Guardian Contact', 'Home Address', 'Present Address', 'Medical Conditions', 'Status'];
+    const headers = [
+      'Student ID', 'Last Name', 'First Name', 'M.I.', 'Name', 'Course', 'Year Level', 'Sex', 'Contact Number', 'Email', 'Birthdate', 'Blood Type', 'Height (cm)', 'Weight (kg)', 'School Year',
+      'Guardian Name', 'Guardian Relationship', 'Guardian Contact',
+      'Current Province', 'Current City/Municipality', 'Current Barangay', 'Current Purok/Street', 'Current ZIP',
+      'Home Province', 'Home City/Municipality', 'Home Barangay', 'Home Purok/Street', 'Home ZIP',
+      'Is Boarding', 'Boarding House Name', 'Boarding House Address', 'Landlord Name', 'Landlord Contact',
+      'Medical Conditions', 'Allergies', 'Current Medications', 'Others', 'Status',
+    ];
     const csv = [headers, ...rows.map((s) => [
-      s.studentId, s.lastName, s.firstName, s.middleInitial, s.name, s.course, s.yearLevel, s.gender, s.contactNumber, s.birthdate, s.bloodType, s.schoolYear, s.guardianName, s.guardianContact, s.homeAddress, s.presentAddress, s.medicalConditions, s.status,
+      s.studentId, s.lastName, s.firstName, s.middleInitial, s.name, s.course, s.yearLevel, s.gender, s.contactNumber, s.email, s.birthdate, s.bloodType, s.height, s.weight, s.schoolYear,
+      s.guardianName, s.guardianRelationship, s.guardianContact,
+      s.currentProvince, s.currentCity, s.currentBarangay, s.currentPurok, s.currentZip,
+      s.homeProvince, s.homeCity, s.homeBarangay, s.homePurok, s.homeZip,
+      s.isBoarding ? 'Yes' : 'No', s.boardingHouseName, s.boardingHouseAddress, s.landlordName, s.landlordContact,
+      s.medicalConditions, s.allergies, s.currentMedications, s.medicalOthers, s.status,
     ])].map((row) => row.map(csvCell).join(',')).join('\n');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -499,7 +608,8 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 </tr>
               ) : (
                 sortedRows.map((s) => (
-                  <tr key={s.studentId} className="hover:bg-blue-50 transition-colors">
+                  <tr key={s.studentId} onClick={() => setViewStudent(s)}
+                    className="hover:bg-blue-50 transition-colors cursor-pointer" title="View profile">
                     <td className="px-4 py-3">
                       <StudentAvatar photo={s.photo} name={s.name} size="sm" />
                     </td>
@@ -540,21 +650,14 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => setViewStudent(s)}
-                          className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
-                          title="View profile"
-                        >
-                          <Eye size={14} />
-                        </button>
-                        <button
-                          onClick={() => openEdit(s)}
+                          onClick={(e) => { e.stopPropagation(); openEdit(s); }}
                           className="p-1.5 rounded-md hover:bg-blue-100 text-slate-400 hover:text-black transition-colors"
                           title="Edit"
                         >
                           <Pencil size={14} />
                         </button>
                         <button
-                          onClick={() => handleArchive(s)}
+                          onClick={(e) => { e.stopPropagation(); handleArchive(s); }}
                           className="p-1.5 rounded-md hover:bg-yellow-50 text-slate-400 hover:text-yellow-600 transition-colors"
                           title="Archive"
                         >
@@ -576,6 +679,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
 
   return (
     <div className="space-y-5 max-w-screen-xl">
+      {!viewStudent && <>
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -741,11 +845,15 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
         </div>
       )}
 
+      </>}
+
       {/* ── FORM TAB ── */}
       <Modal
         isOpen={showFormModal}
         title={editingId ? 'Edit Student' : 'Add Student'}
         onClose={() => { setForm(defaultForm); setEditingId(null); setShowFormModal(false); }}
+        maxWidth="max-w-3xl"
+        scrollBody
       >
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-blue-100 dark:border-slate-700 w-full">
           <div className="flex items-center justify-between mb-6">
@@ -949,6 +1057,19 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     style={{ fontSize: 13 }}
                   />
                 </label>
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
+                    Email Address
+                  </span>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value.trim() }))}
+                    placeholder="name@example.com"
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
               </div>
 
               <p className="mt-6 mb-1 text-slate-500 uppercase tracking-wider" style={{ fontSize: 10, fontWeight: 700 }}>
@@ -982,6 +1103,39 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
 
               <div className="grid grid-cols-2 gap-4 mt-4">
                 <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Height (cm)</span>
+                  <input
+                    value={form.height}
+                    onChange={(e) => setForm((f) => ({ ...f, height: e.target.value.replace(/[^0-9.]/g, '') }))}
+                    placeholder="e.g. 160"
+                    inputMode="decimal"
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Weight (kg)</span>
+                  <input
+                    value={form.weight}
+                    onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value.replace(/[^0-9.]/g, '') }))}
+                    placeholder="e.g. 48"
+                    inputMode="decimal"
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+              </div>
+              {(() => {
+                const bmi = computeBmi(form.height, form.weight);
+                return bmi ? (
+                  <p className="mt-2 flex items-center gap-1.5 text-slate-500" style={{ fontSize: 12 }}>
+                    BMI (auto-calculated): <span className="text-black dark:text-slate-200" style={{ fontWeight: 700 }}>{bmi.value}</span> ({bmi.category})
+                  </p>
+                ) : null;
+              })()}
+
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <label>
                   <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>School Year</span>
                   <input
                     value={form.schoolYear}
@@ -1005,6 +1159,16 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
 
               <div className="grid grid-cols-2 gap-4 mt-4">
                 <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Relationship to Student</span>
+                  <input
+                    value={form.guardianRelationship}
+                    onChange={(e) => setForm((f) => ({ ...f, guardianRelationship: e.target.value }))}
+                    placeholder="e.g. Mother, Father, Guardian"
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+                <label>
                   <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Parent's / Guardian's Contact</span>
                   <input
                     value={form.guardianContact}
@@ -1016,28 +1180,147 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     style={{ fontSize: 13 }}
                   />
                 </label>
-                <label>
-                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Home Address</span>
-                  <input
-                    value={form.homeAddress}
-                    onChange={(e) => setForm((f) => ({ ...f, homeAddress: e.target.value }))}
-                    placeholder="Permanent / home address"
-                    className={fieldClass}
-                    style={{ fontSize: 13 }}
-                  />
+              </div>
+
+              {/* ── Current Residence ── */}
+              <div className="mt-6 rounded-xl border border-blue-100 dark:border-slate-600 p-4">
+                <p className="flex items-center gap-1.5 text-blue-900 dark:text-blue-300 mb-3" style={{ fontSize: 12.5, fontWeight: 700 }}>
+                  <MapPin size={14} /> Current Residence
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <label>
+                    <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Province</span>
+                    <input value={form.currentProvince} onChange={(e) => setForm((f) => ({ ...f, currentProvince: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} />
+                  </label>
+                  <label>
+                    <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Municipality/City</span>
+                    <input value={form.currentCity} onChange={(e) => setForm((f) => ({ ...f, currentCity: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} />
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <label>
+                    <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Barangay</span>
+                    <input value={form.currentBarangay} onChange={(e) => setForm((f) => ({ ...f, currentBarangay: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} />
+                  </label>
+                  <label>
+                    <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Purok/Street</span>
+                    <input value={form.currentPurok} onChange={(e) => setForm((f) => ({ ...f, currentPurok: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} />
+                  </label>
+                </div>
+                <label className="block mt-4 max-w-[calc(50%-0.5rem)]">
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
+                    ZIP Code <span className="text-slate-400" style={{ fontWeight: 400 }}>(optional)</span>
+                  </span>
+                  <input value={form.currentZip} onChange={(e) => setForm((f) => ({ ...f, currentZip: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} />
                 </label>
               </div>
 
-              <label className="block mt-4">
-                <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Present Address</span>
-                <input
-                  value={form.presentAddress}
-                  onChange={(e) => setForm((f) => ({ ...f, presentAddress: e.target.value }))}
-                  placeholder="Current address while studying"
-                  className={fieldClass}
-                  style={{ fontSize: 13 }}
-                />
-              </label>
+              {/* ── Permanent / Home Address ── */}
+              <div className="mt-4 rounded-xl border border-blue-100 dark:border-slate-600 p-4">
+                <p className="flex items-center gap-1.5 text-blue-900 dark:text-blue-300 mb-3" style={{ fontSize: 12.5, fontWeight: 700 }}>
+                  <Home size={14} /> Permanent / Home Address
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <label>
+                    <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Province</span>
+                    <input value={form.homeProvince} onChange={(e) => setForm((f) => ({ ...f, homeProvince: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} />
+                  </label>
+                  <label>
+                    <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Municipality/City</span>
+                    <input value={form.homeCity} onChange={(e) => setForm((f) => ({ ...f, homeCity: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} />
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <label>
+                    <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Barangay</span>
+                    <input value={form.homeBarangay} onChange={(e) => setForm((f) => ({ ...f, homeBarangay: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} />
+                  </label>
+                  <label>
+                    <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Purok/Street</span>
+                    <input value={form.homePurok} onChange={(e) => setForm((f) => ({ ...f, homePurok: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} />
+                  </label>
+                </div>
+                <label className="block mt-4 max-w-[calc(50%-0.5rem)]">
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
+                    ZIP Code <span className="text-slate-400" style={{ fontWeight: 400 }}>(optional)</span>
+                  </span>
+                  <input value={form.homeZip} onChange={(e) => setForm((f) => ({ ...f, homeZip: e.target.value }))} className={fieldClass} style={{ fontSize: 13 }} />
+                </label>
+              </div>
+
+              {/* ── Boarding House Information ── */}
+              <div className="mt-4 rounded-xl border border-blue-100 dark:border-slate-600 p-4">
+                <p className="flex items-center gap-1.5 text-blue-900 dark:text-blue-300 mb-3" style={{ fontSize: 12.5, fontWeight: 700 }}>
+                  <Building2 size={14} /> Boarding House Information
+                </p>
+                <label className="flex items-start gap-2.5 rounded-lg bg-blue-50 dark:bg-slate-700/40 p-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.isBoarding}
+                    onChange={(e) => setForm((f) => ({ ...f, isBoarding: e.target.checked }))}
+                    className="mt-0.5 shrink-0"
+                  />
+                  <span className="text-slate-600 dark:text-slate-300" style={{ fontSize: 12.5 }}>
+                    Student is currently staying in a boarding house / dormitory / apartment (not living with family)
+                  </span>
+                </label>
+
+                {form.isBoarding ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                      <label>
+                        <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Boarding House Name</span>
+                        <input
+                          value={form.boardingHouseName}
+                          onChange={(e) => setForm((f) => ({ ...f, boardingHouseName: e.target.value }))}
+                          className={fieldClass}
+                          style={{ fontSize: 13 }}
+                          required
+                        />
+                      </label>
+                      <label>
+                        <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Boarding House Address</span>
+                        <input
+                          value={form.boardingHouseAddress}
+                          onChange={(e) => setForm((f) => ({ ...f, boardingHouseAddress: e.target.value }))}
+                          className={fieldClass}
+                          style={{ fontSize: 13 }}
+                          required
+                        />
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                      <label>
+                        <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Landlord/Landlady Name</span>
+                        <input
+                          value={form.landlordName}
+                          onChange={(e) => setForm((f) => ({ ...f, landlordName: e.target.value }))}
+                          className={fieldClass}
+                          style={{ fontSize: 13 }}
+                          required
+                        />
+                      </label>
+                      <label>
+                        <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Landlord Contact Number</span>
+                        <input
+                          value={form.landlordContact}
+                          onChange={(e) => setForm((f) => ({ ...f, landlordContact: e.target.value.replace(/\D/g, '').slice(0, 12) }))}
+                          placeholder="09XXXXXXXXX"
+                          maxLength={12}
+                          inputMode="numeric"
+                          className={fieldClass}
+                          style={{ fontSize: 13 }}
+                          required
+                        />
+                      </label>
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-3 text-slate-400 italic" style={{ fontSize: 12 }}>
+                    Living with family — boarding house fields will be recorded as "N/A".
+                  </p>
+                )}
+              </div>
 
               <label className="block mt-4">
                 <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
@@ -1046,9 +1329,46 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 <textarea
                   value={form.medicalConditions}
                   onChange={(e) => setForm((f) => ({ ...f, medicalConditions: e.target.value }))}
-                  placeholder="List allergies, chronic conditions, or other health notes."
+                  placeholder="Chronic conditions, past surgeries, or other health notes."
                   className={`${fieldClass} resize-none`}
                   rows={3}
+                  style={{ fontSize: 13 }}
+                />
+              </label>
+
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Allergies</span>
+                  <textarea
+                    value={form.allergies}
+                    onChange={(e) => setForm((f) => ({ ...f, allergies: e.target.value }))}
+                    placeholder="e.g. Penicillin, seafood"
+                    className={`${fieldClass} resize-none`}
+                    rows={2}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Current Medications</span>
+                  <textarea
+                    value={form.currentMedications}
+                    onChange={(e) => setForm((f) => ({ ...f, currentMedications: e.target.value }))}
+                    placeholder="e.g. Maintenance medicines, dosage"
+                    className={`${fieldClass} resize-none`}
+                    rows={2}
+                    style={{ fontSize: 13 }}
+                  />
+                </label>
+              </div>
+
+              <label className="block mt-4">
+                <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Others</span>
+                <textarea
+                  value={form.medicalOthers}
+                  onChange={(e) => setForm((f) => ({ ...f, medicalOthers: e.target.value }))}
+                  placeholder="Any other relevant medical information"
+                  className={`${fieldClass} resize-none`}
+                  rows={2}
                   style={{ fontSize: 13 }}
                 />
               </label>
@@ -1158,117 +1478,218 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
         </div>
       </Modal>
 
-      {/* ── VIEW PROFILE MODAL ── */}
-      <Modal
-        isOpen={!!viewStudent}
-        title="Student Profile"
-        onClose={() => setViewStudent(null)}
-      >
-        {viewStudent && (
-          <div className="space-y-4">
-            {/* Profile header */}
-            <div className="flex flex-col items-center text-center py-4 bg-gradient-to-b from-blue-50 to-white rounded-xl px-4">
-              <div className="relative mb-3">
-                {viewStudent.photo ? (
-                  <img
-                    src={viewStudent.photo}
-                    alt={viewStudent.name}
-                    className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
-                  />
-                ) : (
-                  <div
-                    className="w-24 h-24 rounded-full bg-blue-100 border-4 border-white shadow-lg flex items-center justify-center"
-                    style={{ fontSize: 28, fontWeight: 700, color: '#4C5CAE' }}
-                  >
-                    {avatarInitials(viewStudent.name) || <User size={32} className="text-blue-400" />}
+      {/* ── PROFILE PAGE — replaces the list while a student is selected ── */}
+      {viewStudent && (() => {
+        const p = students.find((x) => x.studentId === viewStudent.studentId) ?? viewStudent;
+        const age = (() => {
+          if (!p.birthdate) return '';
+          const b = new Date(p.birthdate);
+          if (isNaN(b.getTime())) return '';
+          const now = new Date();
+          let a = now.getFullYear() - b.getFullYear();
+          const m = now.getMonth() - b.getMonth();
+          if (m < 0 || (m === 0 && now.getDate() < b.getDate())) a--;
+          return a >= 0 ? String(a) : '';
+        })();
+        const bmi = computeBmi(p.height, p.weight);
+        const Field = ({ label, value, conf = false }: { label: string; value?: string; conf?: boolean }) => (
+          <div className="py-1.5 border-b border-blue-50 dark:border-slate-700/60">
+            <p className="text-slate-500 dark:text-slate-400 flex items-center gap-1" style={{ fontSize: 12 }}>
+              {conf && <Lock size={10} />}{label}
+            </p>
+            {conf && !isAdmin ? (
+              <p className="text-slate-400 italic mt-0.5" style={{ fontSize: 12 }}>Admin only</p>
+            ) : (
+              <p className="text-black dark:text-slate-200 mt-0.5" style={{ fontSize: 13.5, fontWeight: 500 }}>{value || '—'}</p>
+            )}
+          </div>
+        );
+        const Section = ({ icon: Icon, title, cols = 2, children }: { icon: typeof User; title: string; cols?: 2 | 3; children: React.ReactNode }) => (
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-4">
+            <div className="flex items-center gap-2.5 mb-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-slate-700/60">
+                <Icon size={16} className="text-blue-600 dark:text-blue-400" />
+              </span>
+              <p className="text-blue-900 dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>{title}</p>
+            </div>
+            <div className={`grid grid-cols-1 gap-x-6 ${cols === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>{children}</div>
+          </div>
+        );
+        return (
+          <div className="space-y-5">
+            {/* Page header: back + title */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => setViewStudent(null)}
+                className="flex items-center justify-center rounded-lg border border-blue-100 bg-white p-2 text-slate-600 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                title="Back to Students"
+                aria-label="Back to Students"
+              >
+                <ArrowLeft size={17} />
+              </button>
+              <h1 className="text-black dark:text-white" style={{ fontWeight: 700, fontSize: 22 }}>
+                Student Profile
+              </h1>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+              {/* ── Left: hero + info sections ── */}
+              <div className="xl:col-span-2 space-y-4">
+                {/* Hero card */}
+                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-5">
+                  <div className="flex flex-col sm:flex-row items-start gap-5">
+                    {/* Photo + change button */}
+                    <div className="relative shrink-0">
+                      {p.photo ? (
+                        <img
+                          src={p.photo}
+                          alt={p.name}
+                          className="h-40 w-36 rounded-xl border border-blue-100 object-cover shadow dark:border-slate-600"
+                        />
+                      ) : (
+                        <div
+                          className="flex h-40 w-36 items-center justify-center rounded-xl border border-blue-100 bg-blue-100 shadow dark:border-slate-600"
+                          style={{ fontSize: 30, fontWeight: 700, color: '#4C5CAE' }}
+                        >
+                          {avatarInitials(p.name) || <User size={36} className="text-blue-400" />}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => openEdit(p)}
+                        className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/95 px-3 py-1 text-blue-700 shadow transition-colors hover:bg-blue-50"
+                        style={{ fontSize: 11.5, fontWeight: 600 }}
+                        title="Change photo"
+                      >
+                        <Camera size={12} />
+                        Change Photo
+                      </button>
+                    </div>
+
+                    {/* Identity */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <p className="text-black dark:text-white" style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.01em' }}>
+                            {p.name}
+                          </p>
+                          <StatusBadge status={p.status} />
+                        </div>
+                        <button
+                          onClick={() => openEdit(p)}
+                          className="flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-2 text-blue-700 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-slate-700"
+                          style={{ fontSize: 13, fontWeight: 600 }}
+                        >
+                          <Pencil size={13} />
+                          Edit Record
+                        </button>
+                      </div>
+                      <p className="text-slate-500 dark:text-slate-400 mt-1" style={{ fontSize: 13.5 }}>
+                        Student ID: {p.studentId}
+                      </p>
+
+                      {/* Chips */}
+                      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+                          <GraduationCap size={15} className="text-blue-600 dark:text-blue-400" />
+                          {p.yearLevel || 'No year'}
+                        </span>
+                        <span className="hidden sm:block h-5 w-px bg-blue-200 dark:bg-slate-600" />
+                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+                          <BookOpen size={15} className="text-blue-600 dark:text-blue-400" />
+                          {p.course || 'No course'}
+                        </span>
+                        <span className="hidden sm:block h-5 w-px bg-blue-200 dark:bg-slate-600" />
+                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+                          <CalendarDays size={15} className="text-blue-600 dark:text-blue-400" />
+                          {p.schoolYear ? `SY ${p.schoolYear}` : '—'}
+                        </span>
+                      </div>
+
+                      {/* Quick contact strip */}
+                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+                          <Phone size={15} className="text-blue-600 dark:text-blue-400" />
+                          {p.contactNumber || '—'}
+                        </span>
+                        <span className="hidden sm:block h-5 w-px bg-blue-200 dark:bg-slate-600" />
+                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+                          <Mail size={15} className="text-blue-600 dark:text-blue-400" />
+                          {p.email || '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info sections — two independent stacks so cards pack upward */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                  <div className="space-y-4">
+                    <Section icon={User} title="Personal Information" cols={3}>
+                      <Field label="Sex" value={p.gender} />
+                      <Field label="Date of Birth" value={p.birthdate} />
+                      <Field label="Age" value={age} />
+                      <Field label="Blood Type" value={p.bloodType} />
+                      <Field label="Height" value={p.height ? `${p.height} cm` : ''} />
+                      <Field label="Weight" value={p.weight ? `${p.weight} kg` : ''} />
+                      <Field label="BMI" value={bmi ? `${bmi.value} (${bmi.category})` : ''} />
+                    </Section>
+
+                    <Section icon={Users} title="Guardian / Parent Information">
+                      <Field label="Name" value={p.guardianName} conf />
+                      <Field label="Relationship" value={p.guardianRelationship} conf />
+                      <Field label="Contact Number" value={p.guardianContact} conf />
+                    </Section>
+
+                    <Section icon={HeartPulse} title="Medical Information">
+                      <Field label="Allergies" value={p.allergies} />
+                      <Field label="Medical Conditions" value={p.medicalConditions} />
+                      <Field label="Current Medications" value={p.currentMedications} />
+                      <Field label="Others" value={p.medicalOthers} />
+                    </Section>
+                  </div>
+
+                  <div className="space-y-4">
+                    <Section icon={MapPin} title="Residence Information">
+                      <Field label="Current Address" value={p.presentAddress} conf />
+                      <Field label="Permanent / Home Address" value={p.homeAddress} conf />
+                    </Section>
+
+                    <Section icon={Building2} title="Boarding House Information">
+                      <Field label="Boarding House Name" value={p.boardingHouseName} conf />
+                      <Field label="Boarding House Address" value={p.boardingHouseAddress} conf />
+                      <Field label="Landlord/Landlady" value={p.landlordName} conf />
+                      <Field label="Landlord Contact Number" value={p.landlordContact} conf />
+                    </Section>
+                  </div>
+                </div>
+
+                {/* Confidential notes — admin only */}
+                {isAdmin && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5">
+                    <p className="text-yellow-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 12, fontWeight: 600 }}>
+                      <Lock size={12} /> Confidential Notes (admin only)
+                    </p>
+                    <p className="text-black" style={{ fontSize: 13 }}>
+                      {p.confidentialNotes || 'None recorded'}
+                    </p>
                   </div>
                 )}
-                <button
-                  onClick={() => { openEdit(viewStudent); setViewStudent(null); }}
-                  className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center shadow hover:bg-blue-700 transition-colors"
-                  title="Edit / change profile"
-                >
-                  <Camera size={13} />
-                </button>
               </div>
-              <p className="text-black" style={{ fontSize: 17, fontWeight: 700 }}>
-                {viewStudent.name}
-              </p>
-              <p className="text-slate-500 mt-0.5" style={{ fontSize: 12 }}>
-                {viewStudent.studentId} • {viewStudent.course || 'No course'}
-              </p>
-              <div className="mt-2">
-                <StatusBadge status={viewStudent.status} />
-              </div>
-            </div>
 
-            {/* Details grid */}
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                ['Year Level', viewStudent.yearLevel, false],
-                ['Sex', viewStudent.gender, false],
-                ['Contact', viewStudent.contactNumber, false],
-                ['Program', viewStudent.course, false],
-                ['Birthdate', viewStudent.birthdate, false],
-                ['Blood Type', viewStudent.bloodType, false],
-                ['School Year', viewStudent.schoolYear, false],
-                ["Parent's / Guardian's Name", viewStudent.guardianName, true],
-                ["Guardian's Contact", viewStudent.guardianContact, true],
-                ['Home Address', viewStudent.homeAddress, true],
-                ['Present Address', viewStudent.presentAddress, true],
-              ] as [string, string, boolean][]).map(([k, v, conf]) => (
-                <div key={k} className="bg-blue-50 rounded-lg p-3">
-                  <p className="text-slate-400 flex items-center gap-1" style={{ fontSize: 11, fontWeight: 500 }}>
-                    {conf && <Lock size={10} />}{k}
-                  </p>
-                  {conf && !isAdmin ? (
-                    <p className="text-slate-400 italic" style={{ fontSize: 12 }}>Admin only</p>
-                  ) : (
-                    <p className="text-black" style={{ fontSize: 13 }}>{v || '—'}</p>
-                  )}
+              {/* ── Right: documents panel ── */}
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-5">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-slate-700/60">
+                    <FileText size={16} className="text-blue-600 dark:text-blue-400" />
+                  </span>
+                  <p className="text-blue-900 dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>Documents &amp; Records</p>
                 </div>
-              ))}
-            </div>
-
-            {/* Medical conditions */}
-            <div className="bg-blue-50 rounded-lg p-3">
-              <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>
-                Medical Conditions
-              </p>
-              <p className="text-black" style={{ fontSize: 13 }}>
-                {viewStudent.medicalConditions || 'None recorded'}
-              </p>
-            </div>
-
-            {/* Confidential notes — admin only */}
-            {isAdmin && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <p className="text-yellow-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600 }}>
-                  <Lock size={11} /> Confidential Notes (admin only)
-                </p>
-                <p className="text-black" style={{ fontSize: 13 }}>
-                  {viewStudent.confidentialNotes || 'None recorded'}
-                </p>
+                <PersonDocuments ownerType="student" ownerId={p.studentId} showToast={showToast} />
               </div>
-            )}
-
-            {/* Documents & files */}
-            <PersonDocuments ownerType="student" ownerId={viewStudent.studentId} showToast={showToast} />
-
-            {/* Actions */}
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => { openEdit(viewStudent); setViewStudent(null); }}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                style={{ fontSize: 13 }}
-              >
-                <Pencil size={13} />
-                Edit record
-              </button>
             </div>
           </div>
-        )}
-      </Modal>
+        );
+      })()}
     </div>
   );
 }

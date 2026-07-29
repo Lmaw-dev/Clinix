@@ -593,6 +593,8 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
         isOpen={showModal}
         title={editingId ? 'Edit Faculty/Staff' : 'Add Faculty/Staff'}
         onClose={() => { setShowModal(false); setForm(defaultForm); setEditingId(null); }}
+        maxWidth="max-w-3xl"
+        scrollBody
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Profile photo */}
@@ -891,6 +893,8 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
         isOpen={!!viewMember}
         title="Personnel Profile"
         onClose={() => setViewMember(null)}
+        maxWidth="max-w-3xl"
+        scrollBody
       >
         {viewMember && (
           <div className="space-y-4">
@@ -903,7 +907,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {([
                 ['College', viewMember.college, false],
                 ['Designation', viewMember.role, false],

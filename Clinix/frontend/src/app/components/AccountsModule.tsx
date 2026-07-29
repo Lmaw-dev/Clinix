@@ -167,7 +167,7 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
       </div>
 
       {/* Create account */}
-      <Modal isOpen={showCreate} title="Create Account" onClose={() => setShowCreate(false)}>
+      <Modal isOpen={showCreate} title="Create Account" onClose={() => setShowCreate(false)} maxWidth="max-w-3xl" scrollBody>
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <label className="block"><span className={label} style={{ fontSize: 12, fontWeight: 500 }}>ID</span><input value={form.empId} onChange={(e) => setForm((f) => ({ ...f, empId: e.target.value }))} placeholder="EMP-001 (optional)" className={field} style={{ fontSize: 13 }} /></label>

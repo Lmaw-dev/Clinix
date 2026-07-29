@@ -12,7 +12,6 @@ import { InventoryModule } from './components/InventoryModule';
 import { CertificatesModule } from './components/CertificatesModule';
 import { AccountsModule } from './components/AccountsModule';
 import { ConsultationsModule } from './components/ConsultationsModule';
-import { ConsultationRecordModule } from './components/ConsultationRecordModule';
 import { ReportsModule } from './components/ReportsModule';
 import { SettingsModule } from './components/SettingsModule';
 
@@ -26,7 +25,6 @@ export type Page =
   | 'inventory'
   | 'certificates'
   | 'consultations'
-  | 'consultation-record'
   | 'reports'
   | 'settings'
   | 'accounts';
@@ -46,6 +44,7 @@ export type Student = {
   yearLevel: string;
   gender: string;
   contactNumber: string;
+  email: string;
   medicalConditions: string;
   status: 'enrolled' | 'not enrolled' | 'dropped';
   photo?: string;
@@ -53,11 +52,34 @@ export type Student = {
   birthdate: string;
   bloodType: string;
   schoolYear: string;
-  homeAddress: string;
-  presentAddress: string;
+  homeAddress: string;       // composed permanent address (kept for display/export)
+  presentAddress: string;    // composed current address (kept for display/export)
   guardianName: string;      // Parent's / Guardian's name
+  guardianRelationship: string; // e.g. Mother, Father, Guardian
   guardianContact: string;   // Contact number (Parent/Guardian)
   confidentialNotes: string; // Admin-only sensitive notes
+  // ── Medical details ──
+  allergies: string;
+  currentMedications: string;
+  medicalOthers: string;
+  height: string;            // in cm
+  weight: string;            // in kg — BMI is computed from height + weight, not stored
+  // ── Structured residence info ──
+  currentProvince: string;
+  currentCity: string;
+  currentBarangay: string;
+  currentPurok: string;
+  currentZip: string;
+  homeProvince: string;
+  homeCity: string;
+  homeBarangay: string;
+  homePurok: string;
+  homeZip: string;
+  isBoarding: boolean;          // staying in a boarding house / dorm / apartment / rented house
+  boardingHouseName: string;    // "N/A" when living with family
+  boardingHouseAddress: string;
+  landlordName: string;
+  landlordContact: string;
 };
 
 export type FacultyMember = {
@@ -209,6 +231,13 @@ export function normalizeStudent(s: Record<string, unknown>): Student {
   const lastName = String(s.lastName ?? (parts.slice(1).join(' ') || parts[0] || '')).trim();
   const middleInitial = String(s.middleInitial ?? s.middleName ?? '').trim().slice(0, 1).toUpperCase();
   const name = [firstName, middleInitial ? `${middleInitial}.` : '', lastName].filter(Boolean).join(' ') || fallbackName;
+  const g = (k: string) => String(s[k] ?? '').trim();
+  const joinAddr = (purok: string, brgy: string, city: string, prov: string, zip: string) => {
+    const base = [purok, brgy, city, prov].filter(Boolean).join(', ');
+    return zip ? `${base} ${zip}`.trim() : base;
+  };
+  const currentComposed = joinAddr(g('currentPurok'), g('currentBarangay'), g('currentCity'), g('currentProvince'), g('currentZip'));
+  const homeComposed = joinAddr(g('homePurok'), g('homeBarangay'), g('homeCity'), g('homeProvince'), g('homeZip'));
   return {
     studentId: rawId.length ? rawId.padStart(6, '0') : '000000',
     name,
@@ -219,17 +248,39 @@ export function normalizeStudent(s: Record<string, unknown>): Student {
     yearLevel: String(s.yearLevel ?? '').trim(),
     gender: String(s.gender ?? '').trim(),
     contactNumber: String(s.contactNumber ?? '').trim(),
+    email: String(s.email ?? '').trim(),
     medicalConditions: String(s.medicalConditions ?? '').trim(),
     status,
     photo: typeof s.photo === 'string' && s.photo ? s.photo : undefined,
     birthdate: String(s.birthdate ?? '').trim(),
     bloodType: String(s.bloodType ?? s.blood_type ?? '').trim(),
     schoolYear: String(s.schoolYear ?? s.school_year ?? '').trim(),
-    homeAddress: String(s.homeAddress ?? s.home_address ?? '').trim(),
-    presentAddress: String(s.presentAddress ?? s.present_address ?? '').trim(),
+    homeAddress: homeComposed || String(s.homeAddress ?? s.home_address ?? '').trim(),
+    presentAddress: currentComposed || String(s.presentAddress ?? s.present_address ?? '').trim(),
     guardianName: String(s.guardianName ?? s.guardian_name ?? '').trim(),
+    guardianRelationship: String(s.guardianRelationship ?? s.guardian_relationship ?? '').trim(),
     guardianContact: String(s.guardianContact ?? s.guardian_contact ?? '').trim(),
     confidentialNotes: String(s.confidentialNotes ?? s.confidential_notes ?? '').trim(),
+    allergies: String(s.allergies ?? '').trim(),
+    currentMedications: String(s.currentMedications ?? s.current_medications ?? '').trim(),
+    medicalOthers: String(s.medicalOthers ?? s.medical_others ?? '').trim(),
+    height: String(s.height ?? '').trim(),
+    weight: String(s.weight ?? '').trim(),
+    currentProvince: g('currentProvince'),
+    currentCity: g('currentCity'),
+    currentBarangay: g('currentBarangay'),
+    currentPurok: g('currentPurok'),
+    currentZip: g('currentZip'),
+    homeProvince: g('homeProvince'),
+    homeCity: g('homeCity'),
+    homeBarangay: g('homeBarangay'),
+    homePurok: g('homePurok'),
+    homeZip: g('homeZip'),
+    isBoarding: ['true', '1', 'yes', 'y'].includes(String(s.isBoarding ?? '').trim().toLowerCase()) || s.isBoarding === true || s.isBoarding === 1,
+    boardingHouseName: g('boardingHouseName'),
+    boardingHouseAddress: g('boardingHouseAddress'),
+    landlordName: g('landlordName'),
+    landlordContact: g('landlordContact'),
   };
 }
 
@@ -395,6 +446,8 @@ export default function App() {
     catch { return true; }
   });
   const [activePage, setActivePage] = useState<Page>('dashboard');
+  // Student profile requested from outside the Students module (e.g. Dashboard search)
+  const [profileStudentId, setProfileStudentId] = useState<string | null>(null);
 
   // A page is reachable if the role allows it AND (for certificates) it's enabled.
   const pageAllowed = useCallback(
@@ -567,6 +620,9 @@ export default function App() {
               onNavigate={navigate}
               adminProfile={adminProfile}
               role={role}
+              onOpenStudentProfile={pageAllowed('students')
+                ? (id) => { setProfileStudentId(id); navigate('students'); }
+                : undefined}
             />
           )}
           {page === 'students' && (
@@ -576,6 +632,8 @@ export default function App() {
               globalSearch={globalSearch}
               showToast={showToast}
               addActivity={addActivity}
+              openProfileId={profileStudentId}
+              onProfileOpened={() => setProfileStudentId(null)}
             />
           )}
           {page === 'faculty' && (
@@ -622,18 +680,6 @@ export default function App() {
               setConsultations={setConsultations}
               students={students}
               role={role}
-              currentUser={currentUser}
-              globalSearch={globalSearch}
-              showToast={showToast}
-              addActivity={addActivity}
-            />
-          )}
-          {page === 'consultation-record' && (
-            <ConsultationRecordModule
-              consultations={consultations}
-              setConsultations={setConsultations}
-              students={students}
-              faculty={faculty}
               currentUser={currentUser}
               globalSearch={globalSearch}
               showToast={showToast}

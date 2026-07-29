@@ -94,6 +94,39 @@ export async function ensureDbUpdates() {
   // that now holds encrypted data must be TEXT to avoid truncation. Guarded so a
   // missing table/column never blocks startup.
   const widen = async (sql) => { try { await pool.query(sql); } catch { /* table/column may not exist yet */ } };
+  // Student email (encrypted at rest, like contact_number)
+  await widen('ALTER TABLE students ADD COLUMN IF NOT EXISTS email TEXT NULL');
+  // Clinic consultation record info + guardian info (encrypted at rest)
+  await widen(`ALTER TABLE students
+    ADD COLUMN IF NOT EXISTS birthdate TEXT NULL,
+    ADD COLUMN IF NOT EXISTS blood_type TEXT NULL,
+    ADD COLUMN IF NOT EXISTS school_year TEXT NULL,
+    ADD COLUMN IF NOT EXISTS guardian_name TEXT NULL,
+    ADD COLUMN IF NOT EXISTS guardian_relationship TEXT NULL,
+    ADD COLUMN IF NOT EXISTS guardian_contact TEXT NULL,
+    ADD COLUMN IF NOT EXISTS confidential_notes TEXT NULL,
+    ADD COLUMN IF NOT EXISTS allergies TEXT NULL,
+    ADD COLUMN IF NOT EXISTS current_medications TEXT NULL,
+    ADD COLUMN IF NOT EXISTS medical_others TEXT NULL,
+    ADD COLUMN IF NOT EXISTS height TEXT NULL,
+    ADD COLUMN IF NOT EXISTS weight TEXT NULL`);
+  // Structured residence + boarding house info (encrypted at rest, except the plain boolean flag)
+  await widen(`ALTER TABLE students
+    ADD COLUMN IF NOT EXISTS current_province TEXT NULL,
+    ADD COLUMN IF NOT EXISTS current_city TEXT NULL,
+    ADD COLUMN IF NOT EXISTS current_barangay TEXT NULL,
+    ADD COLUMN IF NOT EXISTS current_purok TEXT NULL,
+    ADD COLUMN IF NOT EXISTS current_zip TEXT NULL,
+    ADD COLUMN IF NOT EXISTS home_province TEXT NULL,
+    ADD COLUMN IF NOT EXISTS home_city TEXT NULL,
+    ADD COLUMN IF NOT EXISTS home_barangay TEXT NULL,
+    ADD COLUMN IF NOT EXISTS home_purok TEXT NULL,
+    ADD COLUMN IF NOT EXISTS home_zip TEXT NULL,
+    ADD COLUMN IF NOT EXISTS is_boarding TINYINT(1) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS boarding_house_name TEXT NULL,
+    ADD COLUMN IF NOT EXISTS boarding_house_address TEXT NULL,
+    ADD COLUMN IF NOT EXISTS landlord_name TEXT NULL,
+    ADD COLUMN IF NOT EXISTS landlord_contact TEXT NULL`);
   await widen('ALTER TABLE students MODIFY name TEXT, MODIFY last_name TEXT, MODIFY first_name TEXT, MODIFY middle_name TEXT, MODIFY gender TEXT, MODIFY contact_number TEXT, MODIFY medical_conditions TEXT');
   await widen('ALTER TABLE faculty MODIFY name TEXT, MODIFY role TEXT, MODIFY contact TEXT, MODIFY medical_history TEXT');
   await widen('ALTER TABLE medical_records MODIFY name TEXT, MODIFY summary TEXT');
