@@ -5,6 +5,7 @@ import {
 import { MedForm, MedFormEntry, Student, FacultyMember } from '../App';
 import { Modal } from './Modal';
 import { DocPreview } from './PersonDocuments';
+import { confirmDialog } from './ConfirmDialog';
 import {
   PersonDoc, OwnerType, uploadDocument, deleteDocument, fileUrl,
 } from '../documents';
@@ -120,14 +121,24 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
   }
 
   async function handleRemoveEntry(form: MedForm, entry: MedFormEntry) {
-    if (!confirm(`Remove ${entry.studentName}'s copy?`)) return;
+    if (!(await confirmDialog({
+      title: `Remove ${entry.studentName}'s copy?`,
+      message: `"${entry.fileName}" will be deleted from this form and from their records.`,
+      confirmLabel: 'Remove',
+      danger: true,
+    }))) return;
     setForms((prev) => prev.map((f) => f.id === form.id ? { ...f, entries: f.entries.filter((x) => x.docId !== entry.docId) } : f));
     deleteDocument(entry.docId).catch(() => {});
     showToast('Copy removed');
   }
 
   async function handleDeleteForm(form: MedForm) {
-    if (!confirm(`Delete the form "${form.name}" and all ${form.entries.length} student copies? This cannot be undone.`)) return;
+    if (!(await confirmDialog({
+      title: `Delete "${form.name}"?`,
+      message: `The original form and all ${form.entries.length} compiled cop${form.entries.length === 1 ? 'y' : 'ies'} will be permanently deleted. This cannot be undone.`,
+      confirmLabel: 'Delete form',
+      danger: true,
+    }))) return;
     // best-effort file cleanup
     deleteDocument(form.templateDocId).catch(() => {});
     form.entries.forEach((en) => deleteDocument(en.docId).catch(() => {}));

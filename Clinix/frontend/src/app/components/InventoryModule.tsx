@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Plus, Pencil, AlertTriangle, Filter, Search, X, CalendarDays, Archive, ArchiveRestore } from 'lucide-react';
 import { InventoryItem, INVENTORY_CATEGORIES, INVENTORY_MONTHS, INVENTORY_YEAR, MonthlyStock, latestRemaining } from '../App';
 import { Modal } from './Modal';
+import { confirmDialog } from './ConfirmDialog';
 
 const STATUS_OPTIONS = ['In stock', 'Low stock', 'No stock', 'Expiring soon', 'Expired'];
 
@@ -152,8 +153,12 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
   const [showArchived, setShowArchived] = useState(false);
   const [logItem, setLogItem] = useState<InventoryItem | null>(null);
 
-  function handleArchive(item: InventoryItem) {
-    if (!confirm(`Archive "${item.name}"? It will be hidden from the active list but kept in Archived.`)) return;
+  async function handleArchive(item: InventoryItem) {
+    if (!(await confirmDialog({
+      title: `Archive "${item.name}"?`,
+      message: 'It will be hidden from the active list but kept under Archived, where you can restore it anytime.',
+      confirmLabel: 'Archive',
+    }))) return;
     setInventory((prev) => prev.map((i) => i.code === item.code ? { ...i, archived: true } : i));
     showToast(`${item.name} archived`);
     addActivity(`Inventory archived: ${item.name}`);

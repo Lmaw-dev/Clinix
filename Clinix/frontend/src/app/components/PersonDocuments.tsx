@@ -3,6 +3,7 @@ import { FileText, Upload, Download, Trash2, Eye, Loader2, AlertCircle, X, Folde
 import {
   OwnerType, PersonDoc, listDocuments, uploadDocument, deleteDocument, fileUrl, pdfUrl,
 } from '../documents';
+import { confirmDialog } from './ConfirmDialog';
 
 function formatBytes(n: number) {
   if (!n) return '0 B';
@@ -215,7 +216,12 @@ export function PersonDocuments({
   }
 
   async function onDelete(doc: PersonDoc) {
-    if (!confirm(`Delete "${doc.fileName}"? This cannot be undone.`)) return;
+    if (!(await confirmDialog({
+      title: 'Delete this file?',
+      message: `"${doc.fileName}" will be permanently deleted. This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    }))) return;
     try {
       await deleteDocument(doc.id);
       showToast('Document deleted');
