@@ -1,5 +1,8 @@
 import { useState, useMemo, useRef } from 'react';
-import { Plus, Search, Pencil, Eye, Filter, Upload, Download, Printer, CheckCircle2, X, Phone, Camera, User, Lock } from 'lucide-react';
+import {
+  Plus, Search, Pencil, Eye, Filter, Upload, Download, Printer, CheckCircle2, X, Phone, Camera, User, Lock,
+  ArrowLeft, HeartPulse, Users, MapPin, FileText, Building2, Briefcase,
+} from 'lucide-react';
 import { FacultyMember, normalizeFaculty } from '../App';
 import { Modal } from './Modal';
 import { PersonDocuments } from './PersonDocuments';
@@ -449,6 +452,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
 
   return (
     <div className="space-y-5 max-w-screen-xl">
+      {!viewMember && <>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-black dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Faculty & Staff</h1>
@@ -587,6 +591,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           {facultyTable(visible, classFilter || 'All Personnel')}
         </div>
       </div>
+      </>}
 
       {/* Add/Edit Modal */}
       <Modal
@@ -888,76 +893,210 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
         </div>
       </Modal>
 
-      {/* View Modal */}
-      <Modal
-        isOpen={!!viewMember}
-        title="Personnel Profile"
-        onClose={() => setViewMember(null)}
-        maxWidth="max-w-3xl"
-        scrollBody
-      >
-        {viewMember && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <FacultyAvatar photo={viewMember.photo} name={viewMember.name} size="lg" />
-              <div>
-                <p className="text-black" style={{ fontSize: 15, fontWeight: 600 }}>{viewMember.name}</p>
-                <p className="text-slate-500" style={{ fontSize: 12 }}>
-                  {viewMember.staffId} • {viewMember.role || 'No role assigned'}
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {([
-                ['College', viewMember.college, false],
-                ['Designation', viewMember.role, false],
-                ['Classification', [viewMember.employmentCategory, viewMember.employmentType].filter(Boolean).join(' · '), false],
-                ['Contact', viewMember.contact, false],
-                ['Office', viewMember.office, false],
-                ['Birthdate', viewMember.birthdate, false],
-                ['Blood Type', viewMember.bloodType, false],
-                ['Spouse / Next of Kin', viewMember.guardianName, true],
-                ['Kin Contact', viewMember.guardianContact, true],
-                ['Home Address', viewMember.homeAddress, true],
-                ['Present Address', viewMember.presentAddress, true],
-              ] as [string, string | undefined, boolean][]).map(([k, v, conf]) => (
-                <div key={k} className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3">
-                  <p className="text-slate-400 flex items-center gap-1" style={{ fontSize: 11, fontWeight: 500 }}>{conf && <Lock size={10} />}{k}</p>
-                  {conf && !isAdmin ? (
-                    <p className="text-slate-400 italic" style={{ fontSize: 12 }}>Admin only</p>
-                  ) : (
-                    <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{v || '—'}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="bg-blue-50 dark:bg-slate-700/40 rounded-lg p-3">
-              <p className="text-slate-400 mb-1" style={{ fontSize: 11, fontWeight: 500 }}>Medical History</p>
-              <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{viewMember.medicalHistory || 'No entries'}</p>
-            </div>
-
-            {isAdmin && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <p className="text-yellow-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 600 }}><Lock size={11} /> Confidential Notes (admin only)</p>
-                <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{viewMember.confidentialNotes || 'None recorded'}</p>
-              </div>
+      {/* Full-page Personnel Profile */}
+      {viewMember && (() => {
+        const p = viewMember;
+        const style = classificationStyle(p.employmentCategory);
+        const age = (() => {
+          if (!p.birthdate) return '';
+          const b = new Date(p.birthdate);
+          if (isNaN(b.getTime())) return '';
+          const now = new Date();
+          let a = now.getFullYear() - b.getFullYear();
+          const m = now.getMonth() - b.getMonth();
+          if (m < 0 || (m === 0 && now.getDate() < b.getDate())) a--;
+          return a >= 0 ? String(a) : '';
+        })();
+        const Field = ({ label, value, conf = false }: { label: string; value?: string; conf?: boolean }) => (
+          <div className="py-1.5 border-b border-blue-50 dark:border-slate-700/60">
+            <p className="text-slate-500 dark:text-slate-400 flex items-center gap-1" style={{ fontSize: 12 }}>
+              {conf && <Lock size={10} />}{label}
+            </p>
+            {conf && !isAdmin ? (
+              <p className="text-slate-400 italic mt-0.5" style={{ fontSize: 12 }}>Admin only</p>
+            ) : (
+              <p className="text-black dark:text-slate-200 mt-0.5" style={{ fontSize: 13.5, fontWeight: 500 }}>{value || '—'}</p>
             )}
-
-            {/* Documents & files */}
-            <PersonDocuments ownerType="faculty" ownerId={viewMember.staffId} showToast={showToast} />
-
-            <div className="flex justify-end">
+          </div>
+        );
+        const Section = ({ icon: Icon, title, cols = 2, children }: { icon: typeof User; title: string; cols?: 2 | 3; children: React.ReactNode }) => (
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-4">
+            <div className="flex items-center gap-2.5 mb-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-slate-700/60">
+                <Icon size={16} className="text-blue-600 dark:text-blue-400" />
+              </span>
+              <p className="text-blue-900 dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>{title}</p>
+            </div>
+            <div className={`grid grid-cols-1 gap-x-6 ${cols === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>{children}</div>
+          </div>
+        );
+        return (
+          <div className="space-y-5">
+            {/* Page header: back + title */}
+            <div className="flex flex-wrap items-center gap-3">
               <button
-                onClick={() => { openEdit(viewMember); setViewMember(null); }}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                style={{ fontSize: 13 }}
+                onClick={() => setViewMember(null)}
+                className="flex items-center justify-center rounded-lg border border-blue-100 bg-white p-2 text-slate-600 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                title="Back to Faculty & Staff"
+                aria-label="Back to Faculty & Staff"
               >
-                Edit record
+                <ArrowLeft size={17} />
               </button>
+              <h1 className="text-black dark:text-white" style={{ fontWeight: 700, fontSize: 22 }}>
+                Personnel Profile
+              </h1>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+              {/* ── Left: hero + info sections ── */}
+              <div className="xl:col-span-2 space-y-4">
+                {/* Hero card */}
+                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-5">
+                  <div className="flex flex-col sm:flex-row items-start gap-5">
+                    {/* Photo + change button */}
+                    <div className="relative shrink-0">
+                      {p.photo ? (
+                        <img
+                          src={p.photo}
+                          alt={p.name}
+                          className="h-40 w-36 rounded-xl border border-blue-100 object-cover shadow dark:border-slate-600"
+                        />
+                      ) : (
+                        <div
+                          className="flex h-40 w-36 items-center justify-center rounded-xl border border-blue-100 bg-blue-100 shadow dark:border-slate-600"
+                          style={{ fontSize: 30, fontWeight: 700, color: '#4C5CAE' }}
+                        >
+                          {avatarInitials(p.name) || <User size={36} className="text-blue-400" />}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => openEdit(p)}
+                        className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/95 px-3 py-1 text-blue-700 shadow transition-colors hover:bg-blue-50"
+                        style={{ fontSize: 11.5, fontWeight: 600 }}
+                        title="Change photo"
+                      >
+                        <Camera size={12} />
+                        Change Photo
+                      </button>
+                    </div>
+
+                    {/* Identity */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <p className="text-black dark:text-white" style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.01em' }}>
+                            {p.name}
+                          </p>
+                          {p.employmentCategory && (
+                            <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 ${style.badge}`} style={{ fontSize: 11, fontWeight: 600 }}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+                              {p.employmentType || p.employmentCategory}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => openEdit(p)}
+                          className="flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-2 text-blue-700 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-slate-700"
+                          style={{ fontSize: 13, fontWeight: 600 }}
+                        >
+                          <Pencil size={13} />
+                          Edit Record
+                        </button>
+                      </div>
+                      <p className="text-slate-500 dark:text-slate-400 mt-1" style={{ fontSize: 13.5 }}>
+                        Staff ID: {p.staffId}
+                      </p>
+
+                      {/* Chips */}
+                      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+                          <Briefcase size={15} className="text-blue-600 dark:text-blue-400" />
+                          {p.role || 'No designation'}
+                        </span>
+                        <span className="hidden sm:block h-5 w-px bg-blue-200 dark:bg-slate-600" />
+                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+                          <Building2 size={15} className="text-blue-600 dark:text-blue-400" />
+                          {p.college || 'No college assigned'}
+                        </span>
+                        <span className="hidden sm:block h-5 w-px bg-blue-200 dark:bg-slate-600" />
+                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+                          <MapPin size={15} className="text-blue-600 dark:text-blue-400" />
+                          {p.office || 'No office on file'}
+                        </span>
+                      </div>
+
+                      {/* Quick contact strip */}
+                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
+                          <Phone size={15} className="text-blue-600 dark:text-blue-400" />
+                          {p.contact || '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info sections — two independent stacks so cards pack upward */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                  <div className="space-y-4">
+                    <Section icon={User} title="Personal Information" cols={3}>
+                      <Field label="Date of Birth" value={p.birthdate} />
+                      <Field label="Age" value={age} />
+                      <Field label="Blood Type" value={p.bloodType} />
+                    </Section>
+
+                    <Section icon={Users} title="Spouse / Next of Kin">
+                      <Field label="Name" value={p.guardianName} conf />
+                      <Field label="Contact Number" value={p.guardianContact} conf />
+                    </Section>
+
+                    <Section icon={HeartPulse} title="Medical History">
+                      <Field label="Known Conditions / Notes" value={p.medicalHistory} />
+                    </Section>
+                  </div>
+
+                  <div className="space-y-4">
+                    <Section icon={Briefcase} title="Employment Information">
+                      <Field label="College" value={p.college} />
+                      <Field label="Classification" value={p.employmentCategory} />
+                      <Field label="Employment Type" value={p.employmentType} />
+                      <Field label="Office" value={p.office} />
+                    </Section>
+
+                    <Section icon={MapPin} title="Residence Information">
+                      <Field label="Present Address" value={p.presentAddress} conf />
+                      <Field label="Home Address" value={p.homeAddress} conf />
+                    </Section>
+                  </div>
+                </div>
+
+                {/* Confidential notes — admin only */}
+                {isAdmin && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5">
+                    <p className="text-yellow-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 12, fontWeight: 600 }}>
+                      <Lock size={12} /> Confidential Notes (admin only)
+                    </p>
+                    <p className="text-black" style={{ fontSize: 13 }}>
+                      {p.confidentialNotes || 'None recorded'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Right: documents panel ── */}
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-5">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-slate-700/60">
+                    <FileText size={16} className="text-blue-600 dark:text-blue-400" />
+                  </span>
+                  <p className="text-blue-900 dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>Documents &amp; Records</p>
+                </div>
+                <PersonDocuments ownerType="faculty" ownerId={p.staffId} showToast={showToast} />
+              </div>
             </div>
           </div>
-        )}
-      </Modal>
+        );
+      })()}
     </div>
   );
 }
