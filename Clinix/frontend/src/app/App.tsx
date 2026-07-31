@@ -29,20 +29,6 @@ export type Page =
   | 'settings'
   | 'accounts';
 
-// Labels used for the browser tab title (matches the sidebar wording).
-const PAGE_TITLES: Record<Page, string> = {
-  dashboard: 'Dashboard',
-  students: 'Students',
-  faculty: 'Faculty & Staff',
-  'medical-records': 'Medical Forms',
-  inventory: 'Medicine Inventory',
-  certificates: 'Medical Certificates',
-  consultations: 'Consultation Logs',
-  reports: 'Reports & Statistics',
-  settings: 'Settings',
-  accounts: 'Accounts',
-};
-
 export type AdminProfile = {
   name: string;
   photo: string;
@@ -611,16 +597,6 @@ export default function App() {
   // Never render a page the current role/feature-flag can't access
   const page: Page = pageAllowed(activePage) ? activePage : 'dashboard';
 
-  // Browser tab title: "Clinix — <current page>" (just "Clinix" on the login screen).
-  useEffect(() => {
-    document.title = isLoggedIn ? `Clinix — ${PAGE_TITLES[page]}` : 'Clinix';
-  }, [isLoggedIn, page]);
-
-  // Browser tab title: "Clinix — <current page>" (just "Clinix" on the login screen).
-  useEffect(() => {
-    document.title = isLoggedIn ? `Clinix — ${PAGE_TITLES[page]}` : 'Clinix';
-  }, [isLoggedIn, page]);
-
   return (
     <ThemeProvider>
     {!isLoggedIn ? (
@@ -753,9 +729,6 @@ export default function App() {
           {toast}
         </div>
       )}
-
-      {/* In-app confirmation dialogs (replaces the browser's native confirm) */}
-      <ConfirmHost />
     </div>
     )}
     </ThemeProvider>

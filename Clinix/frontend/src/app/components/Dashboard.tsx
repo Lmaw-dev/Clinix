@@ -106,6 +106,7 @@ export function Dashboard({
     grid: isDark ? '#1B2A6E' : '#E8ECF7',
     axis: isDark ? '#A9B5E1' : '#64748B',
     tableTh: isDark ? '#131D4D' : '#F5F7FC',
+    subtle: isDark ? '#131D4D' : '#F5F7FC',
     divider: isDark ? '#131D4D' : '#EDF0F9',
     inputBg: isDark ? '#0D1230' : '#FFFFFF',
     inputBorder: isDark ? '#1B2A6E' : '#DEE3F5',
