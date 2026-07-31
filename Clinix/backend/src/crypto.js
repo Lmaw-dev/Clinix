@@ -42,7 +42,9 @@ export function decrypt(value) {
     const iv = raw.subarray(0, 12);
     const tag = raw.subarray(12, 28);
     const ciphertext = raw.subarray(28);
-    const decipher = crypto.createDecipheriv(ALGO, KEY, iv);
+    // authTagLength is stated explicitly so a truncated/short tag is rejected
+    // outright instead of being accepted with a weaker tag.
+    const decipher = crypto.createDecipheriv(ALGO, KEY, iv, { authTagLength: 16 });
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
   } catch {

@@ -345,6 +345,28 @@ app.post('/api/login', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Any signed-in user changes their OWN password (current password is verified
+// server-side by decrypting the stored value; the new one is stored encrypted).
+app.post('/api/change-password', async (req, res, next) => {
+  try {
+    const username = String(req.body?.username ?? '').trim();
+    const currentPassword = String(req.body?.currentPassword ?? '');
+    const newPassword = String(req.body?.newPassword ?? '');
+    if (!username || !currentPassword || !newPassword) {
+      res.status(400).json({ error: 'username, currentPassword and newPassword are required' }); return;
+    }
+    if (newPassword.length < 8) { res.status(400).json({ error: 'New password must be at least 8 characters' }); return; }
+    const [rows] = await pool.query('SELECT * FROM accounts');
+    const acct = rows.find((r) => decrypt(r.username).toLowerCase() === username.toLowerCase());
+    if (!acct) { res.status(404).json({ error: 'Account not found' }); return; }
+    if (decrypt(acct.password) !== currentPassword) {
+      res.status(401).json({ error: 'Current password is incorrect' }); return;
+    }
+    await pool.query('UPDATE accounts SET password = ? WHERE id = ?', [encrypt(newPassword), acct.id]);
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
 app.get('/api/accounts', async (_req, res, next) => {
   try {
     const [rows] = await pool.query('SELECT * FROM accounts');
@@ -608,8 +630,48 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: error.message || 'Server error' });
 });
 
-await ensureDbUpdates();
-await seedAccountsIfEmpty();
+// Prepare the schema. If MySQL isn't up yet we do NOT crash — we print a clear
+// message, start the API anyway, and keep retrying so it self-heals once MySQL
+// is started (no need to restart this process).
+let dbReady = false;
+
+async function initDb({ quiet = false } = {}) {
+  try {
+    await ensureDbUpdates();
+    await seedAccountsIfEmpty();
+    dbReady = true;
+    console.log('[db] Connected — schema ready.');
+    return true;
+  } catch (error) {
+    dbReady = false;
+    if (!quiet) {
+      const host = process.env.DB_HOST || '127.0.0.1';
+      const dbPort = process.env.DB_PORT || 3306;
+      if (error.code === 'ECONNREFUSED') {
+        console.error(`\n[db] Cannot reach MySQL at ${host}:${dbPort} — it looks like MySQL is not running.`);
+        console.error('     XAMPP: open the XAMPP Control Panel and click "Start" next to MySQL.');
+      } else if (error.code === 'ER_ACCESS_DENIED_ERROR') {
+        console.error(`\n[db] MySQL refused the credentials in backend/.env (DB_USER / DB_PASSWORD).`);
+      } else if (error.code === 'ER_BAD_DB_ERROR') {
+        console.error(`\n[db] Database "${process.env.DB_NAME || 'clinix'}" does not exist — create it in phpMyAdmin.`);
+      } else {
+        console.error('\n[db] Setup failed:', error.message);
+      }
+      console.error('     The API is still running and will retry every 10s. Uploads/accounts need MySQL.\n');
+    }
+    return false;
+  }
+}
+
+await initDb();
+if (!dbReady) {
+  const retry = setInterval(async () => {
+    if (await initDb({ quiet: true })) clearInterval(retry);
+  }, 10_000);
+}
+
+// Simple readiness flag for the health endpoint / debugging.
+app.get('/api/db-status', (_req, res) => res.json({ dbReady }));
 
 // Bind to all interfaces (0.0.0.0) so other devices on the LAN can reach the API.
 const server = app.listen(port, '0.0.0.0', () => {

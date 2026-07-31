@@ -70,6 +70,24 @@ export async function updateAccountApi(id: string, data: Partial<Account>): Prom
   if (!res.ok) throw new Error('Update failed');
 }
 
+/** The username of the signed-in user (from the session). */
+export function currentUsername(): string {
+  try { return localStorage.getItem('clinixUser') || ''; } catch { return ''; }
+}
+
+/** Change your own password. Throws with a readable message on failure. */
+export async function changePasswordApi(username: string, currentPassword: string, newPassword: string): Promise<void> {
+  const res = await fetch(`${API_URL}/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, currentPassword, newPassword }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Could not change the password');
+  }
+}
+
 export async function deleteAccountApi(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/accounts/${id}`, { method: 'DELETE' });
   if (!res.ok && res.status !== 204) throw new Error('Delete failed');
@@ -106,8 +124,10 @@ export const ROLE_PAGES: Record<Role, Page[]> = {
   admin: [...ALL_PAGES, 'accounts'],
   // Assistant evaluates/inputs the consultation logs (no accounts).
   assistant: ALL_PAGES,
-  // Staff gets dashboard + reports.
-  staff: ['dashboard', 'reports'],
+  // Staff takes the consultation record (intake / vital signs) + dashboard + reports.
+  // Settings is included so they can change their own password; admin-only
+  // sections inside Settings are gated separately.
+  staff: ['dashboard', 'consultation-record', 'reports', 'settings'],
 };
 
 export function canAccess(role: Role, page: Page): boolean {

@@ -201,6 +201,34 @@ export function Dashboard({
   // excluding the archived "Medication (Old)" sheet and uncounted (0-qty) items.
   const lowStock = inventory.filter((i) => !i.archived && i.category !== 'Medication (Old)' && i.qty > 0 && i.qty < 5);
 
+  // ── Notifications (bell) — derived from live clinic data ──
+  const daysUntil = (d: string) => (d ? (new Date(d).getTime() - Date.now()) / 86_400_000 : Infinity);
+  const liveStock = inventory.filter((i) => !i.archived && i.category !== 'Medication (Old)');
+  const expiredItems = liveStock.filter((i) => daysUntil(i.expiry) < 0);
+  const expiringItems = liveStock.filter((i) => { const d = daysUntil(i.expiry); return d >= 0 && d < 90; });
+  const outOfStock = liveStock.filter((i) => i.qty <= 0);
+  const pendingConsults = consultations.filter((c) => (c.consultStatus || 'Pending') === 'Pending');
+  const evaluatedConsults = consultations.filter((c) => c.consultStatus === 'Evaluated');
+
+  type Notif = { id: string; tone: 'danger' | 'warn' | 'info'; title: string; detail: string; page: Page };
+  const notifications: Notif[] = [
+    expiredItems.length && { id: 'expired', tone: 'danger' as const, title: `${expiredItems.length} expired medicine${expiredItems.length !== 1 ? 's' : ''}`, detail: expiredItems.slice(0, 2).map((i) => i.name).join(', ') + (expiredItems.length > 2 ? '…' : ''), page: 'inventory' as Page },
+    lowStock.length && { id: 'low', tone: 'warn' as const, title: `${lowStock.length} item${lowStock.length !== 1 ? 's' : ''} low on stock`, detail: lowStock.slice(0, 2).map((i) => `${i.name} (${i.qty})`).join(', ') + (lowStock.length > 2 ? '…' : ''), page: 'inventory' as Page },
+    outOfStock.length && { id: 'out', tone: 'warn' as const, title: `${outOfStock.length} item${outOfStock.length !== 1 ? 's' : ''} out of stock`, detail: outOfStock.slice(0, 2).map((i) => i.name).join(', ') + (outOfStock.length > 2 ? '…' : ''), page: 'inventory' as Page },
+    expiringItems.length && { id: 'expiring', tone: 'warn' as const, title: `${expiringItems.length} expiring within 3 months`, detail: expiringItems.slice(0, 2).map((i) => i.name).join(', ') + (expiringItems.length > 2 ? '…' : ''), page: 'inventory' as Page },
+    pendingConsults.length && { id: 'pending', tone: 'info' as const, title: `${pendingConsults.length} consultation${pendingConsults.length !== 1 ? 's' : ''} awaiting evaluation`, detail: 'Recorded by staff — needs review', page: 'consultations' as Page },
+    evaluatedConsults.length && { id: 'evaluated', tone: 'info' as const, title: `${evaluatedConsults.length} evaluated log${evaluatedConsults.length !== 1 ? 's' : ''} to confirm`, detail: 'Add management & treatment, then confirm', page: 'consultations' as Page },
+  ].filter(Boolean) as Notif[];
+
+  const visibleNotifs = notifications.filter((n) => canAccess(role, n.page));
+
+  const statCards = [
+    { label: 'Enrolled Students', value: enrolledCount, icon: GraduationCap, iconBg: '#EEF1FA', iconColor: '#4C5CAE', sub: `${students.length} total records` },
+    { label: 'Faculty & Staff', value: faculty.length, icon: Users, iconBg: '#FCF3CE', iconColor: '#C2950A', sub: 'Active personnel' },
+    { label: 'Consultations', value: consultations.length, icon: Stethoscope, iconBg: '#DEE3F5', iconColor: '#37479A', sub: 'Total logged' },
+    { label: 'Medical Forms', value: medForms.length, icon: FileText, iconBg: '#FDFAEC', iconColor: '#9C7708', sub: `${medForms.reduce((n, f) => n + f.entries.length, 0)} student copies` },
+  ];
+
   const quickActions = [
     { label: 'Add Student', desc: 'Register a new student', icon: UserPlus, page: 'students' as Page, accent: ACCENT.blue, badge: 0 },
     { label: 'New Consultation', desc: 'Log a consultation', icon: Stethoscope, page: 'consultations' as Page, accent: ACCENT.green, badge: 0 },
@@ -209,6 +237,7 @@ export function Dashboard({
   ].filter((a) => canAccess(role, a.page));
 
   const [now, setNow] = useState(() => new Date());
+  const [notifOpen, setNotifOpen] = useState(false);
   const [quickSearch, setQuickSearch] = useState('');
   const [selectedPerson, setSelectedPerson] = useState<QuickResult | null>(null);
   useEffect(() => {
@@ -410,29 +439,92 @@ export function Dashboard({
             <span style={{ fontSize: 13, color: C.txtPrimary, fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' }}>{timeStr}</span>
           </div>
 
-          {/* Bell */}
-          <button
-            className="flex items-center justify-center transition-colors"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: C.card,
-              border: `1px solid ${C.cardBorder}`,
-              color: C.txtMuted,
-              cursor: 'pointer',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.color = SERIES;
-              (e.currentTarget as HTMLElement).style.borderColor = SERIES;
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.color = C.txtMuted;
-              (e.currentTarget as HTMLElement).style.borderColor = C.cardBorder;
-            }}
-          >
-            <Bell size={15} />
-          </button>
+          {/* Bell — opens the notification panel */}
+          <div className="relative">
+            <button
+              onClick={() => setNotifOpen((v) => !v)}
+              title={visibleNotifs.length ? `${visibleNotifs.length} notification(s)` : 'No new notifications'}
+              className="flex items-center justify-center"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: C.subtle,
+                border: '1px solid #DEE3F5',
+                color: C.txtMuted,
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = '#EEF1FA';
+                (e.currentTarget as HTMLElement).style.color = '#1B2A6E';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = '#EEF1FA';
+                (e.currentTarget as HTMLElement).style.color = '#64748B';
+              }}
+            >
+              <Bell size={15} />
+            </button>
+
+            {/* Unread count badge */}
+            {visibleNotifs.length > 0 && (
+              <span
+                className="pointer-events-none absolute flex items-center justify-center text-white"
+                style={{
+                  top: -4, right: -4, minWidth: 17, height: 17, padding: '0 4px',
+                  borderRadius: 999, background: '#DC2626', fontSize: 10, fontWeight: 700,
+                  border: '2px solid #FFFFFF',
+                }}
+              >
+                {visibleNotifs.length}
+              </span>
+            )}
+
+            {notifOpen && (
+              <>
+                {/* click-away layer */}
+                <div className="fixed inset-0" style={{ zIndex: 40 }} onClick={() => setNotifOpen(false)} />
+                <div
+                  className="absolute right-0 mt-2 overflow-hidden rounded-xl border bg-white shadow-xl dark:bg-slate-800"
+                  style={{ zIndex: 50, width: 320, borderColor: C.cardBorder }}
+                >
+                  <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: C.cardBorder }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: C.txtPrimary }}>Notifications</p>
+                    <button onClick={() => setNotifOpen(false)} className="text-slate-400 hover:text-slate-600" title="Close">
+                      <X size={15} />
+                    </button>
+                  </div>
+
+                  {visibleNotifs.length === 0 ? (
+                    <div className="px-4 py-8 text-center">
+                      <Bell size={20} className="mx-auto mb-2 text-slate-300" />
+                      <p style={{ fontSize: 12, color: C.txtMuted }}>You're all caught up.</p>
+                    </div>
+                  ) : (
+                    <ul className="max-h-80 overflow-auto">
+                      {visibleNotifs.map((n) => {
+                        const dot = n.tone === 'danger' ? '#DC2626' : n.tone === 'warn' ? '#D97706' : '#2563EB';
+                        return (
+                          <li key={n.id}>
+                            <button
+                              onClick={() => { onNavigate(n.page); setNotifOpen(false); }}
+                              className="flex w-full items-start gap-2.5 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                            >
+                              <span className="mt-1.5 shrink-0 rounded-full" style={{ width: 7, height: 7, background: dot }} />
+                              <span className="min-w-0 flex-1">
+                                <span className="block" style={{ fontSize: 12.5, fontWeight: 600, color: C.txtPrimary }}>{n.title}</span>
+                                <span className="block truncate" style={{ fontSize: 11, color: C.txtMuted }}>{n.detail}</span>
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Admin avatar */}
           <div className="flex items-center gap-2">

@@ -616,6 +616,11 @@ export default function App() {
     document.title = isLoggedIn ? `Clinix — ${PAGE_TITLES[page]}` : 'Clinix';
   }, [isLoggedIn, page]);
 
+  // Browser tab title: "Clinix — <current page>" (just "Clinix" on the login screen).
+  useEffect(() => {
+    document.title = isLoggedIn ? `Clinix — ${PAGE_TITLES[page]}` : 'Clinix';
+  }, [isLoggedIn, page]);
+
   return (
     <ThemeProvider>
     {!isLoggedIn ? (
@@ -748,6 +753,9 @@ export default function App() {
           {toast}
         </div>
       )}
+
+      {/* In-app confirmation dialogs (replaces the browser's native confirm) */}
+      <ConfirmHost />
     </div>
     )}
     </ThemeProvider>

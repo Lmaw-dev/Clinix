@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, ShieldCheck, Trash2, KeyRound, UserCog, Lock, Loader2, AlertCircle } from 'lucide-react';
 import { Account, Role, ROLE_LABELS, listAccountsApi, createAccountApi, updateAccountApi, deleteAccountApi } from '../auth';
 import { Modal } from './Modal';
+import { confirmDialog } from './ConfirmDialog';
 
 type Props = {
   role: Role;
@@ -35,7 +36,9 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
 
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
-    try { setAccounts(await listAccountsApi()); }
+    // Admin accounts are not listed here — the admin manages other people's
+    // accounts, and changes their own password in Settings → Security.
+    try { setAccounts((await listAccountsApi()).filter((a) => a.role !== 'admin')); }
     catch { setError('Could not reach the server. Start the backend to manage accounts.'); }
     finally { setLoading(false); }
   }, []);
@@ -80,7 +83,12 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
 
   async function handleDelete(a: Account) {
     if (!canDelete(a) || !a.id) return;
-    if (!confirm(`Delete the account "${a.username}"? They will no longer be able to sign in.`)) return;
+    if (!(await confirmDialog({
+      title: `Delete "${a.username}"?`,
+      message: 'This account will be removed and the user will no longer be able to sign in.',
+      confirmLabel: 'Delete account',
+      danger: true,
+    }))) return;
     try {
       await deleteAccountApi(a.id);
       showToast(`Account "${a.username}" deleted`);
@@ -112,7 +120,7 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
             <ShieldCheck size={20} className="text-blue-600" /> Accounts
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>
-            Create and manage accounts — all credentials &amp; personal fields are AES-encrypted in the database
+            Create and manage staff &amp; assistant accounts — change your own password in Settings → Security
           </p>
         </div>
         <button onClick={() => setShowCreate(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shrink-0" style={{ fontSize: 13 }}>
@@ -139,6 +147,11 @@ export function AccountsModule({ role, currentUser, showToast, addActivity }: Pr
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+              {accounts.length === 0 && (
+                <tr><td colSpan={5} className="py-12 text-center text-slate-400" style={{ fontSize: 13 }}>
+                  No staff or assistant accounts yet — click “Create Account” to add one.
+                </td></tr>
+              )}
               {accounts.map((a) => (
                 <tr key={a.id || a.username} className="hover:bg-blue-50 dark:hover:bg-slate-700/30 transition-colors">
                   <td className="px-5 py-3.5">

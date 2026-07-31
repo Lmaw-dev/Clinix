@@ -8,6 +8,7 @@ import { Modal } from './Modal';
 import { PersonDocuments } from './PersonDocuments';
 import { useColleges, YEAR_OPTIONS } from '../colleges';
 import { canSeeConfidential } from '../auth';
+import { confirmDialog } from './ConfirmDialog';
 
 const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
@@ -446,7 +447,11 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   }
 
   async function handleArchive(s: Student) {
-    if (!confirm(`Archive ${s.name}?`)) return;
+    if (!(await confirmDialog({
+      title: `Archive ${s.name}?`,
+      message: 'The record will be marked as dropped and moved out of the enrolled list. You can edit it again anytime.',
+      confirmLabel: 'Archive',
+    }))) return;
     const archived = { ...s, status: 'dropped' as const };
     try {
       await saveStudentApi(archived, s.studentId);

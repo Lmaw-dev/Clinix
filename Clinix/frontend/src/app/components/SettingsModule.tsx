@@ -8,7 +8,8 @@ import {
 
 import { Page, AdminProfile } from '../App';
 import { useTheme } from '../ThemeContext';
-import { canSeeConfidential } from '../auth';
+import { confirmDialog } from './ConfirmDialog';
+import { canSeeConfidential, currentUsername, changePasswordApi } from '../auth';
 import {
   useColleges, addCollege, removeCollege, addCourse, removeCourse, resetColleges,
 } from '../colleges';
@@ -152,6 +153,9 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ size?:
   { id: 'about',    label: 'About',         icon: Info },
 ];
 
+// Tabs only the main admin may open (clinic-wide setup + backups).
+const ADMIN_ONLY_TABS: TabId[] = ['clinic', 'data'];
+
 
 // ── main component ────────────────────────────────────────────────────────────
 
@@ -174,6 +178,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
   const [twoFa, setTwoFa] = useState(() => ls('clinixTwoFa', false));
   const [autoLogout, setAutoLogout] = useState(() => ls('clinixAutoLogout', '30'));
   const [showPwForm, setShowPwForm] = useState(false);
+  const [pwSaving, setPwSaving] = useState(false);
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [showPw, setShowPw] = useState({ current: false, next: false, confirm: false });
   const [secSaved, setSecSaved] = useState(false);
@@ -227,8 +232,13 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
     showToast(`College "${name}" added`);
     setNewCollege('');
   }
-  function handleRemoveCollege(name: string) {
-    if (!confirm(`Remove "${name}" and its courses? Existing student/faculty records keep their saved values.`)) return;
+  async function handleRemoveCollege(name: string) {
+    if (!(await confirmDialog({
+      title: `Remove "${name}"?`,
+      message: 'The college and its courses will be removed from the dropdowns. Existing student and faculty records keep their saved values.',
+      confirmLabel: 'Remove',
+      danger: true,
+    }))) return;
     removeCollege(name);
     showToast(`College "${name}" removed`);
   }
@@ -243,8 +253,13 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
     removeCourse(college, course);
     showToast(`Course "${course}" removed`);
   }
-  function handleResetColleges() {
-    if (!confirm('Restore the default colleges and courses? Your custom additions will be removed.')) return;
+  async function handleResetColleges() {
+    if (!(await confirmDialog({
+      title: 'Restore default colleges & courses?',
+      message: 'The built-in list will be restored and any custom colleges or courses you added will be removed.',
+      confirmLabel: 'Restore defaults',
+      danger: true,
+    }))) return;
     resetColleges();
     showToast('Colleges & courses reset to defaults');
   }
@@ -270,13 +285,23 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
     showToast('Security settings saved'); saved(setSecSaved);
   }
 
-  function changePassword() {
+  async function changePassword() {
     if (!pw.current) { showToast('Enter your current password'); return; }
     if (pw.next.length < 8) { showToast('New password must be 8+ characters'); return; }
     if (pw.next !== pw.confirm) { showToast('Passwords do not match'); return; }
-    showToast('Password changed successfully');
-    setPw({ current: '', next: '', confirm: '' });
-    setShowPwForm(false);
+    const username = currentUsername();
+    if (!username) { showToast('Could not determine the signed-in account'); return; }
+    setPwSaving(true);
+    try {
+      await changePasswordApi(username, pw.current, pw.next);
+      showToast('Password changed successfully');
+      setPw({ current: '', next: '', confirm: '' });
+      setShowPwForm(false);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not change the password');
+    } finally {
+      setPwSaving(false);
+    }
   }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -412,7 +437,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                   </Field>
                 ))}
                 <div className="flex justify-end">
-                  <button onClick={changePassword} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>Update Password</button>
+                  <button onClick={changePassword} disabled={pwSaving} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>{pwSaving ? 'Updating…' : 'Update Password'}</button>
                 </div>
               </div>
             )}
@@ -469,7 +494,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
 
         </>)}
 
-        {tab === 'clinic' && (<>
+        {tab === 'clinic' && isAdmin && (<>
         <SectionHeading icon={Building2} label="Clinic Information" />
         <SectionCard title="Clinic Profile" desc="Official information about the campus clinic">
           <div className="grid grid-cols-2 gap-4">
@@ -575,6 +600,8 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
         </>)}
 
         {tab === 'prefs' && (<>
+        {/* Clinic-wide page toggles — admin only */}
+        {isAdmin && (<>
         <SectionHeading icon={FileText} label="Pages & Features" />
         <SectionCard title="Optional Pages" desc="Turn clinic pages on or off for everyone">
           <div className="flex items-center justify-between">
@@ -591,6 +618,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             }} />
           </div>
         </SectionCard>
+        </>)}
 
         <SectionHeading icon={Monitor} label="System Preferences" />
         <SectionCard title="Appearance" desc="Control how Clinix looks on your device">
@@ -659,6 +687,8 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             </button>
           </div>
 
+        {/* Clinic-wide record rules — admin only */}
+        {isAdmin && (<>
         <SectionHeading icon={FileText} label="Medical Records" />
         <SectionCard title="Patient Record Preferences" desc="Configure how patient records are created and managed">
           <div className="space-y-5">
@@ -694,6 +724,8 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           <SaveBar onSave={saveRec} saved={recSaved} />
         </SectionCard>
 
+        </>)}
+
         <SectionHeading icon={Bell} label="Notifications" />
         <SectionCard title="Email Notifications" desc="Choose what events trigger email alerts">
             <div className="space-y-3">
@@ -728,7 +760,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
 
         </>)}
 
-        {tab === 'data' && (<>
+        {tab === 'data' && isAdmin && (<>
         {isAdmin && <>
         <SectionHeading icon={Database} label="Backup & Recovery" />
         <SectionCard title="Database Backup" desc="Create and restore system backups">
@@ -793,8 +825,8 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
 
         </>)}
 
-        {/* Data Privacy lives on the Security tab */}
-        {tab === 'security' && (<>
+        {/* Data Privacy lives on the Security tab — clinic-wide, admin only */}
+        {tab === 'security' && isAdmin && (<>
         <SectionHeading icon={Lock} label="Data Privacy" />
         <SectionCard title="Privacy & Compliance" desc="Healthcare data protection settings">
           <div className="space-y-4">
@@ -859,7 +891,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 Back to Dashboard
               </button>
               {isAdmin && (
-                <button onClick={() => { if (!confirm('Clear all activity logs?')) return; localStorage.removeItem('clinixActivities'); showToast('Activity log cleared'); }} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" style={{ fontSize: 13 }}>
+                <button onClick={async () => { if (!(await confirmDialog({ title: 'Clear the activity log?', message: 'All recorded activity history will be permanently deleted. This cannot be undone.', confirmLabel: 'Clear log', danger: true }))) return; localStorage.removeItem('clinixActivities'); showToast('Activity log cleared'); }} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" style={{ fontSize: 13 }}>
                   Clear Activity Log
                 </button>
               )}
@@ -879,9 +911,11 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
         <p className="text-slate-500 dark:text-slate-400 mt-1" style={{ fontSize: 13 }}>Manage your account, clinic, and system preferences</p>
       </div>
 
-      {/* Tabs — keeps each group short instead of one long scroll */}
+      {/* Tabs — keeps each group short instead of one long scroll.
+          Clinic setup and backups are admin-only; everyone can reach their own
+          account, password, appearance and About. */}
       <div className="mb-5 flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-px">
-        {TABS.map(({ id, label, icon: Icon }) => {
+        {TABS.filter((t) => isAdmin || !ADMIN_ONLY_TABS.includes(t.id)).map(({ id, label, icon: Icon }) => {
           const active = tab === id;
           return (
             <button
