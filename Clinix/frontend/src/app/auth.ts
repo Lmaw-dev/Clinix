@@ -32,7 +32,10 @@ const FALLBACK_ACCOUNTS: Array<{ username: string; password: string; role: Role 
 
 export type LoginResult = { role: Role; username: string; name: string };
 
-/** Authenticate via the backend — credentials are decrypted server-side (AES). */
+/** Thrown when the backend refuses the attempt outright (e.g. too many tries). */
+export class LoginBlockedError extends Error {}
+
+/** Authenticate via the backend — the password is checked against its bcrypt hash. */
 export async function apiLogin(username: string, password: string): Promise<LoginResult | null> {
   try {
     const res = await fetch(`${API_URL}/login`, {
@@ -42,8 +45,15 @@ export async function apiLogin(username: string, password: string): Promise<Logi
     });
     if (res.ok) { const d = await res.json(); return { role: d.role, username: d.username, name: d.name }; }
     if (res.status === 401 || res.status === 400) return null; // reached backend, wrong creds
+    // Rate limited. This must NOT fall through to the offline fallback below —
+    // doing so would let anyone bypass the brute-force limit by tripping it.
+    if (res.status === 429) {
+      const d = await res.json().catch(() => ({} as { error?: string }));
+      throw new LoginBlockedError(d.error || 'Too many sign-in attempts. Please wait a few minutes.');
+    }
     throw new Error('login failed');
-  } catch {
+  } catch (err) {
+    if (err instanceof LoginBlockedError) throw err;
     // Backend unreachable — allow the built-in defaults so the app isn't locked out.
     const a = FALLBACK_ACCOUNTS.find((x) => x.username.toLowerCase() === username.trim().toLowerCase() && x.password === password);
     return a ? { role: a.role, username: a.username, name: a.username } : null;

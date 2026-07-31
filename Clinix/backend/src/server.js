@@ -7,8 +7,11 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
+import rateLimit from 'express-rate-limit';
 import { ensureDbUpdates, pingDb, pool } from './db.js';
 import { encrypt, decrypt } from './crypto.js';
+import { hashPassword, verifyPassword } from './password.js';
+import { ensureMysqlRunning, autostartHint } from './mysql-autostart.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4001);
@@ -16,6 +19,33 @@ const port = Number(process.env.PORT || 4001);
 // Allow the configured origin, or reflect any origin (LAN devices) when unset.
 app.use(cors({ origin: process.env.CORS_ORIGIN || true }));
 app.use(express.json({ limit: '5mb' }));
+
+// ── Rate limiting ────────────────────────────────────────────────────────────
+// Without a limit, anyone on the network can fire thousands of login attempts a
+// minute and brute-force a password. These caps are per client IP.
+//
+// The auth limiter counts FAILED attempts only (skipSuccessfulRequests), so a
+// staff member working normally never trips it — only someone guessing does.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10, // 10 failed attempts per IP per 15 minutes
+  skipSuccessfulRequests: true,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many sign-in attempts. Please wait a few minutes and try again.' },
+});
+
+// A generous ceiling on the rest of the API — high enough that normal clinic use
+// never notices, low enough to blunt a runaway script or scraping attempt.
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 300, // per IP per minute
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please slow down.' },
+});
+
+app.use('/api', apiLimiter);
 
 // ── File uploads (per-person documents) ──────────────────────────────────────
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -268,10 +298,12 @@ const ACCOUNT_COLS = {
   birthdate: 'birthdate', email: 'email', address: 'address', contact: 'contact',
 };
 
-function accountFromDb(row, withPassword = false) {
+// The password is never included: it is a one-way hash, so there is nothing
+// meaningful to return, and leaving it out keeps the hash off the wire entirely.
+function accountFromDb(row) {
   const out = { id: row.id, role: row.role };
   for (const [apiKey, col] of Object.entries(ACCOUNT_COLS)) {
-    if (apiKey === 'password' && !withPassword) continue;
+    if (apiKey === 'password') continue;
     out[apiKey] = decrypt(row[col]);
   }
   return out;
@@ -288,30 +320,40 @@ export async function seedAccountsIfEmpty() {
   for (const d of defaults) {
     await pool.query(
       'INSERT INTO accounts (id, role, username, password) VALUES (?, ?, ?, ?)',
-      [randomUUID(), d.role, encrypt(d.username), encrypt(d.password)],
+      [randomUUID(), d.role, encrypt(d.username), await hashPassword(d.password)],
     );
   }
-  console.log('[accounts] seeded default admin / assistant / staff accounts (encrypted)');
+  console.log('[accounts] seeded default admin / assistant / staff accounts (username encrypted, password hashed)');
 }
 
-app.post('/api/login', async (req, res, next) => {
+app.post('/api/login', authLimiter, async (req, res, next) => {
   try {
     const username = String(req.body?.username ?? '').trim();
     const password = String(req.body?.password ?? '');
     if (!username || !password) { res.status(400).json({ error: 'Username and password required' }); return; }
     const [rows] = await pool.query('SELECT * FROM accounts');
-    // Decrypt each stored username/password and compare (GCM uses a random IV, so
-    // we can't match ciphertext directly — we decrypt then compare).
-    const match = rows.find((r) => decrypt(r.username).toLowerCase() === username.toLowerCase() && decrypt(r.password) === password);
-    if (!match) { res.status(401).json({ error: 'Incorrect username or password' }); return; }
+    // Usernames stay encrypted, and GCM uses a random IV, so we can't match
+    // ciphertext directly — decrypt each one to find the account. The password is
+    // then checked against its bcrypt hash (never decrypted; it isn't reversible).
+    const match = rows.find((r) => decrypt(r.username).toLowerCase() === username.toLowerCase());
+    const check = match
+      ? await verifyPassword(password, match.password)
+      : { ok: false, needsUpgrade: false };
+    if (!check.ok) { res.status(401).json({ error: 'Incorrect username or password' }); return; }
+    // Account still holds a legacy encrypted password — now that we've confirmed
+    // the plaintext, replace it with a hash so it is never reversible again.
+    if (check.needsUpgrade) {
+      await pool.query('UPDATE accounts SET password = ? WHERE id = ?', [await hashPassword(password), match.id]);
+      console.log('[accounts] upgraded a legacy password to a bcrypt hash on sign-in');
+    }
     const acc = accountFromDb(match);
     res.json({ ok: true, role: acc.role, username: acc.username, name: [acc.firstName, acc.lastName].filter(Boolean).join(' ') || acc.username });
   } catch (error) { next(error); }
 });
 
-// Any signed-in user changes their OWN password (current password is verified
-// server-side by decrypting the stored value; the new one is stored encrypted).
-app.post('/api/change-password', async (req, res, next) => {
+// Any signed-in user changes their OWN password (the current one is verified
+// against the stored hash; the new one is hashed before it is written).
+app.post('/api/change-password', authLimiter, async (req, res, next) => {
   try {
     const username = String(req.body?.username ?? '').trim();
     const currentPassword = String(req.body?.currentPassword ?? '');
@@ -323,10 +365,11 @@ app.post('/api/change-password', async (req, res, next) => {
     const [rows] = await pool.query('SELECT * FROM accounts');
     const acct = rows.find((r) => decrypt(r.username).toLowerCase() === username.toLowerCase());
     if (!acct) { res.status(404).json({ error: 'Account not found' }); return; }
-    if (decrypt(acct.password) !== currentPassword) {
+    const { ok } = await verifyPassword(currentPassword, acct.password);
+    if (!ok) {
       res.status(401).json({ error: 'Current password is incorrect' }); return;
     }
-    await pool.query('UPDATE accounts SET password = ? WHERE id = ?', [encrypt(newPassword), acct.id]);
+    await pool.query('UPDATE accounts SET password = ? WHERE id = ?', [await hashPassword(newPassword), acct.id]);
     res.json({ ok: true });
   } catch (error) { next(error); }
 });
@@ -350,7 +393,10 @@ app.post('/api/accounts', async (req, res, next) => {
     const cols = ['id', 'role'];
     const vals = [id, String(b.role)];
     for (const [apiKey, col] of Object.entries(ACCOUNT_COLS)) {
-      if (b[apiKey] !== undefined && b[apiKey] !== '') { cols.push(col); vals.push(encrypt(String(b[apiKey]))); }
+      if (b[apiKey] === undefined || b[apiKey] === '') continue;
+      cols.push(col);
+      // The password is hashed (one-way); every other field is encrypted (readable back).
+      vals.push(apiKey === 'password' ? await hashPassword(String(b[apiKey])) : encrypt(String(b[apiKey])));
     }
     await pool.query(`INSERT INTO accounts (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, vals);
     res.status(201).json({ id, role: b.role });
@@ -364,7 +410,10 @@ app.put('/api/accounts/:id', async (req, res, next) => {
     const vals = [];
     if (b.role) { sets.push('role = ?'); vals.push(String(b.role)); }
     for (const [apiKey, col] of Object.entries(ACCOUNT_COLS)) {
-      if (b[apiKey] !== undefined && b[apiKey] !== '') { sets.push(`${col} = ?`); vals.push(encrypt(String(b[apiKey]))); }
+      if (b[apiKey] === undefined || b[apiKey] === '') continue;
+      sets.push(`${col} = ?`);
+      // Admin password resets land here — hash, never encrypt.
+      vals.push(apiKey === 'password' ? await hashPassword(String(b[apiKey])) : encrypt(String(b[apiKey])));
     }
     if (!sets.length) { res.status(400).json({ error: 'No fields to update' }); return; }
     vals.push(req.params.id);
@@ -589,6 +638,24 @@ app.delete('/api/:resource/:id', async (req, res, next) => {
   }
 });
 
+// ── Serve the built frontend ─────────────────────────────────────────────────
+// When frontend/dist exists (after `npm run build`), this process serves the UI
+// as well as the API, so a deployed clinic PC has ONE thing running on ONE URL
+// (http://localhost:4001) instead of a separate dev server. During development
+// the Vite dev server is still used and this block simply does nothing.
+const distDir = path.join(__dirname, '..', '..', 'frontend', 'dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  // Single-page app: any non-API GET falls back to index.html so deep links work.
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api/')) { next(); return; }
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+  console.log('[web] Serving the built frontend from frontend/dist');
+} else {
+  console.log('[web] frontend/dist not found — API only (run "npm run build" in frontend/ to serve the UI here)');
+}
+
 app.use((error, _req, res, _next) => {
   console.error(error);
   res.status(500).json({ error: error.message || 'Server error' });
@@ -613,7 +680,7 @@ async function initDb({ quiet = false } = {}) {
       const dbPort = process.env.DB_PORT || 3306;
       if (error.code === 'ECONNREFUSED') {
         console.error(`\n[db] Cannot reach MySQL at ${host}:${dbPort} — it looks like MySQL is not running.`);
-        console.error('     XAMPP: open the XAMPP Control Panel and click "Start" next to MySQL.');
+        console.error('     Automatic start did not succeed; start MySQL from the XAMPP Control Panel.');
       } else if (error.code === 'ER_ACCESS_DENIED_ERROR') {
         console.error(`\n[db] MySQL refused the credentials in backend/.env (DB_USER / DB_PASSWORD).`);
       } else if (error.code === 'ER_BAD_DB_ERROR') {
@@ -627,9 +694,18 @@ async function initDb({ quiet = false } = {}) {
   }
 }
 
+// Start MySQL first if it isn't up, so that running the backend is the only
+// thing anyone has to do — no XAMPP Control Panel, no second window.
+const mysqlStatus = await ensureMysqlRunning();
+const hint = autostartHint(mysqlStatus);
+if (hint) console.error(`[mysql] ${hint}`);
+
 await initDb();
 if (!dbReady) {
+  // Keep retrying, and keep trying to start MySQL too: this self-heals if the
+  // database is slow to come up or is stopped and restarted later.
   const retry = setInterval(async () => {
+    await ensureMysqlRunning();
     if (await initDb({ quiet: true })) clearInterval(retry);
   }, 10_000);
 }
