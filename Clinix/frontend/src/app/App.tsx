@@ -12,6 +12,7 @@ import { InventoryModule } from './components/InventoryModule';
 import { CertificatesModule } from './components/CertificatesModule';
 import { AccountsModule } from './components/AccountsModule';
 import { ConsultationsModule } from './components/ConsultationsModule';
+import { listConsultationsApi, migrateLocalConsultations } from './consultations';
 import { ReportsModule } from './components/ReportsModule';
 import { SettingsModule } from './components/SettingsModule';
 
@@ -178,6 +179,30 @@ export type Certificate = {
   status: string;
 };
 
+// Why the person came in. Only a 'Consultation' visit gets a consultation
+// record (vital signs / assessment) — the other purposes are logged and closed.
+export const CONSULTATION_PURPOSES = [
+  'Consultation',
+  'Medicine',
+  'Treatment',
+  'Certificate',
+  'Other',
+] as const;
+export type ConsultationPurpose = typeof CONSULTATION_PURPOSES[number];
+
+/**
+ * Entries logged before the purpose field existed have none. The log was only
+ * ever used for consultations back then, so they are read as consultations
+ * rather than being hidden from the workflow.
+ */
+export function purposeOf(c: Consultation): ConsultationPurpose {
+  return c.purpose ?? 'Consultation';
+}
+
+export function isConsultationVisit(c: Consultation): boolean {
+  return purposeOf(c) === 'Consultation';
+}
+
 export type Consultation = {
   id: string;
   studentId: string;
@@ -192,6 +217,7 @@ export type Consultation = {
   age?: string;
   sex?: string;
   courseOrOffice?: string;    // Course & Year / Office
+  purpose?: ConsultationPurpose; // why they came in — gates the consultation record
   chiefComplaint?: string;    // Purpose of Visit / Chief Complaint
   management?: string;        // Management & Treatment (added by admin)
   // ── Clinic Consultation Record — intake by staff ──
@@ -202,6 +228,8 @@ export type Consultation = {
   pr?: string;                // PR (bpm)
   temp?: string;              // Temp (°C)
   o2sat?: string;             // O2 Sat (%)
+  assessment?: string;        // staff's observations at intake
+  recordedAt?: string;        // ISO timestamp of the vital-signs record
   // ── Workflow ──
   consultStatus?: 'Pending' | 'Evaluated' | 'Confirmed';
   recordedBy?: string;        // staff who took the intake
@@ -529,6 +557,7 @@ export default function App() {
       .catch(() => {});
   }, []);
 
+
   // Persist to localStorage
   useEffect(() => { localStorage.setItem('clinixStudents', JSON.stringify(students)); }, [students]);
   useEffect(() => { localStorage.setItem('clinixFaculty', JSON.stringify(faculty)); }, [faculty]);
@@ -564,6 +593,27 @@ export default function App() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2500);
   }, []);
+
+  // The consultation log lives in the database so every device sees the same
+  // entries — the staff member's vital signs reach the nurse's screen. Anything
+  // left over from the localStorage-only era is lifted across once, then the
+  // server copy is authoritative.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const local = loadFromStorage<Consultation[]>('clinixConsultations', []);
+        const moved = await migrateLocalConsultations(local);
+        const rows = await listConsultationsApi();
+        if (cancelled) return;
+        setConsultations(rows);
+        if (moved) showToast(`Moved ${moved} saved consultation${moved === 1 ? '' : 's'} into the database`);
+      } catch {
+        // Backend unreachable — keep showing the cached copy from localStorage.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showToast]);
 
   const addActivity = useCallback((msg: string) => {
     setActivities((prev) =>

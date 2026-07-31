@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react';
-import { Plus, Eye, Search, X, UserRound, CheckCircle2, ClipboardCheck } from 'lucide-react';
-import { Consultation, Student } from '../App';
-import { Role } from '../auth';
+import { Plus, Eye, Search, X, UserRound, CheckCircle2, ClipboardCheck, Activity } from 'lucide-react';
+import { Consultation, Student, CONSULTATION_PURPOSES, ConsultationPurpose, purposeOf, isConsultationVisit } from '../App';
+import { Role, canManageConsultationLog, canRecordVitals } from '../auth';
 import { Modal } from './Modal';
+import { ConsultationRecordModal } from './ConsultationRecordModal';
+import { createConsultationApi, updateConsultationApi } from '../consultations';
 
 type Props = {
   consultations: Consultation[];
@@ -27,8 +29,30 @@ function StatusBadge({ status }: { status?: string }) {
 
 const defaultForm = {
   date: '', time: '', studentId: '', studentName: '',
-  age: '', sex: '', courseOrOffice: '', chiefComplaint: '', management: '',
+  age: '', sex: '', courseOrOffice: '',
+  purpose: 'Consultation' as ConsultationPurpose,
+  chiefComplaint: '', management: '',
 };
+
+const PURPOSE_STYLES: Record<string, string> = {
+  Consultation: 'bg-blue-100 text-blue-700',
+  Medicine: 'bg-emerald-100 text-emerald-700',
+  Treatment: 'bg-violet-100 text-violet-700',
+  Certificate: 'bg-amber-100 text-amber-700',
+  Other: 'bg-slate-100 text-slate-600',
+};
+/** True once anyone has recorded an assessment or a vital sign on this visit. */
+function hasVitals(c: Consultation): boolean {
+  return [c.bp, c.rr, c.pr, c.temp, c.o2sat, c.assessment].some((v) => (v || '').trim());
+}
+
+function PurposeBadge({ purpose }: { purpose: ConsultationPurpose }) {
+  return (
+    <span className={`inline-flex px-2 py-0.5 rounded-full ${PURPOSE_STYLES[purpose] || PURPOSE_STYLES.Other}`} style={{ fontSize: 11, fontWeight: 500 }}>
+      {purpose}
+    </span>
+  );
+}
 
 function ageFromBirthdate(bd?: string) {
   if (!bd) return '';
@@ -48,13 +72,34 @@ export function ConsultationsModule({ consultations, setConsultations, students,
   const [studentSearch, setStudentSearch] = useState('');
   const [studentOpen, setStudentOpen] = useState(false);
   const [mgmtDraft, setMgmtDraft] = useState('');
+  const [recordFor, setRecordFor] = useState<Consultation | null>(null);
 
   const isAdmin = role === 'admin';
   const isAssistant = role === 'assistant';
+  // Staff assist only: they can open a consultation and record vital signs, but
+  // the log entries themselves belong to the nurse and the assistant.
+  const canManage = canManageConsultationLog(role);
+  const canTakeVitals = canRecordVitals(role);
 
+  // Update on screen straight away, then persist. If the server rejects it the
+  // change is rolled back and said out loud, so nobody walks away believing a
+  // vital sign was saved when it was not.
   function patch(id: string, changes: Partial<Consultation>) {
-    setConsultations((prev) => prev.map((c) => (c.id === id ? { ...c, ...changes } : c)));
+    let previous: Consultation | undefined;
+    setConsultations((prev) => {
+      previous = prev.find((c) => c.id === id);
+      return prev.map((c) => (c.id === id ? { ...c, ...changes } : c));
+    });
     setViewConsult((prev) => (prev && prev.id === id ? { ...prev, ...changes } : prev));
+
+    updateConsultationApi(id, changes).catch(() => {
+      if (previous) {
+        const restore = previous;
+        setConsultations((prev) => prev.map((c) => (c.id === id ? restore : c)));
+        setViewConsult((prev) => (prev && prev.id === id ? restore : prev));
+      }
+      showToast('Could not save — check the connection to the server');
+    });
   }
 
   function markEvaluated(c: Consultation) {
@@ -125,6 +170,7 @@ export function ConsultationsModule({ consultations, setConsultations, students,
       age: form.age.trim(),
       sex: form.sex.trim(),
       courseOrOffice: form.courseOrOffice.trim(),
+      purpose: form.purpose,
       chiefComplaint: form.chiefComplaint.trim(),
       management: form.management.trim(),
       // legacy mirrors so existing search/analytics keep working
@@ -138,6 +184,13 @@ export function ConsultationsModule({ consultations, setConsultations, students,
     addActivity(`Consultation logged for ${form.studentName || form.studentId}`);
     setShowModal(false);
     setForm(defaultForm);
+
+    // Persist to the shared database. On failure the row is taken back off the
+    // list rather than lingering as an entry only this browser can see.
+    createConsultationApi(rec).catch(() => {
+      setConsultations((prev) => prev.filter((c) => c.id !== rec.id));
+      showToast('Could not save to the server — the entry was not kept');
+    });
   }
 
   const fieldClass = 'w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 text-black dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
@@ -149,11 +202,17 @@ export function ConsultationsModule({ consultations, setConsultations, students,
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-black dark:text-white" style={{ fontWeight: 700, fontSize: 20 }}>Consultation Logs</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>Daily treatment record of clinic visits</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-0.5" style={{ fontSize: 13 }}>
+            {canManage
+              ? 'Daily treatment record of clinic visits'
+              : 'Record assessment and vital signs for consultation visits'}
+          </p>
         </div>
-        <button onClick={openAdd} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shrink-0" style={{ fontSize: 13 }}>
-          <Plus size={15} />New Consultation
-        </button>
+        {canManage && (
+          <button onClick={openAdd} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shrink-0" style={{ fontSize: 13 }}>
+            <Plus size={15} />New Consultation
+          </button>
+        )}
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-blue-100 dark:border-slate-700">
@@ -164,14 +223,14 @@ export function ConsultationsModule({ consultations, setConsultations, students,
           <table className="w-full min-w-[1000px]">
             <thead>
               <tr className="bg-blue-50 dark:bg-slate-800/60 border-b border-blue-100 dark:border-slate-700">
-                {['Date', 'Time', 'ID', 'Name', 'Age', 'Sex', 'Course & Year / Office', 'Purpose of Visit / Chief Complaint', 'Management', 'Status', ''].map((h, i) => (
+                {['Date', 'Time', 'ID', 'Name', 'Age', 'Sex', 'Course & Year / Office', 'Purpose', 'Chief Complaint', 'Management', 'Status', ''].map((h, i) => (
                   <th key={i} className="text-left px-4 py-3 text-slate-500 uppercase tracking-wider whitespace-nowrap" style={{ fontSize: 11, fontWeight: 600 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {visible.length === 0 ? (
-                <tr><td colSpan={11} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>No records logged</td></tr>
+                <tr><td colSpan={12} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>No records logged</td></tr>
               ) : (
                 visible.map((c) => (
                   <tr key={c.id} className="hover:bg-blue-50 dark:hover:bg-slate-700/30 transition-colors">
@@ -182,11 +241,29 @@ export function ConsultationsModule({ consultations, setConsultations, students,
                     <td className={td} style={{ fontSize: 13 }}>{c.age || '—'}</td>
                     <td className={td} style={{ fontSize: 13 }}>{c.sex || '—'}</td>
                     <td className={`${td} max-w-[160px] truncate`} style={{ fontSize: 13 }}>{c.courseOrOffice || '—'}</td>
+                    <td className="px-4 py-3"><PurposeBadge purpose={purposeOf(c)} /></td>
                     <td className={`${td} max-w-[220px] truncate`} style={{ fontSize: 13 }}>{c.chiefComplaint || c.reason || '—'}</td>
                     <td className={`${td} max-w-[200px] truncate`} style={{ fontSize: 13 }}>{c.management || c.outcome || '—'}</td>
                     <td className="px-4 py-3"><StatusBadge status={c.consultStatus} /></td>
                     <td className="px-4 py-3">
-                      <button onClick={() => { setViewConsult(c); setMgmtDraft(c.management || ''); }} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Eye size={14} /></button>
+                      <div className="flex items-center gap-1">
+                        {/* Only a consultation visit has a consultation record. The
+                            other purposes are logged and closed, so no button. */}
+                        {isConsultationVisit(c) && canTakeVitals && (
+                          <button
+                            onClick={() => setRecordFor(c)}
+                            title={hasVitals(c) ? 'View / edit assessment & vital signs' : 'Take assessment & vital signs'}
+                            className={`p-1.5 rounded-md transition-colors ${hasVitals(c)
+                              ? 'text-emerald-600 hover:bg-emerald-50'
+                              : 'text-blue-600 hover:bg-blue-50'}`}
+                          >
+                            <Activity size={14} />
+                          </button>
+                        )}
+                        {canManage && (
+                          <button onClick={() => { setViewConsult(c); setMgmtDraft(c.management || ''); }} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Eye size={14} /></button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -261,7 +338,21 @@ export function ConsultationsModule({ consultations, setConsultations, students,
             <label><span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Course & Year / Office</span><input value={form.courseOrOffice} onChange={(e) => setForm((f) => ({ ...f, courseOrOffice: e.target.value }))} placeholder="BSCS 3rd Year / Registrar" className={fieldClass} style={{ fontSize: 13 }} /></label>
           </div>
 
-          <label><span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Purpose of Visit / Chief Complaint</span><textarea value={form.chiefComplaint} onChange={(e) => setForm((f) => ({ ...f, chiefComplaint: e.target.value }))} placeholder="Headache, fever, checkup…" className={`${fieldClass} resize-none`} rows={2} style={{ fontSize: 13 }} required /></label>
+          {/* The purpose is a fixed choice, not free text: it decides whether this
+              visit gets a consultation record, and free text cannot be relied on
+              for that. The complaint stays free text below. */}
+          <label>
+            <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Purpose of Visit</span>
+            <select value={form.purpose} onChange={(e) => setForm((f) => ({ ...f, purpose: e.target.value as ConsultationPurpose }))} className={fieldClass} style={{ fontSize: 13 }} required>
+              {CONSULTATION_PURPOSES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <span className="block text-slate-400 mt-1" style={{ fontSize: 11 }}>
+              {form.purpose === 'Consultation'
+                ? 'Staff can record assessment and vital signs for this visit.'
+                : 'No consultation record is taken for this purpose.'}
+            </span>
+          </label>
+          <label><span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Chief Complaint</span><textarea value={form.chiefComplaint} onChange={(e) => setForm((f) => ({ ...f, chiefComplaint: e.target.value }))} placeholder="Headache, fever, checkup…" className={`${fieldClass} resize-none`} rows={2} style={{ fontSize: 13 }} required /></label>
           <label><span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Management</span><textarea value={form.management} onChange={(e) => setForm((f) => ({ ...f, management: e.target.value }))} placeholder="Treatment given, medication, referral…" className={`${fieldClass} resize-none`} rows={2} style={{ fontSize: 13 }} /></label>
 
           <div className="flex justify-end gap-3">
@@ -338,6 +429,22 @@ export function ConsultationsModule({ consultations, setConsultations, students,
           </div>
         )}
       </Modal>
+
+      {/* Assessment & vital signs for a consultation visit. Reached only from a
+          log row whose purpose is "Consultation" — there is no separate menu. */}
+      <ConsultationRecordModal
+        consultation={recordFor}
+        readOnly={!canTakeVitals}
+        currentUser={currentUser}
+        onClose={() => setRecordFor(null)}
+        onSave={(id, changes) => {
+          patch(id, changes);
+          showToast('Assessment & vital signs saved');
+          const who = consultations.find((c) => c.id === id);
+          addActivity(`Vital signs recorded for ${who?.studentName || who?.studentId || 'patient'}`);
+        }}
+        showToast={showToast}
+      />
     </div>
   );
 }

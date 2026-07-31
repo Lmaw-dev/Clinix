@@ -134,10 +134,11 @@ export const ROLE_PAGES: Record<Role, Page[]> = {
   admin: [...ALL_PAGES, 'accounts'],
   // Assistant evaluates/inputs the consultation logs (no accounts).
   assistant: ALL_PAGES,
-  // Staff takes the consultation record (intake / vital signs) + dashboard + reports.
+  // Staff reaches consultations through the same log as everyone else, but can
+  // only record vital signs on it — see canManageConsultationLog below.
   // Settings is included so they can change their own password; admin-only
   // sections inside Settings are gated separately.
-  staff: ['dashboard', 'consultation-record', 'reports', 'settings'],
+  staff: ['dashboard', 'consultations', 'reports', 'settings'],
 };
 
 export function canAccess(role: Role, page: Page): boolean {
@@ -151,6 +152,23 @@ export function canAccess(role: Role, page: Page): boolean {
 
 export function canViewConfidential(role: Role): boolean {
   return role === 'admin';
+}
+
+// ─── Consultation workflow ─────────────────────────────────────────────────
+// Everyone works from the one Consultation Log, but not with the same powers.
+// The nurse (admin) and the assistant own the log itself: they add entries,
+// set the purpose of visit, and evaluate/confirm. Staff only assist — they take
+// the assessment and vital signs of whoever is being checked up, and cannot
+// create, edit or delete a log entry.
+
+/** Add / edit / delete log entries and evaluate or confirm them. */
+export function canManageConsultationLog(role: Role): boolean {
+  return role === 'admin' || role === 'assistant';
+}
+
+/** Record the assessment and vital signs on a consultation. */
+export function canRecordVitals(role: Role): boolean {
+  return role === 'admin' || role === 'assistant' || role === 'staff';
 }
 
 /** The role of the currently signed-in user (read from the session). */
