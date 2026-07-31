@@ -89,6 +89,58 @@ export async function ensureDbUpdates() {
     )
   `);
 
+  // ── Consultation log moves from the browser into the database ──────────────
+  // The log used to live in localStorage, which meant the staff member who took
+  // the vital signs and the nurse who read them only saw the same data if they
+  // happened to share a browser. These columns give every field a home here.
+  //
+  // The original table also assumed a consultation always belonged to a student:
+  // student_id was CHAR(6) NOT NULL with a foreign key to students. A faculty
+  // visit or a walk-in with no ID could never be saved. The key is dropped and
+  // the column widened and made optional.
+  await pool.query(`
+    ALTER TABLE consultations
+      ADD COLUMN IF NOT EXISTS visit_time VARCHAR(10) NULL,
+      ADD COLUMN IF NOT EXISTS age TEXT NULL,
+      ADD COLUMN IF NOT EXISTS sex TEXT NULL,
+      ADD COLUMN IF NOT EXISTS course_or_office TEXT NULL,
+      ADD COLUMN IF NOT EXISTS purpose VARCHAR(24) NULL,
+      ADD COLUMN IF NOT EXISTS chief_complaint TEXT NULL,
+      ADD COLUMN IF NOT EXISTS management TEXT NULL,
+      ADD COLUMN IF NOT EXISTS reason TEXT NULL,
+      ADD COLUMN IF NOT EXISTS staff TEXT NULL,
+      ADD COLUMN IF NOT EXISTS person_type VARCHAR(16) NULL,
+      ADD COLUMN IF NOT EXISTS blood_type TEXT NULL,
+      ADD COLUMN IF NOT EXISTS vital_bp TEXT NULL,
+      ADD COLUMN IF NOT EXISTS vital_rr TEXT NULL,
+      ADD COLUMN IF NOT EXISTS vital_pr TEXT NULL,
+      ADD COLUMN IF NOT EXISTS vital_temp TEXT NULL,
+      ADD COLUMN IF NOT EXISTS vital_o2sat TEXT NULL,
+      ADD COLUMN IF NOT EXISTS assessment TEXT NULL,
+      ADD COLUMN IF NOT EXISTS recorded_at VARCHAR(40) NULL,
+      ADD COLUMN IF NOT EXISTS consult_status VARCHAR(16) NULL,
+      ADD COLUMN IF NOT EXISTS recorded_by TEXT NULL,
+      ADD COLUMN IF NOT EXISTS evaluated_by TEXT NULL,
+      ADD COLUMN IF NOT EXISTS confirmed_by TEXT NULL
+  `);
+
+  // Drop the students foreign key so faculty and walk-in visits can be logged.
+  // Guarded: it is already gone on a database created after this change.
+  const [fks] = await pool.query(`
+    SELECT constraint_name FROM information_schema.key_column_usage
+    WHERE table_schema = DATABASE() AND table_name = 'consultations'
+      AND referenced_table_name = 'students'
+  `);
+  for (const fk of fks) {
+    await pool.query(`ALTER TABLE consultations DROP FOREIGN KEY \`${fk.constraint_name}\``);
+    console.log(`[db] consultations: dropped foreign key ${fk.constraint_name} (faculty/walk-in visits can now be logged)`);
+  }
+  // A blank date must be storable too — the log accepts an entry before the
+  // nurse has filled everything in.
+  await pool.query('ALTER TABLE consultations MODIFY student_id VARCHAR(40) NULL').catch(() => {});
+  await pool.query('ALTER TABLE consultations MODIFY consultation_date DATE NULL').catch(() => {});
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_consult_purpose ON consultations (purpose)').catch(() => {});
+
   // ── Widen encrypted columns to TEXT ──
   // AES-256-GCM ciphertext (base64) is longer than the plaintext, so any column
   // that now holds encrypted data must be TEXT to avoid truncation. Guarded so a

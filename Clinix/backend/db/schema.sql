@@ -116,15 +116,41 @@ CREATE TABLE certificates (
   CONSTRAINT fk_certificates_student FOREIGN KEY (student_id) REFERENCES students (student_id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE = InnoDB;
 
+-- The consultation log. A visit may belong to a student, a faculty member, or a
+-- walk-in with no ID at all, so student_id is a plain optional column with no
+-- foreign key to students. Personal and health fields are stored encrypted;
+-- date, time, purpose and status stay readable for ordering and reporting.
 CREATE TABLE consultations (
   id VARCHAR(40) PRIMARY KEY,
-  student_id CHAR(6) NOT NULL,
-  student_name VARCHAR(160) NOT NULL,
-  consultation_date DATE NOT NULL,
-  summary TEXT NOT NULL,
-  outcome TEXT NOT NULL,
+  student_id VARCHAR(40) NULL,
+  student_name TEXT NULL,
+  consultation_date DATE NULL,
+  visit_time VARCHAR(10) NULL,
+  age TEXT NULL,
+  sex TEXT NULL,
+  course_or_office TEXT NULL,
+  purpose VARCHAR(24) NULL,
+  chief_complaint TEXT NULL,
+  management TEXT NULL,
+  summary TEXT NULL,
+  outcome TEXT NULL,
+  reason TEXT NULL,
+  staff TEXT NULL,
+  person_type VARCHAR(16) NULL,
+  blood_type TEXT NULL,
+  vital_bp TEXT NULL,
+  vital_rr TEXT NULL,
+  vital_pr TEXT NULL,
+  vital_temp TEXT NULL,
+  vital_o2sat TEXT NULL,
+  assessment TEXT NULL,
+  recorded_at VARCHAR(40) NULL,
+  consult_status VARCHAR(16) NULL,
+  recorded_by TEXT NULL,
+  evaluated_by TEXT NULL,
+  confirmed_by TEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_consultations_student FOREIGN KEY (student_id) REFERENCES students (student_id) ON UPDATE CASCADE ON DELETE CASCADE
+  INDEX idx_consult_purpose (purpose)
 ) ENGINE = InnoDB;
 
 CREATE TABLE activities (

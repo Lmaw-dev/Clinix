@@ -241,16 +241,49 @@ const tables = {
   consultations: {
     table: 'consultations',
     id: 'id',
-    order: 'consultation_date',
+    // Newest first, matching how the log reads on screen.
+    order: 'consultation_date DESC, visit_time DESC',
     fields: {
       id: 'id',
       studentId: 'student_id',
       studentName: 'student_name',
       date: 'consultation_date',
+      time: 'visit_time',
+      age: 'age',
+      sex: 'sex',
+      courseOrOffice: 'course_or_office',
+      purpose: 'purpose',
+      chiefComplaint: 'chief_complaint',
+      management: 'management',
       summary: 'summary',
       outcome: 'outcome',
+      reason: 'reason',
+      staff: 'staff',
+      // Consultation record — assessment and vital signs taken at intake.
+      personType: 'person_type',
+      bloodType: 'blood_type',
+      bp: 'vital_bp',
+      rr: 'vital_rr',
+      pr: 'vital_pr',
+      temp: 'vital_temp',
+      o2sat: 'vital_o2sat',
+      assessment: 'assessment',
+      recordedAt: 'recorded_at',
+      // Workflow
+      consultStatus: 'consult_status',
+      recordedBy: 'recorded_by',
+      evaluatedBy: 'evaluated_by',
+      confirmedBy: 'confirmed_by',
     },
-    encrypted: ['studentName', 'summary', 'outcome'],
+    // Everything describing the person or their health is encrypted. The date,
+    // time, purpose, status and student_id stay readable so the log can be
+    // ordered, filtered and reported on without decrypting every row.
+    encrypted: [
+      'studentName', 'age', 'sex', 'courseOrOffice', 'chiefComplaint', 'management',
+      'summary', 'outcome', 'reason', 'staff', 'bloodType',
+      'bp', 'rr', 'pr', 'temp', 'o2sat', 'assessment',
+      'recordedBy', 'evaluatedBy', 'confirmedBy',
+    ],
   },
   activities: {
     table: 'activities',
