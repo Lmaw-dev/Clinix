@@ -29,7 +29,15 @@ export function LoginPage({ onLogin }: Props) {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const account = await apiLogin(username, password);
+    let account: Awaited<ReturnType<typeof apiLogin>>;
+    try {
+      account = await apiLogin(username, password);
+    } catch (err) {
+      // Blocked by the server's brute-force limit — show why, don't retry.
+      setError(err instanceof Error ? err.message : 'Could not sign in.');
+      setLoading(false);
+      return;
+    }
     if (account) {
       try {
         localStorage.setItem('clinixSession', 'active');
