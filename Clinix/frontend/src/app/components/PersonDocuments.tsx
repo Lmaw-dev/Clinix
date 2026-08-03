@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FileText, Upload, Download, Trash2, Eye, Loader2, AlertCircle, X, FolderClosed } from 'lucide-react';
+import { FileText, Upload, Download, Trash2, Eye, Loader2, AlertCircle, X, FolderClosed, Plus } from 'lucide-react';
 import {
   OwnerType, PersonDoc, listDocuments, uploadDocument, deleteDocument, fileUrl, pdfUrl,
 } from '../documents';
@@ -163,6 +163,193 @@ export function DocPreview({ doc, onClose }: { doc: PersonDoc; onClose: () => vo
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Shared loader so a page can show both the document list and a count ─────────
+export function usePersonDocuments(ownerType: OwnerType, ownerId: string) {
+  const [docs, setDocs] = useState<PersonDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const refresh = useCallback(async () => {
+    if (!ownerId) { setDocs([]); setLoading(false); setError(''); return; }
+    setLoading(true);
+    setError('');
+    try {
+      setDocs(await listDocuments(ownerType, ownerId));
+    } catch {
+      setError('Could not reach the file server. Start the backend to manage documents.');
+    } finally {
+      setLoading(false);
+    }
+  }, [ownerType, ownerId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  return { docs, loading, error, refresh };
+}
+
+/** File-type chip shown beside each document (PDF / DOCX / XLSX …). */
+function docKind(doc: PersonDoc): { label: string; bg: string } {
+  const ext = (doc.fileName.split('.').pop() || '').toLowerCase();
+  if (isPdf(doc)) return { label: 'PDF', bg: '#EF4444' };
+  if (isWord(doc)) return { label: 'DOC', bg: '#2563EB' };
+  if (/^(xlsx?|csv)$/.test(ext)) return { label: 'XLS', bg: '#16A34A' };
+  if (isImage(doc)) return { label: 'IMG', bg: '#9333EA' };
+  if (/^pptx?$/.test(ext)) return { label: 'PPT', bg: '#EA580C' };
+  return { label: 'FILE', bg: '#64748B' };
+}
+
+const DOC_EXT_LABEL: Record<string, string> = {
+  pdf: 'PDF', doc: 'DOC', docx: 'DOCX', xls: 'XLS', xlsx: 'XLSX', csv: 'CSV',
+  png: 'PNG', jpg: 'JPG', jpeg: 'JPEG', ppt: 'PPT', pptx: 'PPTX', txt: 'TXT',
+};
+
+/**
+ * Documents & Records panel used on the Student / Faculty profile page.
+ * The caller owns the document state (via `usePersonDocuments`) so the same
+ * list can feed the "Total Records" statistic without a second request.
+ */
+export function ProfileDocuments({
+  ownerType,
+  ownerId,
+  docs,
+  loading,
+  error,
+  refresh,
+  showToast,
+}: {
+  ownerType: OwnerType;
+  ownerId: string;
+  docs: PersonDoc[];
+  loading: boolean;
+  error: string;
+  refresh: () => Promise<void>;
+  showToast: (m: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<PersonDoc | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const visible = showAll ? docs : docs.slice(0, 3);
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      await uploadDocument(ownerType, ownerId, file);
+      showToast(`Uploaded ${file.name}`);
+      await refresh();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  return (
+    <>
+      <div className="rounded-2xl border border-blue-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+        {/* Header */}
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 dark:bg-slate-700/60">
+            <FileText size={15} className="text-[#2563EB] dark:text-blue-300" />
+          </span>
+          <p className="min-w-0 flex-1 truncate text-blue-900 dark:text-white" style={{ fontSize: 14.5, fontWeight: 700 }}>
+            Documents &amp; Records
+          </p>
+          {docs.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="shrink-0 text-[#2563EB] transition-colors hover:text-blue-800 dark:text-blue-300"
+              style={{ fontSize: 12, fontWeight: 600 }}
+            >
+              {showAll ? 'Show Less' : 'View All'}
+            </button>
+          )}
+        </div>
+
+        {/* List */}
+        {loading ? (
+          <div className="flex items-center gap-2 py-6 text-slate-400" style={{ fontSize: 12 }}>
+            <Loader2 size={14} className="animate-spin" /> Loading documents…
+          </div>
+        ) : error ? (
+          <div className="flex items-start gap-2 py-2 text-yellow-600" style={{ fontSize: 12 }}>
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        ) : docs.length === 0 ? (
+          <p className="py-6 text-center text-slate-400" style={{ fontSize: 12 }}>
+            No documents attached yet.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {visible.map((doc) => {
+              const kind = docKind(doc);
+              const ext = (doc.fileName.split('.').pop() || '').toLowerCase();
+              return (
+                <li key={doc.id} className="flex items-center gap-2.5">
+                  <span
+                    className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-lg text-white"
+                    style={{ background: kind.bg }}
+                  >
+                    <FileText size={12} strokeWidth={2.4} />
+                    <span style={{ fontSize: 7.5, fontWeight: 800, letterSpacing: '0.02em', lineHeight: 1.3 }}>
+                      {kind.label}
+                    </span>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-black dark:text-slate-100" style={{ fontSize: 12.5, fontWeight: 600 }}>
+                      {doc.fileName}
+                    </p>
+                    <p className="truncate text-slate-400" style={{ fontSize: 11 }}>
+                      {DOC_EXT_LABEL[ext] || kind.label} · {formatBytes(doc.size)}
+                      {doc.uploadedAt ? ` · ${formatDate(doc.uploadedAt)}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewDoc(doc)}
+                    title="Preview"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-blue-100 text-slate-400 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-[#2563EB] dark:border-slate-600 dark:hover:bg-slate-700"
+                  >
+                    <Eye size={13} />
+                  </button>
+                  <a
+                    href={fileUrl(doc.id, true)}
+                    title="Download"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-blue-100 text-slate-400 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-[#2563EB] dark:border-slate-600 dark:hover:bg-slate-700"
+                  >
+                    <Download size={13} />
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {/* Upload */}
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 py-2 text-[#2563EB] transition-colors hover:bg-blue-100 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-700/50 dark:text-blue-300 dark:hover:bg-slate-700"
+          style={{ fontSize: 12.5, fontWeight: 600 }}
+        >
+          {uploading ? <Loader2 size={13} className="animate-spin" /> : <Plus size={14} />}
+          {uploading ? 'Uploading…' : 'Upload New Document'}
+        </button>
+        <input ref={inputRef} type="file" onChange={onPick} className="hidden" />
+      </div>
+
+      {previewDoc && <DocPreview doc={previewDoc} onClose={() => setPreviewDoc(null)} />}
+    </>
   );
 }
 

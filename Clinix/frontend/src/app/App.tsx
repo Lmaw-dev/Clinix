@@ -634,6 +634,8 @@ export default function App() {
               addActivity={addActivity}
               openProfileId={profileStudentId}
               onProfileOpened={() => setProfileStudentId(null)}
+              consultations={consultations}
+              onViewHistory={pageAllowed('consultations') ? () => navigate('consultations') : undefined}
             />
           )}
           {page === 'faculty' && (
