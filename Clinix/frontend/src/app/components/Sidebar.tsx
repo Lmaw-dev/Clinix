@@ -11,10 +11,8 @@ import {
   ShieldCheck,
   LogOut,
   Activity,
-  ChevronDown,
 } from 'lucide-react';
 
-const APP_VERSION = import.meta.env.VITE_APP_VERSION || 'v2.4.1';
 import { Page } from '../App';
 import { Role, canAccess } from '../auth';
 import { useTheme } from '../ThemeContext';
@@ -163,22 +161,6 @@ export function Sidebar({
           </span>
           Logout
         </button>
-
-        {/* App identity + version */}
-        <div style={{ height: 1, background: divider, margin: '6px 0' }} />
-        <div className="flex items-center gap-3 px-3 py-1.5">
-          <div
-            className="flex shrink-0 items-center justify-center rounded-xl"
-            style={{ width: 30, height: 30, background: 'linear-gradient(135deg, #F5C518, #E3B10D)' }}
-          >
-            <Activity size={14} style={{ color: '#1B2A6E' }} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p style={{ fontWeight: 600, fontSize: 12.5, color: '#FFFFFF', lineHeight: 1.25 }}>Clinix</p>
-            <p style={{ fontSize: 10, color: itemInactive, lineHeight: 1.25 }}>{APP_VERSION}</p>
-          </div>
-          <ChevronDown size={14} style={{ color: itemInactive }} />
-        </div>
       </div>
     </aside>
   );
