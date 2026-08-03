@@ -1,11 +1,13 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Search, Pencil, Archive, Upload, CheckCircle2, Camera, User, Download, Printer, Filter, X, Lock,
-  ArrowLeft, Phone, Mail, CalendarDays, GraduationCap, BookOpen, HeartPulse, Users, Home, MapPin, FileText, Building2,
+  ArrowLeft, Phone, Mail, CalendarDays, BookOpen, HeartPulse, Users, Home, MapPin, Building2,
+  ChevronDown, ChevronUp, IdCard, Layers, CircleDot, Droplet, Scale, FolderOpen, Ruler, Activity,
+  ClipboardList, PhoneCall, Clock, Stethoscope, CalendarClock, MinusCircle, AlertCircle,
 } from 'lucide-react';
-import { Student, normalizeStudent } from '../App';
+import { Student, Consultation, normalizeStudent } from '../App';
 import { Modal } from './Modal';
-import { PersonDocuments } from './PersonDocuments';
+import { PersonDocuments, ProfileDocuments, usePersonDocuments } from './PersonDocuments';
 import { useColleges, YEAR_OPTIONS } from '../colleges';
 import { canSeeConfidential } from '../auth';
 import { confirmDialog } from './ConfirmDialog';
@@ -21,6 +23,10 @@ type Props = {
   /** Student ID whose full profile should open on mount (e.g. from Dashboard search) */
   openProfileId?: string | null;
   onProfileOpened?: () => void;
+  /** Consultation history — drives Last Visit and the Medical Summary panel. */
+  consultations?: Consultation[];
+  /** "View Full History" on the Medical Summary panel. */
+  onViewHistory?: () => void;
 };
 
 type TabId = 'list' | 'form' | 'import';
@@ -254,7 +260,714 @@ async function saveStudentApi(student: Student, editingId?: string | null) {
   }
 }
 
-export function StudentsModule({ students, setStudents, globalSearch, showToast, addActivity, openProfileId, onProfileOpened }: Props) {
+// ─── Student Profile page ───────────────────────────────────────────────────
+// Presentational building blocks. Kept at module scope so React keeps their
+// instances alive between renders (no remount on every keystroke elsewhere).
+
+type LucideIcon = React.ComponentType<{ size?: number; className?: string; strokeWidth?: number; style?: React.CSSProperties }>;
+
+type ProfileFieldSpec = {
+  label: string;
+  value?: string;
+  icon?: LucideIcon;
+  /** Small pill rendered right after the value (e.g. the BMI category). */
+  chip?: { text: string; bg: string; fg: string };
+  /** Admin-only field — masked for other roles. */
+  conf?: boolean;
+};
+
+function NotProvided() {
+  return (
+    <span
+      className="ml-1.5 inline-flex items-center rounded-md bg-slate-100 px-1.5 py-px text-slate-400 dark:bg-slate-700 dark:text-slate-400"
+      style={{ fontSize: 10, fontWeight: 500 }}
+    >
+      Not Provided
+    </span>
+  );
+}
+
+/** Grid of label/value pairs with hairline rules between rows and columns. */
+const GRID_COLS: Record<1 | 2 | 3, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-1 sm:grid-cols-2',
+  3: 'grid-cols-1 sm:grid-cols-3',
+};
+
+function ProfileFieldGrid({ items, cols, isAdmin }: { items: ProfileFieldSpec[]; cols: 1 | 2 | 3; isAdmin: boolean }) {
+  const rowCount = Math.ceil(items.length / cols);
+  const rule = 'border-blue-50 dark:border-slate-700/60';
+  return (
+    <div className={`grid ${GRID_COLS[cols]}`}>
+      {items.map((f, i) => {
+        const lastRow = Math.floor(i / cols) === rowCount - 1;
+        const lastCol = i % cols === cols - 1 || i === items.length - 1;
+        const Icon = f.icon;
+        const masked = f.conf && !isAdmin;
+        return (
+          <div
+            key={f.label}
+            className={[
+              'px-3 py-2.5',
+              rule,
+              lastRow ? '' : 'border-b',
+              lastCol ? '' : 'sm:border-r',
+            ].join(' ')}
+          >
+            <p className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>
+              {masked ? <Lock size={10} className="shrink-0" /> : Icon ? <Icon size={11} className="shrink-0 text-slate-400" /> : null}
+              {f.label}
+            </p>
+            {masked ? (
+              <p className="mt-1 italic text-slate-400" style={{ fontSize: 12 }}>Admin only</p>
+            ) : (
+              <p className="mt-1 flex flex-wrap items-center text-black dark:text-slate-100" style={{ fontSize: 13.5, fontWeight: 600 }}>
+                {f.value ? f.value : <span className="text-slate-300 dark:text-slate-500">—</span>}
+                {f.chip ? (
+                  <span
+                    className="ml-1.5 inline-flex items-center rounded-md px-1.5 py-px"
+                    style={{ fontSize: 10, fontWeight: 600, background: f.chip.bg, color: f.chip.fg }}
+                  >
+                    {f.chip.text}
+                  </span>
+                ) : f.value ? null : (
+                  <NotProvided />
+                )}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Collapsible white card with a tinted icon chip in the header. */
+function ProfileSection({
+  icon: Icon,
+  title,
+  tone = 'blue',
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  tone?: 'blue' | 'red';
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  const chip = tone === 'red' ? { bg: '#FEF2F2', fg: '#DC2626' } : { bg: '#EFF6FF', fg: '#2563EB' };
+  return (
+    <div className="rounded-2xl border border-blue-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2.5 text-left"
+        aria-expanded={open}
+      >
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg dark:bg-slate-700/60" style={{ background: chip.bg }}>
+          <Icon size={15} style={{ color: chip.fg }} />
+        </span>
+        <span
+          className={`min-w-0 flex-1 truncate ${tone === 'red' ? 'text-[#DC2626] dark:text-red-300' : 'text-blue-900 dark:text-white'}`}
+          style={{ fontSize: 14.5, fontWeight: 700 }}
+        >
+          {title}
+        </span>
+        {open ? <ChevronUp size={15} className="shrink-0 text-slate-400" /> : <ChevronDown size={15} className="shrink-0 text-slate-400" />}
+      </button>
+      {open && <div className="mt-2">{children}</div>}
+    </div>
+  );
+}
+
+/** Tinted statistic tile (Blood Type / BMI / Total Records / Last Visit). */
+function StatTile({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  chip,
+  valueSize = 20,
+  bg,
+  border,
+  fg,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  sub?: string;
+  chip?: { text: string; bg: string; fg: string };
+  valueSize?: number;
+  bg: string;
+  border: string;
+  fg: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border p-3.5 dark:bg-slate-800" style={{ background: bg, borderColor: border }}>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm dark:bg-slate-700">
+        <Icon size={18} style={{ color: fg }} />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{label}</p>
+        <p className="truncate text-black dark:text-slate-100" style={{ fontSize: valueSize, fontWeight: 700, lineHeight: 1.25 }}>
+          {value}
+        </p>
+        {chip ? (
+          <span
+            className="mt-0.5 inline-flex items-center rounded-md px-1.5 py-px"
+            style={{ fontSize: 10, fontWeight: 600, background: chip.bg, color: chip.fg }}
+          >
+            {chip.text}
+          </span>
+        ) : (
+          <p className="truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{sub || '—'}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Ring gauge used by the Profile Completion card. */
+function CompletionRing({ percent }: { percent: number }) {
+  const r = 27;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="relative shrink-0" style={{ width: 68, height: 68 }}>
+      <svg width="68" height="68" viewBox="0 0 68 68" aria-hidden="true">
+        <circle cx="34" cy="34" r={r} fill="none" stroke="#DBEAFE" strokeWidth="7" />
+        <circle
+          cx="34" cy="34" r={r} fill="none" stroke="#2563EB" strokeWidth="7" strokeLinecap="round"
+          strokeDasharray={`${(c * percent) / 100} ${c}`}
+          transform="rotate(-90 34 34)"
+        />
+      </svg>
+      <span
+        className="absolute inset-0 flex items-center justify-center text-[#2563EB] dark:text-blue-300"
+        style={{ fontSize: 14.5, fontWeight: 700 }}
+      >
+        {percent}%
+      </span>
+    </div>
+  );
+}
+
+/** Faint campus crest behind the right edge of the hero card. */
+function CrestWatermark() {
+  const leaves = Array.from({ length: 7 }, (_, i) => {
+    const ang = Math.PI * (0.60 + (i / 6) * 0.66);
+    const cx = 100 + Math.cos(ang) * 76;
+    const cy = 104 + Math.sin(ang) * 76;
+    return { cx, cy, rot: (ang * 180) / Math.PI + 90 };
+  });
+  return (
+    <svg
+      className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 lg:block"
+      width="235" height="235" viewBox="0 0 200 200" fill="none" aria-hidden="true"
+      style={{ opacity: 0.08 }}
+    >
+      <g stroke="#1B2A6E" strokeWidth="3" fill="none" strokeLinecap="round">
+        <path d="M63 48c-19 17-28 42-26 68 2 25 13 45 29 59" />
+        <path d="M137 48c19 17 28 42 26 68-2 25-13 45-29 59" />
+      </g>
+      <g fill="#1B2A6E">
+        {leaves.map((l, i) => (
+          <ellipse key={`l${i}`} cx={l.cx} cy={l.cy} rx="9" ry="4.2" transform={`rotate(${l.rot} ${l.cx} ${l.cy})`} />
+        ))}
+        {leaves.map((l, i) => (
+          <ellipse key={`r${i}`} cx={200 - l.cx} cy={l.cy} rx="9" ry="4.2" transform={`rotate(${-l.rot} ${200 - l.cx} ${l.cy})`} />
+        ))}
+        <path d="M100 30l2.6 5.6L108 38l-5.4 2.4L100 46l-2.6-5.6L92 38l5.4-2.4z" />
+        <path d="M78 40l2 4.3 4.2 1.7-4.2 1.9L78 52l-2-4.1-4.2-1.9 4.2-1.7z" />
+        <path d="M122 40l2 4.3 4.2 1.7-4.2 1.9-2 4.1-2-4.1-4.2-1.9 4.2-1.7z" />
+      </g>
+      <path d="M100 52l52 19v40c0 32-21 53-52 64-31-11-52-32-52-64V71z" stroke="#1B2A6E" strokeWidth="4.5" fill="none" />
+      <path d="M100 84v46M77 107h46" stroke="#1B2A6E" strokeWidth="10" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** One hero meta tile — icon chip plus label/value. */
+function HeroMeta({ icon: Icon, label, value, tone = '#2563EB', bg = '#EFF6FF' }: {
+  icon: LucideIcon; label: string; value: string; tone?: string; bg?: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg dark:bg-slate-700/60" style={{ background: bg }}>
+        <Icon size={15} style={{ color: tone }} />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5, lineHeight: 1.4 }}>{label}</p>
+        <p className="truncate text-black dark:text-slate-100" style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.4 }}>{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function HeroDivider() {
+  return <span className="hidden h-9 w-px shrink-0 bg-blue-100 dark:bg-slate-700 sm:block" />;
+}
+
+function formatShortDate(raw?: string) {
+  if (!raw) return '';
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const STATUS_PILL: Record<string, { bg: string; fg: string }> = {
+  enrolled: { bg: '#ECFDF5', fg: '#15803D' },
+  'not enrolled': { bg: '#F1F5F9', fg: '#475569' },
+  dropped: { bg: '#FFFBEB', fg: '#B45309' },
+};
+
+export function StudentProfileView({
+  student, consultations, isAdmin, showToast, onBack, onEdit, onViewHistory,
+}: {
+  student: Student;
+  consultations: Consultation[];
+  isAdmin: boolean;
+  showToast: (m: string) => void;
+  onBack: () => void;
+  onEdit: (s: Student) => void;
+  onViewHistory?: () => void;
+}) {
+  const p = student;
+  const { docs, loading: docsLoading, error: docsError, refresh: refreshDocs } = usePersonDocuments('student', p.studentId);
+
+  const age = useMemo(() => {
+    if (!p.birthdate) return '';
+    const b = new Date(p.birthdate);
+    if (Number.isNaN(b.getTime())) return '';
+    const now = new Date();
+    let a = now.getFullYear() - b.getFullYear();
+    const m = now.getMonth() - b.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < b.getDate())) a--;
+    return a >= 0 ? String(a) : '';
+  }, [p.birthdate]);
+
+  const bmi = computeBmi(p.height, p.weight);
+  const bmiChip = bmi
+    ? bmi.category === 'Normal'
+      ? { text: 'Normal', bg: '#DCFCE7', fg: '#15803D' }
+      : { text: bmi.category, bg: '#FEF3C7', fg: '#B45309' }
+    : undefined;
+
+  // Latest consultation drives Last Visit / Medical Summary
+  const lastVisit = useMemo(() => {
+    const mine = consultations
+      .filter((c) => c.studentId === p.studentId)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    return mine[0];
+  }, [consultations, p.studentId]);
+
+  // Profile completeness — the checklist mirrors what staff are asked to fill in
+  const checklist = useMemo(() => ({
+    'Personal Information': Boolean(p.gender && p.bloodType),
+    'Residence Information': Boolean(p.presentAddress || p.homeAddress),
+    'Guardian Information': Boolean(p.guardianName && p.guardianContact),
+    Height: Boolean(p.height),
+    Weight: Boolean(p.weight),
+    'Date of Birth': Boolean(p.birthdate),
+  }), [p]);
+
+  const percent = useMemo(() => {
+    const tracked = [
+      p.studentId, p.name, p.course, p.yearLevel, p.gender, p.contactNumber, p.email, p.photo,
+      p.birthdate, p.bloodType, p.schoolYear, p.height, p.weight, p.presentAddress, p.homeAddress,
+      p.guardianName, p.guardianRelationship, p.guardianContact, p.allergies,
+    ];
+    const filled = tracked.filter((v) => String(v || '').trim()).length;
+    return Math.round((filled / tracked.length) * 100);
+  }, [p]);
+
+  const headline = percent >= 100 ? 'All set!' : percent >= 60 ? 'Almost there!' : 'Needs attention';
+  const pill = STATUS_PILL[p.status] || STATUS_PILL.dropped;
+  const bloodSign = p.bloodType.endsWith('+') ? 'Positive' : p.bloodType.endsWith('-') ? 'Negative' : '';
+  const verified = p.status === 'enrolled';
+
+  const summaryLeft = [
+    { label: 'Allergies', value: p.allergies || 'None known', alert: Boolean(p.allergies) },
+    { label: 'Maintenance Medicines', value: p.currentMedications || 'None', alert: Boolean(p.currentMedications) },
+    { label: 'Medical Conditions', value: p.medicalConditions || 'None', alert: Boolean(p.medicalConditions) },
+  ];
+  const summaryRight = [
+    { icon: Clock, label: 'Last Consultation', value: lastVisit ? formatShortDate(lastVisit.date) : 'No records', ok: Boolean(lastVisit) },
+    { icon: Stethoscope, label: 'Latest Diagnosis', value: lastVisit?.outcome || lastVisit?.summary || 'None recorded', ok: Boolean(lastVisit) },
+    { icon: CalendarClock, label: 'Next Follow-up', value: 'No follow-up', ok: false },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* ── Page header ── */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-white text-slate-600 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+          title="Back to Students"
+          aria-label="Back to Students"
+        >
+          <ArrowLeft size={17} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="truncate text-black dark:text-white" style={{ fontSize: 21, fontWeight: 700, letterSpacing: '-0.01em' }}>
+            Student Profile
+          </h1>
+          <p className="truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 12.5 }}>
+            View and manage student information
+          </p>
+        </div>
+      </div>
+
+      {/* ── Hero card ── */}
+      <div className="relative overflow-hidden rounded-2xl border border-blue-100 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 hidden w-1/2 lg:block"
+          style={{ background: 'linear-gradient(90deg, rgba(238,241,250,0) 0%, rgba(238,241,250,0.75) 100%)' }}
+        />
+        <CrestWatermark />
+
+        <div className="relative flex flex-col gap-6 sm:flex-row">
+          {/* Photo + verification */}
+          <div className="flex shrink-0 flex-col items-center gap-2.5">
+            <div className="relative">
+              {p.photo ? (
+                <img
+                  src={p.photo}
+                  alt={p.name}
+                  className="h-[152px] w-[148px] rounded-xl object-cover shadow-md ring-4 ring-white dark:ring-slate-700"
+                />
+              ) : (
+                <div
+                  className="flex h-[152px] w-[148px] items-center justify-center rounded-xl bg-blue-100 shadow-md ring-4 ring-white dark:ring-slate-700"
+                  style={{ fontSize: 34, fontWeight: 700, color: '#37479A' }}
+                >
+                  {avatarInitials(p.name) || <User size={38} className="text-blue-400" />}
+                </div>
+              )}
+              <button
+                onClick={() => onEdit(p)}
+                className="absolute bottom-2.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/95 px-3 py-1 text-[#37479A] shadow-md transition-colors hover:bg-blue-50"
+                style={{ fontSize: 11, fontWeight: 600 }}
+                title="Change photo"
+              >
+                <Camera size={11} />
+                Change Photo
+              </button>
+            </div>
+            <span
+              className="flex w-full items-center justify-center gap-1.5 rounded-full border px-3 py-1"
+              style={
+                verified
+                  ? { background: '#ECFDF5', borderColor: '#A7F3D0', color: '#15803D', fontSize: 11.5, fontWeight: 600 }
+                  : { background: '#F8FAFC', borderColor: '#E2E8F0', color: '#64748B', fontSize: 11.5, fontWeight: 600 }
+              }
+            >
+              <CheckCircle2 size={12} />
+              {verified ? 'Verified Student' : 'Unverified'}
+            </span>
+          </div>
+
+          {/* Identity */}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-black dark:text-white" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+                    {p.name}
+                  </p>
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1"
+                    style={{ background: pill.bg, color: pill.fg, fontSize: 11.5, fontWeight: 600 }}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: pill.fg }} />
+                    {p.status}
+                  </span>
+                </div>
+                <p className="mt-2 flex items-center gap-1.5 text-[#2563EB] dark:text-blue-300" style={{ fontSize: 13, fontWeight: 500 }}>
+                  <IdCard size={15} />
+                  Student ID: {p.studentId}
+                </p>
+              </div>
+
+              <button
+                onClick={() => onEdit(p)}
+                className="flex shrink-0 items-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-2 text-[#2563EB] transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                <Pencil size={14} />
+                Edit Profile
+              </button>
+            </div>
+
+            {/* Meta row 1 */}
+            <div className="mt-7 flex flex-wrap items-center gap-x-7 gap-y-3">
+              <HeroMeta icon={BookOpen} label="Course" value={[p.course, p.yearLevel].filter(Boolean).join(' - ') || '—'} />
+              <HeroDivider />
+              <HeroMeta icon={Layers} label="Year Level" value={p.yearLevel || '—'} tone="#4F46E5" bg="#EEF2FF" />
+              <HeroDivider />
+              <HeroMeta
+                icon={CircleDot}
+                label="Status"
+                value={p.status.charAt(0).toUpperCase() + p.status.slice(1)}
+                tone="#16A34A"
+                bg="#ECFDF5"
+              />
+            </div>
+
+            {/* Meta row 2 */}
+            <div className="mt-6 flex flex-wrap items-center gap-x-7 gap-y-3">
+              <HeroMeta icon={Phone} label="Contact Number" value={p.contactNumber || '—'} />
+              <HeroDivider />
+              <HeroMeta icon={Mail} label="Email Address" value={p.email || '—'} />
+              <HeroDivider />
+              <HeroMeta icon={CalendarDays} label="Date Enrolled" value={p.schoolYear ? `SY ${p.schoolYear}` : '—'} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body: details (2fr) + side panels (1fr) ── */}
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
+        <div className="space-y-4 xl:col-span-2">
+          {/* Statistics */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile
+              icon={Droplet} label="Blood Type" value={p.bloodType || '—'} sub={bloodSign || 'Not recorded'}
+              bg="#FEF2F2" border="#FEE2E2" fg="#EF4444"
+            />
+            <StatTile
+              icon={Scale} label="BMI" value={bmi ? bmi.value : '—'} chip={bmiChip} sub="Not recorded"
+              bg="#F0FDF4" border="#DCFCE7" fg="#16A34A"
+            />
+            <StatTile
+              icon={FolderOpen} label="Total Records" value={docsLoading ? '…' : String(docs.length)} sub="Files"
+              bg="#F5F3FF" border="#EDE9FE" fg="#7C3AED"
+            />
+            <StatTile
+              icon={CalendarDays} label="Last Visit" value={lastVisit ? formatShortDate(lastVisit.date) : '—'}
+              sub={lastVisit?.time || 'No visits yet'} valueSize={16}
+              bg="#FFFBEB" border="#FEF3C7" fg="#D97706"
+            />
+          </div>
+
+          {/* Detail sections — two stacks so cards pack upward */}
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            <div className="space-y-4">
+              <ProfileSection icon={User} title="Personal Information">
+                <ProfileFieldGrid
+                  cols={3}
+                  isAdmin={isAdmin}
+                  items={[
+                    { label: 'Sex', value: p.gender, icon: User },
+                    { label: 'Date of Birth', value: p.birthdate, icon: CalendarDays },
+                    { label: 'Age', value: age },
+                    { label: 'Blood Type', value: p.bloodType, icon: Droplet },
+                    { label: 'Height', value: p.height ? `${p.height} cm` : '', icon: Ruler },
+                    { label: 'Weight', value: p.weight ? `${p.weight} kg` : '', icon: Scale },
+                    { label: 'BMI', value: bmi?.value, icon: Activity, chip: bmiChip },
+                  ]}
+                />
+              </ProfileSection>
+
+              <ProfileSection icon={Users} title="Guardian / Parent Information">
+                <ProfileFieldGrid
+                  cols={3}
+                  isAdmin={isAdmin}
+                  items={[
+                    { label: 'Name', value: p.guardianName, icon: User, conf: true },
+                    { label: 'Relationship', value: p.guardianRelationship, conf: true },
+                    { label: 'Contact Number', value: p.guardianContact, conf: true },
+                  ]}
+                />
+              </ProfileSection>
+
+              <ProfileSection icon={HeartPulse} title="Medical Information" tone="red">
+                <ProfileFieldGrid
+                  cols={2}
+                  isAdmin={isAdmin}
+                  items={[
+                    { label: 'Allergies', value: p.allergies },
+                    { label: 'Medical Conditions', value: p.medicalConditions },
+                    { label: 'Current Medications', value: p.currentMedications },
+                    { label: 'Others', value: p.medicalOthers },
+                  ]}
+                />
+              </ProfileSection>
+            </div>
+
+            <div className="space-y-4">
+              <ProfileSection icon={MapPin} title="Residence Information">
+                <ProfileFieldGrid
+                  cols={1}
+                  isAdmin={isAdmin}
+                  items={[
+                    { label: 'Current Address', value: p.presentAddress, icon: Building2, conf: true },
+                    { label: 'Permanent / Home Address', value: p.homeAddress, icon: ClipboardList, conf: true },
+                  ]}
+                />
+              </ProfileSection>
+
+              <ProfileSection icon={Home} title="Boarding House Information">
+                <ProfileFieldGrid
+                  cols={2}
+                  isAdmin={isAdmin}
+                  items={[
+                    { label: 'Boarding House Name', value: p.boardingHouseName, icon: Building2, conf: true },
+                    { label: 'Boarding House Address', value: p.boardingHouseAddress, icon: MapPin, conf: true },
+                    { label: 'Landlord / Landlady', value: p.landlordName, icon: User, conf: true },
+                    { label: 'Landlord Contact Number', value: p.landlordContact, icon: Phone, conf: true },
+                  ]}
+                />
+              </ProfileSection>
+
+              <ProfileSection icon={PhoneCall} title="Emergency Contact" tone="red">
+                <ProfileFieldGrid
+                  cols={3}
+                  isAdmin={isAdmin}
+                  items={[
+                    { label: 'Name', value: p.guardianName, icon: User, conf: true },
+                    { label: 'Relationship', value: p.guardianRelationship, conf: true },
+                    { label: 'Contact Number', value: p.guardianContact, conf: true },
+                  ]}
+                />
+              </ProfileSection>
+            </div>
+          </div>
+
+          {isAdmin && (
+            <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900/40 dark:bg-yellow-900/10">
+              <p className="mb-1 flex items-center gap-1.5 text-yellow-700 dark:text-yellow-300" style={{ fontSize: 12, fontWeight: 600 }}>
+                <Lock size={12} /> Confidential Notes (admin only)
+              </p>
+              <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>
+                {p.confidentialNotes || 'None recorded'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Side panels ── */}
+        <div className="space-y-4">
+          <ProfileDocuments
+            ownerType="student"
+            ownerId={p.studentId}
+            docs={docs}
+            loading={docsLoading}
+            error={docsError}
+            refresh={refreshDocs}
+            showToast={showToast}
+          />
+
+          {/* Profile completion */}
+          <div className="rounded-2xl border border-blue-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+            <div className="flex items-center gap-4">
+              <CompletionRing percent={percent} />
+              <div className="min-w-0">
+                <p className="text-blue-900 dark:text-white" style={{ fontSize: 14.5, fontWeight: 700 }}>Profile Completion</p>
+                <p className="text-black dark:text-slate-100" style={{ fontSize: 12, fontWeight: 600 }}>{headline}</p>
+                <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5, lineHeight: 1.45 }}>
+                  Complete the missing information to keep student records up to date.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3.5 flex items-start gap-2">
+              <ul className="shrink-0 space-y-1.5">
+                {(['Personal Information', 'Residence Information'] as const).map((k) => (
+                  <ChecklistRow key={k} label={k} done={checklist[k]} />
+                ))}
+              </ul>
+              <ul className="shrink-0 space-y-1.5">
+                {(['Height', 'Weight', 'Guardian Information', 'Date of Birth'] as const).map((k) => (
+                  <ChecklistRow key={k} label={k} done={checklist[k]} />
+                ))}
+              </ul>
+              <button
+                onClick={() => onEdit(p)}
+                className="ml-auto shrink-0 self-center rounded-lg bg-blue-50 px-3 py-1.5 text-[#2563EB] transition-colors hover:bg-blue-100 dark:bg-slate-700/60 dark:text-blue-300 dark:hover:bg-slate-700"
+                style={{ fontSize: 12, fontWeight: 600 }}
+              >
+                Update Profile
+              </button>
+            </div>
+          </div>
+
+          {/* Medical summary */}
+          <div className="rounded-2xl border border-blue-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+            <div className="mb-3 flex items-center gap-2.5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg dark:bg-slate-700/60" style={{ background: '#FEF2F2' }}>
+                <HeartPulse size={15} style={{ color: '#DC2626' }} />
+              </span>
+              <p className="min-w-0 flex-1 truncate text-blue-900 dark:text-white" style={{ fontSize: 14.5, fontWeight: 700 }}>
+                Medical Summary
+              </p>
+              <button
+                type="button"
+                onClick={onViewHistory}
+                className="shrink-0 text-[#2563EB] transition-colors hover:text-blue-800 dark:text-blue-300"
+                style={{ fontSize: 12, fontWeight: 600 }}
+              >
+                View Full History
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:divide-x sm:divide-blue-50 sm:dark:divide-slate-700">
+              <ul className="space-y-2 sm:pr-3">
+                {summaryLeft.map((s) => (
+                  <li key={s.label} className="flex items-start gap-2">
+                    {s.alert
+                      ? <AlertCircle size={13} className="mt-0.5 shrink-0 text-[#F59E0B]" />
+                      : <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-[#16A34A]" />}
+                    <div className="min-w-0">
+                      <p className="truncate text-black dark:text-slate-100" style={{ fontSize: 11.5, fontWeight: 600 }}>{s.label}</p>
+                      <p className="truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{s.value}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              <ul className="space-y-2 sm:pl-3">
+                {summaryRight.map(({ icon: Icon, label, value, ok }) => (
+                  <li key={label} className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-blue-50 dark:bg-slate-700/60">
+                      <Icon size={12} style={{ color: '#2563EB' }} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-black dark:text-slate-100" style={{ fontSize: 11.5, fontWeight: 600 }}>{label}</p>
+                      <p className="truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{value}</p>
+                    </div>
+                    {ok
+                      ? <CheckCircle2 size={13} className="shrink-0 text-[#16A34A]" />
+                      : <MinusCircle size={13} className="shrink-0 text-slate-300" />}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Footer ── */}
+      <div className="flex items-center justify-center gap-2 pt-1 text-slate-400" style={{ fontSize: 11.5 }}>
+        <span>© {new Date().getFullYear()} Clinix – BISU Calape Campus Clinic Management System</span>
+        <Activity size={12} />
+      </div>
+    </div>
+  );
+}
+
+function ChecklistRow({ label, done }: { label: string; done: boolean }) {
+  return (
+    <li className="flex items-center gap-1.5 pr-3">
+      {done
+        ? <CheckCircle2 size={12} className="shrink-0 text-[#16A34A]" />
+        : <AlertCircle size={12} className="shrink-0 text-[#F59E0B]" />}
+      <span className="whitespace-nowrap text-slate-600 dark:text-slate-300" style={{ fontSize: 11 }}>{label}</span>
+    </li>
+  );
+}
+
+export function StudentsModule({ students, setStudents, globalSearch, showToast, addActivity, openProfileId, onProfileOpened, consultations = [], onViewHistory }: Props) {
   const colleges = useColleges();
   const isAdmin = canSeeConfidential();
   const [tab, setTab] = useState<TabId>('list');
@@ -1484,217 +2197,17 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       </Modal>
 
       {/* ── PROFILE PAGE — replaces the list while a student is selected ── */}
-      {viewStudent && (() => {
-        const p = students.find((x) => x.studentId === viewStudent.studentId) ?? viewStudent;
-        const age = (() => {
-          if (!p.birthdate) return '';
-          const b = new Date(p.birthdate);
-          if (isNaN(b.getTime())) return '';
-          const now = new Date();
-          let a = now.getFullYear() - b.getFullYear();
-          const m = now.getMonth() - b.getMonth();
-          if (m < 0 || (m === 0 && now.getDate() < b.getDate())) a--;
-          return a >= 0 ? String(a) : '';
-        })();
-        const bmi = computeBmi(p.height, p.weight);
-        const Field = ({ label, value, conf = false }: { label: string; value?: string; conf?: boolean }) => (
-          <div className="py-1.5 border-b border-blue-50 dark:border-slate-700/60">
-            <p className="text-slate-500 dark:text-slate-400 flex items-center gap-1" style={{ fontSize: 12 }}>
-              {conf && <Lock size={10} />}{label}
-            </p>
-            {conf && !isAdmin ? (
-              <p className="text-slate-400 italic mt-0.5" style={{ fontSize: 12 }}>Admin only</p>
-            ) : (
-              <p className="text-black dark:text-slate-200 mt-0.5" style={{ fontSize: 13.5, fontWeight: 500 }}>{value || '—'}</p>
-            )}
-          </div>
-        );
-        const Section = ({ icon: Icon, title, cols = 2, children }: { icon: typeof User; title: string; cols?: 2 | 3; children: React.ReactNode }) => (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-4">
-            <div className="flex items-center gap-2.5 mb-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-slate-700/60">
-                <Icon size={16} className="text-blue-600 dark:text-blue-400" />
-              </span>
-              <p className="text-blue-900 dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>{title}</p>
-            </div>
-            <div className={`grid grid-cols-1 gap-x-6 ${cols === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>{children}</div>
-          </div>
-        );
-        return (
-          <div className="space-y-5">
-            {/* Page header: back + title */}
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={() => setViewStudent(null)}
-                className="flex items-center justify-center rounded-lg border border-blue-100 bg-white p-2 text-slate-600 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                title="Back to Students"
-                aria-label="Back to Students"
-              >
-                <ArrowLeft size={17} />
-              </button>
-              <h1 className="text-black dark:text-white" style={{ fontWeight: 700, fontSize: 22 }}>
-                Student Profile
-              </h1>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
-              {/* ── Left: hero + info sections ── */}
-              <div className="xl:col-span-2 space-y-4">
-                {/* Hero card */}
-                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-5">
-                  <div className="flex flex-col sm:flex-row items-start gap-5">
-                    {/* Photo + change button */}
-                    <div className="relative shrink-0">
-                      {p.photo ? (
-                        <img
-                          src={p.photo}
-                          alt={p.name}
-                          className="h-40 w-36 rounded-xl border border-blue-100 object-cover shadow dark:border-slate-600"
-                        />
-                      ) : (
-                        <div
-                          className="flex h-40 w-36 items-center justify-center rounded-xl border border-blue-100 bg-blue-100 shadow dark:border-slate-600"
-                          style={{ fontSize: 30, fontWeight: 700, color: '#4C5CAE' }}
-                        >
-                          {avatarInitials(p.name) || <User size={36} className="text-blue-400" />}
-                        </div>
-                      )}
-                      <button
-                        onClick={() => openEdit(p)}
-                        className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/95 px-3 py-1 text-blue-700 shadow transition-colors hover:bg-blue-50"
-                        style={{ fontSize: 11.5, fontWeight: 600 }}
-                        title="Change photo"
-                      >
-                        <Camera size={12} />
-                        Change Photo
-                      </button>
-                    </div>
-
-                    {/* Identity */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <p className="text-black dark:text-white" style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.01em' }}>
-                            {p.name}
-                          </p>
-                          <StatusBadge status={p.status} />
-                        </div>
-                        <button
-                          onClick={() => openEdit(p)}
-                          className="flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-2 text-blue-700 transition-colors hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-slate-700"
-                          style={{ fontSize: 13, fontWeight: 600 }}
-                        >
-                          <Pencil size={13} />
-                          Edit Record
-                        </button>
-                      </div>
-                      <p className="text-slate-500 dark:text-slate-400 mt-1" style={{ fontSize: 13.5 }}>
-                        Student ID: {p.studentId}
-                      </p>
-
-                      {/* Chips */}
-                      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
-                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
-                          <GraduationCap size={15} className="text-blue-600 dark:text-blue-400" />
-                          {p.yearLevel || 'No year'}
-                        </span>
-                        <span className="hidden sm:block h-5 w-px bg-blue-200 dark:bg-slate-600" />
-                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
-                          <BookOpen size={15} className="text-blue-600 dark:text-blue-400" />
-                          {p.course || 'No course'}
-                        </span>
-                        <span className="hidden sm:block h-5 w-px bg-blue-200 dark:bg-slate-600" />
-                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
-                          <CalendarDays size={15} className="text-blue-600 dark:text-blue-400" />
-                          {p.schoolYear ? `SY ${p.schoolYear}` : '—'}
-                        </span>
-                      </div>
-
-                      {/* Quick contact strip */}
-                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
-                          <Phone size={15} className="text-blue-600 dark:text-blue-400" />
-                          {p.contactNumber || '—'}
-                        </span>
-                        <span className="hidden sm:block h-5 w-px bg-blue-200 dark:bg-slate-600" />
-                        <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300" style={{ fontSize: 13 }}>
-                          <Mail size={15} className="text-blue-600 dark:text-blue-400" />
-                          {p.email || '—'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Info sections — two independent stacks so cards pack upward */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                  <div className="space-y-4">
-                    <Section icon={User} title="Personal Information" cols={3}>
-                      <Field label="Sex" value={p.gender} />
-                      <Field label="Date of Birth" value={p.birthdate} />
-                      <Field label="Age" value={age} />
-                      <Field label="Blood Type" value={p.bloodType} />
-                      <Field label="Height" value={p.height ? `${p.height} cm` : ''} />
-                      <Field label="Weight" value={p.weight ? `${p.weight} kg` : ''} />
-                      <Field label="BMI" value={bmi ? `${bmi.value} (${bmi.category})` : ''} />
-                    </Section>
-
-                    <Section icon={Users} title="Guardian / Parent Information">
-                      <Field label="Name" value={p.guardianName} conf />
-                      <Field label="Relationship" value={p.guardianRelationship} conf />
-                      <Field label="Contact Number" value={p.guardianContact} conf />
-                    </Section>
-
-                    <Section icon={HeartPulse} title="Medical Information">
-                      <Field label="Allergies" value={p.allergies} />
-                      <Field label="Medical Conditions" value={p.medicalConditions} />
-                      <Field label="Current Medications" value={p.currentMedications} />
-                      <Field label="Others" value={p.medicalOthers} />
-                    </Section>
-                  </div>
-
-                  <div className="space-y-4">
-                    <Section icon={MapPin} title="Residence Information">
-                      <Field label="Current Address" value={p.presentAddress} conf />
-                      <Field label="Permanent / Home Address" value={p.homeAddress} conf />
-                    </Section>
-
-                    <Section icon={Building2} title="Boarding House Information">
-                      <Field label="Boarding House Name" value={p.boardingHouseName} conf />
-                      <Field label="Boarding House Address" value={p.boardingHouseAddress} conf />
-                      <Field label="Landlord/Landlady" value={p.landlordName} conf />
-                      <Field label="Landlord Contact Number" value={p.landlordContact} conf />
-                    </Section>
-                  </div>
-                </div>
-
-                {/* Confidential notes — admin only */}
-                {isAdmin && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5">
-                    <p className="text-yellow-700 mb-1 flex items-center gap-1.5" style={{ fontSize: 12, fontWeight: 600 }}>
-                      <Lock size={12} /> Confidential Notes (admin only)
-                    </p>
-                    <p className="text-black" style={{ fontSize: 13 }}>
-                      {p.confidentialNotes || 'None recorded'}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* ── Right: documents panel ── */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 p-5">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-slate-700/60">
-                    <FileText size={16} className="text-blue-600 dark:text-blue-400" />
-                  </span>
-                  <p className="text-blue-900 dark:text-white" style={{ fontSize: 15, fontWeight: 700 }}>Documents &amp; Records</p>
-                </div>
-                <PersonDocuments ownerType="student" ownerId={p.studentId} showToast={showToast} />
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {viewStudent && (
+        <StudentProfileView
+          student={students.find((x) => x.studentId === viewStudent.studentId) ?? viewStudent}
+          consultations={consultations}
+          isAdmin={isAdmin}
+          showToast={showToast}
+          onBack={() => setViewStudent(null)}
+          onEdit={openEdit}
+          onViewHistory={onViewHistory}
+        />
+      )}
     </div>
   );
 }
