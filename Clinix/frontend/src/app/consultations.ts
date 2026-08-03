@@ -1,4 +1,5 @@
 import { Consultation } from './App';
+import { API_URL, apiFetch } from './api';
 
 // ── Consultation log storage ─────────────────────────────────────────────────
 // The log used to live only in localStorage, so a staff member's vital signs and
@@ -6,17 +7,16 @@ import { Consultation } from './App';
 // lives in MySQL through the shared API, and localStorage is kept purely as an
 // offline cache so the screen still shows something when the backend is down.
 
-const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
 export async function listConsultationsApi(): Promise<Consultation[]> {
-  const res = await fetch(`${API_URL}/consultations`);
+  const res = await apiFetch(`${API_URL}/consultations`);
   if (!res.ok) throw new Error('Failed to load consultations');
   const rows: Record<string, unknown>[] = await res.json();
   return rows.map(normalize);
 }
 
 export async function createConsultationApi(c: Consultation): Promise<void> {
-  const res = await fetch(`${API_URL}/consultations`, {
+  const res = await apiFetch(`${API_URL}/consultations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(c),
@@ -25,7 +25,7 @@ export async function createConsultationApi(c: Consultation): Promise<void> {
 }
 
 export async function updateConsultationApi(id: string, changes: Partial<Consultation>): Promise<void> {
-  const res = await fetch(`${API_URL}/consultations/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`${API_URL}/consultations/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(changes),
@@ -34,7 +34,7 @@ export async function updateConsultationApi(id: string, changes: Partial<Consult
 }
 
 export async function deleteConsultationApi(id: string): Promise<void> {
-  const res = await fetch(`${API_URL}/consultations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const res = await apiFetch(`${API_URL}/consultations/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!res.ok && res.status !== 204) throw new Error('Could not delete the consultation');
 }
 

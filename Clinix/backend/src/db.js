@@ -141,6 +141,101 @@ export async function ensureDbUpdates() {
   await pool.query('ALTER TABLE consultations MODIFY consultation_date DATE NULL').catch(() => {});
   await pool.query('CREATE INDEX IF NOT EXISTS idx_consult_purpose ON consultations (purpose)').catch(() => {});
 
+  // ── Inventory moves out of the browser ────────────────────────────────────
+  // category/archived drive the UI grouping; monthly holds the 12-month
+  // remaining/dispensed sheet as JSON, which is how the clinic already tracks
+  // medicines. It is stored as text rather than split into its own table
+  // because it is always read and written as one whole sheet.
+  await pool.query(`
+    ALTER TABLE inventory_items
+      ADD COLUMN IF NOT EXISTS category VARCHAR(40) NULL,
+      ADD COLUMN IF NOT EXISTS monthly LONGTEXT NULL,
+      ADD COLUMN IF NOT EXISTS archived TINYINT(1) NOT NULL DEFAULT 0
+  `);
+  await pool.query('ALTER TABLE inventory_items MODIFY expiry VARCHAR(20) NULL').catch(() => {});
+
+  // ── Prescriptions ─────────────────────────────────────────────────────────
+  // What was actually handed to a patient. Each row is the reason a quantity
+  // left the inventory, so stock movements can always be traced back to a
+  // person and a consultation instead of an unexplained drop in the count.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS prescriptions (
+      id VARCHAR(40) PRIMARY KEY,
+      consultation_id VARCHAR(40) NULL,
+      patient_id VARCHAR(40) NULL,
+      patient_name TEXT NULL,
+      item_code VARCHAR(40) NOT NULL,
+      item_name TEXT NULL,
+      quantity INT NOT NULL DEFAULT 0,
+      dosage TEXT NULL,
+      instructions TEXT NULL,
+      dispensed_by TEXT NULL,
+      prescription_date DATE NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_presc_consult (consultation_id),
+      INDEX idx_presc_item (item_code)
+    )
+  `);
+
+  // ── Records/certificates: same student-only assumption as consultations ────
+  // Both tables tied every row to a student with a foreign key, so a faculty
+  // member or a walk-in could not be given a record or a certificate at all.
+  for (const table of ['medical_records', 'certificates']) {
+    const [keys] = await pool.query(`
+      SELECT constraint_name FROM information_schema.key_column_usage
+      WHERE table_schema = DATABASE() AND table_name = ? AND referenced_table_name = 'students'
+    `, [table]);
+    for (const key of keys) {
+      await pool.query(`ALTER TABLE ${table} DROP FOREIGN KEY \`${key.constraint_name}\``);
+      console.log(`[db] ${table}: dropped foreign key ${key.constraint_name} (faculty/walk-in entries can now be saved)`);
+    }
+    await pool.query(`ALTER TABLE ${table} MODIFY student_id VARCHAR(40) NULL`).catch(() => {});
+  }
+  await pool.query('ALTER TABLE medical_records MODIFY record_date DATE NULL').catch(() => {});
+  await pool.query('ALTER TABLE medical_records ADD COLUMN IF NOT EXISTS status VARCHAR(20) NULL').catch(() => {});
+  await pool.query('ALTER TABLE certificates MODIFY certificate_date DATE NULL').catch(() => {});
+  await pool.query('ALTER TABLE certificates MODIFY status VARCHAR(60) NULL').catch(() => {});
+
+  // ── Medical forms ─────────────────────────────────────────────────────────
+  // The blank/original form. Each person's filled copy is a row in `documents`
+  // carrying this form's id, so the per-person entries are derived from there
+  // rather than duplicated here.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS medical_forms (
+      id VARCHAR(40) PRIMARY KEY,
+      name TEXT NULL,
+      description TEXT NULL,
+      form_date DATE NULL,
+      template_doc_id VARCHAR(40) NULL,
+      template_file_name TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ── Clinic formulary ──────────────────────────────────────────────────────
+  // The nurse's own protocol: "for this complaint, this is what we give here."
+  // It is deliberately seeded EMPTY. Pre-filling it with generic drug advice
+  // would make it one more thing nobody on the clinic staff actually vouched
+  // for; the value of this table is precisely that a licensed nurse decided
+  // each row. It fills itself from practice — after dispensing, the nurse can
+  // save that pairing as protocol in one click.
+  //
+  // Because it is the clinic's own decision record, it answers first and
+  // offline; the AI suggester is the fallback for presentations not covered.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS formulary (
+      id VARCHAR(40) PRIMARY KEY,
+      complaint VARCHAR(120) NOT NULL,
+      item_code VARCHAR(40) NULL,
+      item_name TEXT NULL,
+      dose TEXT NULL,
+      notes TEXT NULL,
+      added_by TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_formulary_complaint (complaint)
+    )
+  `);
+
   // ── Widen encrypted columns to TEXT ──
   // AES-256-GCM ciphertext (base64) is longer than the plaintext, so any column
   // that now holds encrypted data must be TEXT to avoid truncation. Guarded so a
@@ -187,4 +282,6 @@ export async function ensureDbUpdates() {
   await widen('ALTER TABLE consultations MODIFY student_name TEXT, MODIFY summary TEXT, MODIFY outcome TEXT');
   await widen('ALTER TABLE activities MODIFY msg TEXT');
   await widen('ALTER TABLE documents MODIFY file_name TEXT, MODIFY form_name TEXT');
+  await widen('ALTER TABLE admin_profile MODIFY name TEXT');
+  await widen('ALTER TABLE prescriptions MODIFY item_name TEXT');
 }

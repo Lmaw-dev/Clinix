@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Plus, Eye, CheckCircle2 } from 'lucide-react';
 import { Certificate } from '../App';
 import { Modal } from './Modal';
+import { createApi, updateApi, persist } from '../store';
 
 type Props = {
   certificates: Certificate[];
@@ -54,6 +55,7 @@ export function CertificatesModule({ certificates, setCertificates, globalSearch
       status: 'Pending',
     };
     setCertificates((prev) => [...prev, rec]);
+    persist(createApi('certificates', rec), showToast, 'the certificate request');
     showToast('Certificate request created');
     addActivity(`Certificate requested for ${form.studentName || form.studentId}`);
     setShowModal(false);
@@ -63,6 +65,7 @@ export function CertificatesModule({ certificates, setCertificates, globalSearch
   function handleApprove(id: string) {
     const cert = certificates.find((c) => c.id === id);
     setCertificates((prev) => prev.map((c) => c.id === id ? { ...c, status: 'Approved' } : c));
+    persist(updateApi('certificates', id, { status: 'Approved' }), showToast, 'the approval');
     showToast('Certificate approved');
     if (cert) addActivity(`Certificate approved for ${cert.studentName || cert.studentId}`);
     setViewCert(null);

@@ -1,15 +1,21 @@
 import { useState, useMemo } from 'react';
 import { Plus, Eye, Search, X, UserRound, CheckCircle2, ClipboardCheck, Activity } from 'lucide-react';
-import { Consultation, Student, CONSULTATION_PURPOSES, ConsultationPurpose, purposeOf, isConsultationVisit } from '../App';
+import { Consultation, Student, InventoryItem, CONSULTATION_PURPOSES, ConsultationPurpose, purposeOf, isConsultationVisit } from '../App';
 import { Role, canManageConsultationLog, canRecordVitals } from '../auth';
 import { Modal } from './Modal';
 import { ConsultationRecordModal } from './ConsultationRecordModal';
 import { createConsultationApi, updateConsultationApi } from '../consultations';
+import { PrescriptionSection } from './PrescriptionSection';
+import { Prescription } from '../store';
 
 type Props = {
   consultations: Consultation[];
   setConsultations: React.Dispatch<React.SetStateAction<Consultation[]>>;
   students: Student[];
+  inventory: InventoryItem[];
+  setInventory: React.Dispatch<React.SetStateAction<InventoryItem[]>>;
+  prescriptions: Prescription[];
+  setPrescriptions: React.Dispatch<React.SetStateAction<Prescription[]>>;
   role: Role;
   currentUser: string;
   globalSearch: string;
@@ -65,7 +71,7 @@ function ageFromBirthdate(bd?: string) {
   return age >= 0 && age < 130 ? String(age) : '';
 }
 
-export function ConsultationsModule({ consultations, setConsultations, students, role, currentUser, globalSearch, showToast, addActivity }: Props) {
+export function ConsultationsModule({ consultations, setConsultations, students, inventory, setInventory, prescriptions, setPrescriptions, role, currentUser, globalSearch, showToast, addActivity }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [viewConsult, setViewConsult] = useState<Consultation | null>(null);
   const [form, setForm] = useState(defaultForm);
@@ -407,6 +413,27 @@ export function ConsultationsModule({ consultations, setConsultations, students,
                 <p className="text-black dark:text-slate-200" style={{ fontSize: 13 }}>{viewConsult.management || viewConsult.outcome || 'Awaiting admin'}</p>
               </div>
             )}
+
+            {/* Medicine actually handed out. Kept separate from the free-text
+                management note so the stock count can follow from it. */}
+            <PrescriptionSection
+              consultationId={viewConsult.id}
+              purpose={viewConsult.purpose}
+              chiefComplaint={viewConsult.chiefComplaint || viewConsult.reason}
+              assessment={viewConsult.assessment}
+              age={viewConsult.age}
+              sex={viewConsult.sex}
+              patientId={viewConsult.studentId}
+              patientName={viewConsult.studentName}
+              inventory={inventory}
+              setInventory={setInventory}
+              prescriptions={prescriptions}
+              setPrescriptions={setPrescriptions}
+              currentUser={currentUser}
+              showToast={showToast}
+              addActivity={addActivity}
+              readOnly={!isAdmin}
+            />
 
             {/* Workflow actions */}
             <div className="flex flex-wrap items-center justify-end gap-2 pt-1">

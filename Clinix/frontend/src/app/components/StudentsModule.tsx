@@ -9,8 +9,8 @@ import { PersonDocuments } from './PersonDocuments';
 import { useColleges, YEAR_OPTIONS } from '../colleges';
 import { canSeeConfidential } from '../auth';
 import { confirmDialog } from './ConfirmDialog';
+import { API_URL, apiFetch } from '../api';
 
-const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
 type Props = {
   students: Student[];
@@ -243,7 +243,7 @@ function htmlCell(value: string) {
 }
 
 async function saveStudentApi(student: Student, editingId?: string | null) {
-  const res = await fetch(`${API_URL}/students${editingId ? `/${editingId}` : ''}`, {
+  const res = await apiFetch(`${API_URL}/students${editingId ? `/${editingId}` : ''}`, {
     method: editingId ? 'PUT' : 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...student, course: normalizeCourseName(student.course) }),

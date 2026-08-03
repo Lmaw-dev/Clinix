@@ -190,29 +190,10 @@ export function LoginPage({ onLogin }: Props) {
             </button>
           </form>
 
-          {/* Divider */}
-          <div style={{ height: 1, background: LINE, margin: '26px 0 18px' }} />
-
-          {/* Demo access */}
-          <div className="clx-demo" style={{ border: `1px solid ${LINE}`, borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '7px 14px', fontSize: 10.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.09em', borderBottom: `1px solid ${LINE}`, background: '#273685' }}>
-              Demo Access
-            </div>
-            {[
-              { role: 'Admin',     username: 'admin',     password: 'clinix2024' },
-              { role: 'Assistant', username: 'assistant', password: 'assist2024' },
-              { role: 'Staff',     username: 'staff',     password: 'staff123' },
-            ].map((acc, i) => (
-              <button type="button" key={acc.username}
-                onClick={() => { setUsername(acc.username); setPassword(acc.password); setError(''); }}
-                className="clx-demo-row grid grid-cols-3 items-center w-full text-left"
-                style={{ padding: '8px 14px', border: 'none', background: 'transparent', cursor: 'pointer', borderTop: i > 0 ? `1px solid ${LINE}` : 'none' }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: INK }}>{acc.role}</span>
-                <span style={{ fontSize: 12, color: LINK, fontFamily: 'monospace' }}>{acc.username}</span>
-                <span style={{ fontSize: 12, color: LINK, fontFamily: 'monospace' }}>{acc.password}</span>
-              </button>
-            ))}
-          </div>
+          {/* The sign-in credentials used to be listed here as a "Demo Access"
+              panel. On a system holding medical records that is not a
+              convenience, it is a published password list — anyone who could
+              see the login screen could sign in as the administrator. */}
 
           <p className="text-center" style={{ fontSize: 13, color: MUTED, marginTop: 20 }}>
             Need help?{' '}

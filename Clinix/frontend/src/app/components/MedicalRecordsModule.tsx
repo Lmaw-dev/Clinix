@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { MedForm, MedFormEntry, Student, FacultyMember } from '../App';
 import { Modal } from './Modal';
+import { createApi, deleteApi, persist } from '../store';
 import { DocPreview } from './PersonDocuments';
 import { confirmDialog } from './ConfirmDialog';
 import {
@@ -76,6 +77,12 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
         templateDocId: doc.id, templateFileName: file.name, entries: [],
       };
       setForms((prev) => [form, ...prev]);
+      // Only the form itself is stored here; each person's filled copy is a row
+      // in `documents` carrying this form's id, so entries need no separate save.
+      persist(createApi('medicalForms', {
+        id: form.id, name: form.name, description: form.description, date: form.date,
+        templateDocId: form.templateDocId, templateFileName: form.templateFileName,
+      }), showToast, 'the form');
       showToast(`Form "${name}" uploaded`);
       addActivity(`Medical form uploaded: ${name}`);
       setShowUpload(false);
@@ -143,6 +150,7 @@ export function MedicalRecordsModule({ forms, setForms, students, faculty, globa
     deleteDocument(form.templateDocId).catch(() => {});
     form.entries.forEach((en) => deleteDocument(en.docId).catch(() => {}));
     setForms((prev) => prev.filter((f) => f.id !== form.id));
+    persist(deleteApi('medicalForms', form.id), showToast, 'the deletion');
     setViewId(null);
     showToast(`Form "${form.name}" deleted`);
     addActivity(`Medical form deleted: ${form.name}`);

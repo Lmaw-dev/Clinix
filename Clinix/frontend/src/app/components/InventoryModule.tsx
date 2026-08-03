@@ -3,6 +3,7 @@ import { Plus, Pencil, AlertTriangle, Filter, Search, X, CalendarDays, Archive, 
 import { InventoryItem, INVENTORY_CATEGORIES, INVENTORY_MONTHS, INVENTORY_YEAR, MonthlyStock, latestRemaining } from '../App';
 import { Modal } from './Modal';
 import { confirmDialog } from './ConfirmDialog';
+import { createApi, updateApi, persist } from '../store';
 
 const STATUS_OPTIONS = ['In stock', 'Low stock', 'No stock', 'Expiring soon', 'Expired'];
 
@@ -160,11 +161,13 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
       confirmLabel: 'Archive',
     }))) return;
     setInventory((prev) => prev.map((i) => i.code === item.code ? { ...i, archived: true } : i));
+    persist(updateApi('inventory', item.code, { archived: true }), showToast, 'the archive change');
     showToast(`${item.name} archived`);
     addActivity(`Inventory archived: ${item.name}`);
   }
   function handleRestore(item: InventoryItem) {
     setInventory((prev) => prev.map((i) => i.code === item.code ? { ...i, archived: false } : i));
+    persist(updateApi('inventory', item.code, { archived: false }), showToast, 'the restore');
     showToast(`${item.name} restored`);
     addActivity(`Inventory restored: ${item.name}`);
   }
@@ -178,7 +181,9 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
   }
 
   function saveLog(item: InventoryItem, monthly: MonthlyStock[]) {
-    setInventory((prev) => prev.map((i) => i.code === item.code ? { ...i, monthly, qty: latestRemaining(monthly, i.qty) } : i));
+    const qty = latestRemaining(monthly, item.qty);
+    setInventory((prev) => prev.map((i) => i.code === item.code ? { ...i, monthly, qty } : i));
+    persist(updateApi('inventory', item.code, { monthly, qty }), showToast, 'the monthly log');
     showToast(`Monthly log saved for ${item.name}`);
     addActivity(`Monthly log updated: ${item.name}`);
     setLogItem(null);
@@ -214,12 +219,16 @@ export function InventoryModule({ inventory, setInventory, globalSearch, showToa
     if (!form.name.trim()) { showToast('Name required'); return; }
     const qty = Number(form.qty) || 0;
     if (editingCode) {
-      setInventory((prev) => prev.map((i) => i.code === editingCode ? { ...i, name: form.name.trim(), qty, unit: form.unit.trim(), expiry: form.expiry, category: form.category } : i));
+      const changes = { name: form.name.trim(), qty, unit: form.unit.trim(), expiry: form.expiry, category: form.category };
+      setInventory((prev) => prev.map((i) => i.code === editingCode ? { ...i, ...changes } : i));
+      persist(updateApi('inventory', editingCode, changes), showToast, 'the item');
       showToast('Inventory updated');
       addActivity(`Inventory updated: ${form.name}`);
     } else {
       const code = 'M' + Date.now();
-      setInventory((prev) => [...prev, { code, name: form.name.trim(), qty, unit: form.unit.trim(), expiry: form.expiry, category: form.category }]);
+      const item: InventoryItem = { code, name: form.name.trim(), qty, unit: form.unit.trim(), expiry: form.expiry, category: form.category, archived: false };
+      setInventory((prev) => [...prev, item]);
+      persist(createApi('inventory', item), showToast, 'the new item');
       showToast('Inventory item added');
       addActivity(`Inventory added: ${form.name}`);
     }

@@ -12,6 +12,10 @@ import { ensureDbUpdates, pingDb, pool } from './db.js';
 import { encrypt, decrypt } from './crypto.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { ensureMysqlRunning, autostartHint } from './mysql-autostart.js';
+import { aiEnabled, suggestMedicines, matchAgainstInventory } from './ai-suggest.js';
+import { ensureSessionTable, createSession, revokeSession, requireAuth, requireRole } from './auth.js';
+
+let dbReady = false;
 
 const app = express();
 const port = Number(process.env.PORT || 4001);
@@ -46,6 +50,12 @@ const apiLimiter = rateLimit({
 });
 
 app.use('/api', apiLimiter);
+
+// Every /api route below this line requires a valid session token, except the
+// handful listed as public in auth.js (health, db-status, login, ai/status).
+// This sits above the route definitions on purpose: a route added later is
+// protected by default rather than by the author remembering to protect it.
+app.use('/api', requireAuth());
 
 // ── File uploads (per-person documents) ──────────────────────────────────────
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -187,15 +197,70 @@ const tables = {
   medicalRecords: {
     table: 'medical_records',
     id: 'id',
-    order: 'record_date',
+    order: 'record_date DESC',
     fields: {
       id: 'id',
       studentId: 'student_id',
       name: 'name',
       summary: 'summary',
       date: 'record_date',
+      status: 'status',
     },
     encrypted: ['name', 'summary'],
+  },
+  medicalForms: {
+    table: 'medical_forms',
+    id: 'id',
+    order: 'form_date DESC',
+    fields: {
+      id: 'id',
+      name: 'name',
+      description: 'description',
+      date: 'form_date',
+      templateDocId: 'template_doc_id',
+      templateFileName: 'template_file_name',
+    },
+    // A form is a blank template, not somebody's health information.
+    encrypted: [],
+  },
+  formulary: {
+    table: 'formulary',
+    id: 'id',
+    order: 'complaint',
+    fields: {
+      id: 'id',
+      complaint: 'complaint',
+      itemCode: 'item_code',
+      itemName: 'item_name',
+      dose: 'dose',
+      notes: 'notes',
+      addedBy: 'added_by',
+    },
+    // The clinic's own dispensing protocol, not a patient's record — there is
+    // no personal information here, and leaving it readable keeps the complaint
+    // column searchable.
+    encrypted: [],
+  },
+  prescriptions: {
+    table: 'prescriptions',
+    id: 'id',
+    order: 'created_at DESC',
+    fields: {
+      id: 'id',
+      consultationId: 'consultation_id',
+      patientId: 'patient_id',
+      patientName: 'patient_name',
+      itemCode: 'item_code',
+      itemName: 'item_name',
+      quantity: 'quantity',
+      dosage: 'dosage',
+      instructions: 'instructions',
+      dispensedBy: 'dispensed_by',
+      date: 'prescription_date',
+    },
+    // Who received what medicine is health information. The item code and
+    // quantity stay readable so stock movements can be totalled and reported.
+    encrypted: ['patientName', 'dosage', 'instructions', 'dispensedBy'],
   },
   visits: {
     table: 'visits',
@@ -221,9 +286,14 @@ const tables = {
       qty: 'qty',
       unit: 'unit',
       expiry: 'expiry',
+      category: 'category',
+      monthly: 'monthly',
+      archived: 'archived',
     },
     // Medicine/supply reference data — not personal; left queryable/plaintext.
     encrypted: [],
+    json: ['monthly'],
+    booleans: ['archived'],
   },
   certificates: {
     table: 'certificates',
@@ -288,7 +358,8 @@ const tables = {
   activities: {
     table: 'activities',
     id: 'id',
-    order: 'ts',
+    // Newest first — the dashboard shows the most recent clinic activity.
+    order: 'ts DESC',
     fields: {
       id: 'id',
       msg: 'msg',
@@ -301,18 +372,43 @@ const tables = {
 // Encrypt sensitive fields on the way into MySQL, decrypt on the way out.
 function toDb(config, body) {
   const enc = config.encrypted || [];
+  const json = config.json || [];
+  const bools = config.booleans || [];
   const row = {};
   for (const [apiKey, dbKey] of Object.entries(config.fields)) {
-    if (body[apiKey] !== undefined) row[dbKey] = enc.includes(apiKey) ? encrypt(body[apiKey]) : body[apiKey];
+    if (body[apiKey] === undefined) continue;
+    const value = body[apiKey];
+    // Structured values (e.g. the 12-month stock sheet) are stored as JSON text.
+    if (json.includes(apiKey)) row[dbKey] = value === null ? null : JSON.stringify(value);
+    else if (bools.includes(apiKey)) row[dbKey] = value ? 1 : 0;
+    else if (enc.includes(apiKey)) row[dbKey] = encrypt(value);
+    else row[dbKey] = value;
   }
   return row;
 }
 
+function parseJsonColumn(value) {
+  if (value === null || value === undefined || value === '') return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    // Hand-edited or truncated data: return nothing rather than crashing the
+    // whole list request over one bad row.
+    console.warn('[db] could not parse a JSON column value');
+    return null;
+  }
+}
+
 function fromDb(config, row) {
   const enc = config.encrypted || [];
+  const json = config.json || [];
+  const bools = config.booleans || [];
   const out = {};
   for (const [apiKey, dbKey] of Object.entries(config.fields)) {
-    out[apiKey] = enc.includes(apiKey) ? decrypt(row[dbKey]) : row[dbKey];
+    if (json.includes(apiKey)) out[apiKey] = parseJsonColumn(row[dbKey]);
+    else if (bools.includes(apiKey)) out[apiKey] = Boolean(row[dbKey]);
+    else if (enc.includes(apiKey)) out[apiKey] = decrypt(row[dbKey]);
+    else out[apiKey] = row[dbKey];
   }
   return out;
 }
@@ -325,6 +421,11 @@ function routeConfig(req, res) {
   }
   return config;
 }
+
+// Registered here, above the generic /api/:resource routes — those match any
+// single path segment, so further down this file "db-status" was being read as
+// a resource name and answered "Unknown resource" instead.
+app.get('/api/db-status', (_req, res) => res.json({ dbReady }));
 
 app.get('/api/health', async (_req, res, next) => {
   try {
@@ -416,7 +517,14 @@ app.post('/api/login', authLimiter, async (req, res, next) => {
       console.log('[accounts] upgraded a legacy password to a bcrypt hash on sign-in');
     }
     const acc = accountFromDb(match);
-    res.json({ ok: true, role: acc.role, username: acc.username, name: [acc.firstName, acc.lastName].filter(Boolean).join(' ') || acc.username });
+    // The token is what actually grants access from here on; the role in this
+    // reply only tells the UI what to draw. The server re-checks it per request.
+    const { token, expiresInHours } = await createSession(match.id, acc.role);
+    res.json({
+      ok: true, token, expiresInHours,
+      role: acc.role, username: acc.username,
+      name: [acc.firstName, acc.lastName].filter(Boolean).join(' ') || acc.username,
+    });
   } catch (error) { next(error); }
 });
 
@@ -443,14 +551,24 @@ app.post('/api/change-password', authLimiter, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.get('/api/accounts', async (_req, res, next) => {
+app.post('/api/logout', async (req, res, next) => {
+  try {
+    await revokeSession(req.user?.token);
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+// Account management is administration, not clinic work. The UI hides it from
+// other roles, but hiding a screen is not access control — the check has to be
+// here, where the request actually lands.
+app.get('/api/accounts', requireRole('admin'), async (_req, res, next) => {
   try {
     const [rows] = await pool.query('SELECT * FROM accounts');
     res.json(rows.map((r) => accountFromDb(r, false))); // never expose passwords
   } catch (error) { next(error); }
 });
 
-app.post('/api/accounts', async (req, res, next) => {
+app.post('/api/accounts', requireRole('admin'), async (req, res, next) => {
   try {
     const b = req.body || {};
     if (!b.username || !b.password || !b.role) { res.status(400).json({ error: 'username, password and role are required' }); return; }
@@ -472,7 +590,7 @@ app.post('/api/accounts', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.put('/api/accounts/:id', async (req, res, next) => {
+app.put('/api/accounts/:id', requireRole('admin'), async (req, res, next) => {
   try {
     const b = req.body || {};
     const sets = [];
@@ -492,7 +610,7 @@ app.put('/api/accounts/:id', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.delete('/api/accounts/:id', async (req, res, next) => {
+app.delete('/api/accounts/:id', requireRole('admin'), async (req, res, next) => {
   try {
     const [r] = await pool.query('DELETE FROM accounts WHERE id = ?', [req.params.id]);
     if (!r.affectedRows) { res.status(404).json({ error: 'Not found' }); return; }
@@ -599,6 +717,239 @@ app.delete('/api/documents/:id', async (req, res, next) => {
     res.status(204).end();
   } catch (error) {
     next(error);
+  }
+});
+
+// ── Clinic protocol lookup ───────────────────────────────────────────────────
+// Answers before the AI does: instant, offline, free, and every row was put
+// there by the nurse. Matching is loose because nobody types a complaint the
+// same way twice — "dysmenorrhea", "Dysmenorrhea since this morning" and
+// "menstrual cramps" should all find the same protocol row.
+app.get('/api/formulary/suggest', async (req, res, next) => {
+  try {
+    const complaint = String(req.query.complaint ?? '').toLowerCase().trim();
+    if (!complaint) { res.json({ matches: [] }); return; }
+
+    const [rows] = await pool.query('SELECT * FROM formulary');
+    const [stockRows] = await pool.query('SELECT * FROM inventory_items');
+    const stock = new Map(stockRows.map((r) => [r.code, r]));
+
+    const matches = rows
+      .map((r) => fromDb(tables.formulary, r))
+      .filter((entry) => {
+        const key = String(entry.complaint ?? '').toLowerCase().trim();
+        if (!key) return false;
+        // Either the nurse's phrase appears in what was typed, or the other way
+        // round — a short protocol key matches a longer written complaint.
+        return complaint.includes(key) || key.includes(complaint);
+      })
+      .map((entry) => {
+        const item = entry.itemCode ? stock.get(entry.itemCode) : null;
+        const qty = Number(item?.qty ?? 0);
+        return {
+          ...entry,
+          inStock: Boolean(item) && qty > 0 && !item.archived,
+          available: qty,
+          unit: item?.unit ?? '',
+        };
+      });
+
+    res.json({ matches });
+  } catch (error) { next(error); }
+});
+
+// ── AI medicine suggestions ──────────────────────────────────────────────────
+// Advisory only. This endpoint reads nothing from the patient record and writes
+// nothing anywhere — it takes clinical text, asks for candidate medicines, and
+// returns them for the nurse to accept or ignore. Dispensing stays a separate,
+// deliberate action.
+//
+// Each call costs money and leaves the building, so it is rate limited far more
+// tightly than the rest of the API.
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20, // per IP per minute
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many suggestion requests. Please wait a moment.' },
+});
+
+app.get('/api/ai/status', (_req, res) => res.json({ enabled: aiEnabled() }));
+
+app.post('/api/ai/suggest-medicines', aiLimiter, async (req, res, next) => {
+  try {
+    if (!aiEnabled()) {
+      res.status(503).json({ error: 'Medicine suggestions are turned off (no ANTHROPIC_API_KEY set).' });
+      return;
+    }
+
+    // Only clinical fields are forwarded. Whatever else the client sent —
+    // including a name or student ID — is dropped here rather than trusted not
+    // to have been included.
+    const result = await suggestMedicines({
+      purpose: req.body?.purpose,
+      chiefComplaint: req.body?.chiefComplaint,
+      assessment: req.body?.assessment,
+      age: req.body?.age,
+      sex: req.body?.sex,
+      vitals: req.body?.vitals,
+    });
+
+    const [rows] = await pool.query('SELECT * FROM inventory_items');
+    const inventory = rows.map((r) => fromDb(tables.inventory, r));
+
+    res.json({ ...result, suggestions: matchAgainstInventory(result.suggestions, inventory) });
+  } catch (error) {
+    if (error.status) { res.status(error.status).json({ error: error.message }); return; }
+    console.error('[ai] suggestion failed:', error.message);
+    res.status(502).json({ error: 'Could not reach the suggestion service. Please decide clinically without it.' });
+  }
+});
+
+// ── Admin profile ────────────────────────────────────────────────────────────
+// A single row, not a collection, so it gets its own pair of routes rather than
+// being forced through the generic resource CRUD.
+app.get('/api/admin-profile', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT name, photo FROM admin_profile WHERE id = 1');
+    if (!rows.length) { res.json({ name: 'Clinic Admin', photo: '' }); return; }
+    res.json({ name: decrypt(rows[0].name) || 'Clinic Admin', photo: decrypt(rows[0].photo) || '' });
+  } catch (error) { next(error); }
+});
+
+app.put('/api/admin-profile', async (req, res, next) => {
+  try {
+    const name = encrypt(String(req.body?.name ?? '').trim() || 'Clinic Admin');
+    const photo = encrypt(String(req.body?.photo ?? ''));
+    await pool.query(
+      `INSERT INTO admin_profile (id, name, photo) VALUES (1, ?, ?)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), photo = VALUES(photo)`,
+      [name, photo],
+    );
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+// ── Dispensing medicine ──────────────────────────────────────────────────────
+// Handing medicine to a patient and taking it out of stock must be one action.
+// Doing it as two separate API calls would let a crash or a lost connection
+// leave the clinic with a prescription nobody deducted, or a deduction with no
+// record of where the medicine went.
+//
+// The whole thing runs in one transaction and the stock row is locked with
+// SELECT ... FOR UPDATE, so two people dispensing the last box at the same time
+// cannot both succeed.
+
+/** Apply a dispensed quantity to the 12-month tracking sheet, if the item has one. */
+function applyMonthlyDispense(monthlyJson, quantity, remainingAfter) {
+  const monthly = parseJsonColumn(monthlyJson);
+  if (!Array.isArray(monthly) || monthly.length !== 12) return null;
+  const month = new Date().getMonth();
+  const current = monthly[month] || { remaining: null, dispensed: null };
+  monthly[month] = {
+    remaining: remainingAfter,
+    dispensed: Number(current.dispensed || 0) + quantity,
+  };
+  return JSON.stringify(monthly);
+}
+
+app.post('/api/prescriptions', async (req, res, next) => {
+  const body = req.body || {};
+  const quantity = Number(body.quantity);
+  const itemCode = String(body.itemCode ?? '').trim();
+
+  if (!itemCode) { res.status(400).json({ error: 'itemCode is required' }); return; }
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    res.status(400).json({ error: 'quantity must be a whole number greater than zero' }); return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Lock the stock row for the rest of the transaction.
+    const [items] = await conn.query('SELECT * FROM inventory_items WHERE code = ? FOR UPDATE', [itemCode]);
+    if (!items.length) {
+      await conn.rollback();
+      res.status(404).json({ error: `No inventory item with code "${itemCode}"` });
+      return;
+    }
+    const item = items[0];
+    const inStock = Number(item.qty ?? 0);
+    if (inStock < quantity) {
+      await conn.rollback();
+      res.status(409).json({
+        error: `Only ${inStock} ${item.unit || 'unit(s)'} of ${item.name} left — cannot dispense ${quantity}.`,
+        available: inStock,
+      });
+      return;
+    }
+
+    const remainingAfter = inStock - quantity;
+    const monthly = applyMonthlyDispense(item.monthly, quantity, remainingAfter);
+    if (monthly) {
+      await conn.query('UPDATE inventory_items SET qty = ?, monthly = ? WHERE code = ?', [remainingAfter, monthly, itemCode]);
+    } else {
+      await conn.query('UPDATE inventory_items SET qty = ? WHERE code = ?', [remainingAfter, itemCode]);
+    }
+
+    const id = String(body.id || randomUUID());
+    const row = toDb(tables.prescriptions, {
+      ...body,
+      id,
+      itemCode,
+      quantity,
+      itemName: body.itemName || item.name,
+      date: body.date || new Date().toISOString().slice(0, 10),
+    });
+    const columns = Object.keys(row);
+    await conn.query(
+      `INSERT INTO prescriptions (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+      columns.map((c) => row[c]),
+    );
+
+    await conn.commit();
+    res.status(201).json({ ...body, id, quantity, itemCode, remaining: remainingAfter });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    next(error);
+  } finally {
+    conn.release();
+  }
+});
+
+// Deleting a prescription puts the medicine back. A mis-typed quantity is a
+// normal mistake, and without this the only way to correct the stock would be to
+// edit the inventory by hand — which loses the audit trail.
+app.delete('/api/prescriptions/:id', async (req, res, next) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query('SELECT * FROM prescriptions WHERE id = ? FOR UPDATE', [req.params.id]);
+    if (!rows.length) {
+      await conn.rollback();
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    const presc = rows[0];
+    const [items] = await conn.query('SELECT * FROM inventory_items WHERE code = ? FOR UPDATE', [presc.item_code]);
+    if (items.length) {
+      const restored = Number(items[0].qty ?? 0) + Number(presc.quantity ?? 0);
+      const monthly = applyMonthlyDispense(items[0].monthly, -Number(presc.quantity ?? 0), restored);
+      if (monthly) {
+        await conn.query('UPDATE inventory_items SET qty = ?, monthly = ? WHERE code = ?', [restored, monthly, presc.item_code]);
+      } else {
+        await conn.query('UPDATE inventory_items SET qty = ? WHERE code = ?', [restored, presc.item_code]);
+      }
+    }
+    await conn.query('DELETE FROM prescriptions WHERE id = ?', [req.params.id]);
+    await conn.commit();
+    res.status(204).end();
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    next(error);
+  } finally {
+    conn.release();
   }
 });
 
@@ -733,11 +1084,11 @@ app.use((error, _req, res, _next) => {
 // Prepare the schema. If MySQL isn't up yet we do NOT crash — we print a clear
 // message, start the API anyway, and keep retrying so it self-heals once MySQL
 // is started (no need to restart this process).
-let dbReady = false;
 
 async function initDb({ quiet = false } = {}) {
   try {
     await ensureDbUpdates();
+    await ensureSessionTable();
     await seedAccountsIfEmpty();
     dbReady = true;
     console.log('[db] Connected — schema ready.');
@@ -779,8 +1130,6 @@ if (!dbReady) {
   }, 10_000);
 }
 
-// Simple readiness flag for the health endpoint / debugging.
-app.get('/api/db-status', (_req, res) => res.json({ dbReady }));
 
 // Bind to all interfaces (0.0.0.0) so other devices on the LAN can reach the API.
 const server = app.listen(port, '0.0.0.0', () => {

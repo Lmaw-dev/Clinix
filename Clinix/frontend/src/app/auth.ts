@@ -1,4 +1,5 @@
 import type { Page } from './App';
+import { API_URL, apiFetch, setToken, clearToken } from './api';
 
 // ─── Roles & Accounts ──────────────────────────────────────────────────────
 
@@ -21,60 +22,76 @@ export type Account = {
   contact?: string;
 };
 
-const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
-// Offline fallback so the demo can still log in if the backend is unreachable.
-const FALLBACK_ACCOUNTS: Array<{ username: string; password: string; role: Role }> = [
-  { username: 'admin', password: 'clinix2024', role: 'admin' },
-  { username: 'assistant', password: 'assist2024', role: 'assistant' },
-  { username: 'staff', password: 'staff123', role: 'staff' },
-];
+// There is deliberately no offline fallback account list here. One used to
+// exist so the app could still be opened with the backend down, but the
+// passwords shipped inside the JavaScript bundle — readable by anyone who
+// opened the browser's developer tools, on a system holding medical records.
+// Signing in requires the server, which is also the only thing that can issue
+// a session token.
 
 export type LoginResult = { role: Role; username: string; name: string };
 
 /** Thrown when the backend refuses the attempt outright (e.g. too many tries). */
 export class LoginBlockedError extends Error {}
 
-/** Authenticate via the backend — the password is checked against its bcrypt hash. */
+/**
+ * Authenticate via the backend. The password is checked against its bcrypt
+ * hash, and a successful sign-in returns a session token — that token, not this
+ * screen, is what actually grants access to any record.
+ */
 export async function apiLogin(username: string, password: string): Promise<LoginResult | null> {
+  let res: Response;
   try {
-    const res = await fetch(`${API_URL}/login`, {
+    res = await apiFetch(`${API_URL}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: username.trim(), password }),
     });
-    if (res.ok) { const d = await res.json(); return { role: d.role, username: d.username, name: d.name }; }
-    if (res.status === 401 || res.status === 400) return null; // reached backend, wrong creds
-    // Rate limited. This must NOT fall through to the offline fallback below —
-    // doing so would let anyone bypass the brute-force limit by tripping it.
-    if (res.status === 429) {
-      const d = await res.json().catch(() => ({} as { error?: string }));
-      throw new LoginBlockedError(d.error || 'Too many sign-in attempts. Please wait a few minutes.');
-    }
-    throw new Error('login failed');
-  } catch (err) {
-    if (err instanceof LoginBlockedError) throw err;
-    // Backend unreachable — allow the built-in defaults so the app isn't locked out.
-    const a = FALLBACK_ACCOUNTS.find((x) => x.username.toLowerCase() === username.trim().toLowerCase() && x.password === password);
-    return a ? { role: a.role, username: a.username, name: a.username } : null;
+  } catch {
+    // The server is the only thing that can verify a password and mint a token,
+    // so being unable to reach it is a hard failure, not a reason to let someone in.
+    throw new LoginBlockedError('Cannot reach the Clinix server. Check that it is running.');
   }
+
+  if (res.ok) {
+    const d = await res.json();
+    setToken(d.token);
+    return { role: d.role, username: d.username, name: d.name };
+  }
+  if (res.status === 401 || res.status === 400) return null; // reached backend, wrong credentials
+  if (res.status === 429) {
+    const d = await res.json().catch(() => ({} as { error?: string }));
+    throw new LoginBlockedError(d.error || 'Too many sign-in attempts. Please wait a few minutes.');
+  }
+  throw new LoginBlockedError('Sign-in failed. Please try again.');
+}
+
+/** End the session on the server as well as in this browser. */
+export async function apiLogout(): Promise<void> {
+  try {
+    await apiFetch(`${API_URL}/logout`, { method: 'POST' });
+  } catch {
+    // Even if the server cannot be reached, drop the local token.
+  }
+  clearToken();
 }
 
 export async function listAccountsApi(): Promise<Account[]> {
-  const res = await fetch(`${API_URL}/accounts`);
+  const res = await apiFetch(`${API_URL}/accounts`);
   if (!res.ok) throw new Error('Failed to load accounts');
   return res.json();
 }
 
 export async function createAccountApi(data: Partial<Account>): Promise<void> {
-  const res = await fetch(`${API_URL}/accounts`, {
+  const res = await apiFetch(`${API_URL}/accounts`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Create failed'); }
 }
 
 export async function updateAccountApi(id: string, data: Partial<Account>): Promise<void> {
-  const res = await fetch(`${API_URL}/accounts/${id}`, {
+  const res = await apiFetch(`${API_URL}/accounts/${id}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('Update failed');
@@ -87,7 +104,7 @@ export function currentUsername(): string {
 
 /** Change your own password. Throws with a readable message on failure. */
 export async function changePasswordApi(username: string, currentPassword: string, newPassword: string): Promise<void> {
-  const res = await fetch(`${API_URL}/change-password`, {
+  const res = await apiFetch(`${API_URL}/change-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, currentPassword, newPassword }),
@@ -99,7 +116,7 @@ export async function changePasswordApi(username: string, currentPassword: strin
 }
 
 export async function deleteAccountApi(id: string): Promise<void> {
-  const res = await fetch(`${API_URL}/accounts/${id}`, { method: 'DELETE' });
+  const res = await apiFetch(`${API_URL}/accounts/${id}`, { method: 'DELETE' });
   if (!res.ok && res.status !== 204) throw new Error('Delete failed');
 }
 

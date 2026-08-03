@@ -1,10 +1,10 @@
+import { API_URL, apiFetch } from './api';
 // ── Per-person document attachments (stored on the backend) ─────────────────────
 // Each student / faculty member can hold uploaded files (PDF, docs, images, …).
 // Files live on the server; this module is the thin API client used by the UI.
 
 // Default to the host that served the app so other devices on the LAN reach the
 // backend automatically; override with VITE_API_URL for a fixed server/domain.
-const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
 export type OwnerType = 'student' | 'faculty';
 
@@ -31,14 +31,14 @@ export function pdfUrl(id: string): string {
 }
 
 export async function listDocuments(ownerType: OwnerType, ownerId: string): Promise<PersonDoc[]> {
-  const res = await fetch(`${API_URL}/documents?ownerType=${encodeURIComponent(ownerType)}&ownerId=${encodeURIComponent(ownerId)}`);
+  const res = await apiFetch(`${API_URL}/documents?ownerType=${encodeURIComponent(ownerType)}&ownerId=${encodeURIComponent(ownerId)}`);
   if (!res.ok) throw new Error('Failed to load documents');
   return res.json();
 }
 
 /** All student copies compiled under a medical form. */
 export async function listDocumentsByForm(formId: string): Promise<PersonDoc[]> {
-  const res = await fetch(`${API_URL}/documents?formId=${encodeURIComponent(formId)}`);
+  const res = await apiFetch(`${API_URL}/documents?formId=${encodeURIComponent(formId)}`);
   if (!res.ok) throw new Error('Failed to load form copies');
   return res.json();
 }
@@ -54,7 +54,7 @@ export async function uploadDocument(
   fd.append('ownerId', ownerId);
   fd.append('file', file);
   if (link) { fd.append('formId', link.formId); fd.append('formName', link.formName); }
-  const res = await fetch(`${API_URL}/documents`, { method: 'POST', body: fd });
+  const res = await apiFetch(`${API_URL}/documents`, { method: 'POST', body: fd });
   if (!res.ok) {
     const msg = await res.json().catch(() => ({}));
     throw new Error(msg.error || 'Upload failed');
@@ -63,6 +63,6 @@ export async function uploadDocument(
 }
 
 export async function deleteDocument(id: string): Promise<void> {
-  const res = await fetch(`${API_URL}/documents/${id}`, { method: 'DELETE' });
+  const res = await apiFetch(`${API_URL}/documents/${id}`, { method: 'DELETE' });
   if (!res.ok && res.status !== 204) throw new Error('Delete failed');
 }

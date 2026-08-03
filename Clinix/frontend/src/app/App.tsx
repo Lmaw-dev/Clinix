@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ThemeProvider } from './ThemeContext';
 import { LoginPage } from './components/LoginPage';
 import { Sidebar } from './components/Sidebar';
-import { Role, canAccess, isValidRole } from './auth';
+import { Role, canAccess, isValidRole, apiLogout } from './auth';
 
 import { Dashboard } from './components/Dashboard';
 import { StudentsModule } from './components/StudentsModule';
@@ -13,8 +13,15 @@ import { CertificatesModule } from './components/CertificatesModule';
 import { AccountsModule } from './components/AccountsModule';
 import { ConsultationsModule } from './components/ConsultationsModule';
 import { listConsultationsApi, migrateLocalConsultations } from './consultations';
+import {
+  listApi, createApi, migrateLocalCollection, text, toDateInput, toSqlDateTime,
+  toDisplayDateTime, getAdminProfileApi, saveAdminProfileApi,
+  listPrescriptionsApi, type Prescription,
+} from './store';
+import { listDocumentsByForm } from './documents';
 import { ReportsModule } from './components/ReportsModule';
 import { SettingsModule } from './components/SettingsModule';
+import { API_URL, apiFetch, getToken, setUnauthorizedHandler } from './api';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -242,7 +249,6 @@ export type Activity = {
   ts: string;
 };
 
-const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -443,6 +449,45 @@ export function normalizeFaculty(member: Record<string, unknown>): FacultyMember
   };
 }
 
+// ── Shapes coming back from the database ────────────────────────────────────
+// MySQL returns nulls for empty text and timestamps for DATE columns, so each
+// collection is flattened back into the plain strings the screens expect.
+
+export function normalizeInventory(row: Record<string, unknown>): InventoryItem {
+  const monthly = row.monthly;
+  return {
+    code: text(row.code),
+    name: text(row.name),
+    qty: Number(row.qty ?? 0),
+    unit: text(row.unit),
+    expiry: text(row.expiry),
+    category: text(row.category) || 'Medicines',
+    monthly: Array.isArray(monthly) && monthly.length === 12 ? (monthly as MonthlyStock[]) : undefined,
+    archived: Boolean(row.archived),
+  };
+}
+
+export function normalizeMedRecord(row: Record<string, unknown>): MedRecord {
+  return {
+    id: text(row.id),
+    studentId: text(row.studentId),
+    name: text(row.name),
+    summary: text(row.summary),
+    date: toDateInput(row.date),
+    status: (text(row.status) || 'Pending') as MedFormStatus,
+  };
+}
+
+export function normalizeCertificate(row: Record<string, unknown>): Certificate {
+  return {
+    id: text(row.id),
+    studentId: text(row.studentId),
+    studentName: text(row.studentName),
+    date: toDateInput(row.date),
+    status: text(row.status),
+  };
+}
+
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -539,19 +584,27 @@ export default function App() {
     loadFromStorage('clinixActivities', [])
   );
 
+  // Dispensed medicine. This one never lived in localStorage — it was created
+  // straight into the database — so there is nothing to migrate and no cache.
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+
   const [adminProfile, setAdminProfile] = useState<AdminProfile>(() =>
     loadFromStorage('clinixAdminProfile', { name: 'Clinic Admin', photo: '' })
   );
+  // Guards the save-on-change effect below: until the server copy has been
+  // fetched, the state still holds the local default, and writing that back
+  // would overwrite the real profile with "Clinic Admin".
+  const adminProfileLoaded = useRef(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/students`)
+    apiFetch(`${API_URL}/students`)
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((rows: Record<string, unknown>[]) => setStudents(rows.map(normalizeStudent)))
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    fetch(`${API_URL}/faculty`)
+    apiFetch(`${API_URL}/faculty`)
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((rows: Record<string, unknown>[]) => setFaculty(rows.map(normalizeFaculty)))
       .catch(() => {});
@@ -567,12 +620,17 @@ export default function App() {
   useEffect(() => { localStorage.setItem('clinixCertificates', JSON.stringify(certificates)); }, [certificates]);
   useEffect(() => { localStorage.setItem('clinixConsultations', JSON.stringify(consultations)); }, [consultations]);
   useEffect(() => { localStorage.setItem('clinixActivities', JSON.stringify(activities)); }, [activities]);
-  useEffect(() => { localStorage.setItem('clinixAdminProfile', JSON.stringify(adminProfile)); }, [adminProfile]);
+  // Cached locally so the name/photo show instantly on the next load, and saved
+  // to the database so the same profile follows the account to any device.
+  useEffect(() => {
+    localStorage.setItem('clinixAdminProfile', JSON.stringify(adminProfile));
+    if (adminProfileLoaded.current) saveAdminProfileApi(adminProfile).catch(() => { /* cached copy stands */ });
+  }, [adminProfile]);
   useEffect(() => { try { localStorage.setItem('clinixShowCertificates', String(certificatesEnabled)); } catch { /* ignore */ } }, [certificatesEnabled]);
 
   // Load system-wide settings from the backend so feature toggles apply to everyone.
   useEffect(() => {
-    fetch(`${API_URL}/settings`)
+    apiFetch(`${API_URL}/settings`)
       .then((r) => (r.ok ? r.json() : null))
       .then((s) => { if (s && typeof s.showCertificates === 'string') setCertificatesEnabled(s.showCertificates === 'true'); })
       .catch(() => { /* backend offline — keep the local value */ });
@@ -581,7 +639,7 @@ export default function App() {
   // Persist the certificates toggle system-wide (shared across devices) + local cache.
   const updateCertificatesEnabled = useCallback((v: boolean) => {
     setCertificatesEnabled(v);
-    fetch(`${API_URL}/settings/showCertificates`, {
+    apiFetch(`${API_URL}/settings/showCertificates`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value: String(v) }),
@@ -594,34 +652,165 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), 2500);
   }, []);
 
-  // The consultation log lives in the database so every device sees the same
-  // entries — the staff member's vital signs reach the nurse's screen. Anything
-  // left over from the localStorage-only era is lifted across once, then the
-  // server copy is authoritative.
+  // Every clinic collection lives in the database so all devices see the same
+  // data — the staff member's vital signs reach the nurse's screen, and one
+  // person's dispensed medicine shows up in everyone's stock count. Whatever is
+  // still sitting in localStorage from before is lifted across once, after
+  // which the server copy is authoritative.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      let moved = 0;
+
+      const pull = async <T,>(
+        label: string,
+        run: () => Promise<{ moved: number; rows: T[] }>,
+        apply: (rows: T[]) => void,
+      ) => {
+        try {
+          const result = await run();
+          if (cancelled) return;
+          moved += result.moved;
+          apply(result.rows);
+        } catch {
+          // Backend unreachable, or this collection failed — keep the cached
+          // copy on screen and let the other collections still load.
+          void label;
+        }
+      };
+
+      await pull<Consultation>(
+        'consultations',
+        async () => ({
+          moved: await migrateLocalConsultations(loadFromStorage<Consultation[]>('clinixConsultations', [])),
+          rows: await listConsultationsApi(),
+        }),
+        setConsultations,
+      );
+
+      await pull<InventoryItem>(
+        'inventory',
+        async () => ({
+          moved: await migrateLocalCollection('inventory', loadFromStorage<InventoryItem[]>('clinixInventory', []), 'clinixInventoryMigrated'),
+          rows: (await listApi<Record<string, unknown>>('inventory')).map(normalizeInventory),
+        }),
+        setInventory,
+      );
+
+      await pull<MedRecord>(
+        'medical records',
+        async () => ({
+          moved: await migrateLocalCollection('medicalRecords', loadFromStorage<MedRecord[]>('clinixMedRecords', []), 'clinixMedRecordsMigrated'),
+          rows: (await listApi<Record<string, unknown>>('medicalRecords')).map(normalizeMedRecord),
+        }),
+        setMedRecords,
+      );
+
+      await pull<Certificate>(
+        'certificates',
+        async () => ({
+          moved: await migrateLocalCollection('certificates', loadFromStorage<Certificate[]>('clinixCertificates', []), 'clinixCertificatesMigrated'),
+          rows: (await listApi<Record<string, unknown>>('certificates')).map(normalizeCertificate),
+        }),
+        setCertificates,
+      );
+
+      // A form's per-person entries are not stored twice: each filled copy is a
+      // row in `documents` tagged with the form id, so the entries are rebuilt
+      // from there. That keeps the file and its listing from drifting apart.
+      await pull<MedForm>(
+        'medical forms',
+        async () => {
+          const moved = await migrateLocalCollection(
+            'medicalForms',
+            loadFromStorage<MedForm[]>('clinixMedForms', []).map((f) => ({
+              id: f.id, name: f.name, description: f.description, date: f.date,
+              templateDocId: f.templateDocId, templateFileName: f.templateFileName,
+            })) as unknown as MedForm[],
+            'clinixMedFormsMigrated',
+          );
+          const rows = await listApi<Record<string, unknown>>('medicalForms');
+          const forms = await Promise.all(rows.map(async (r): Promise<MedForm> => {
+            const id = text(r.id);
+            let entries: MedFormEntry[] = [];
+            try {
+              const docs = await listDocumentsByForm(id);
+              entries = docs.map((d) => ({
+                ownerType: d.ownerType,
+                studentId: d.ownerId,
+                studentName: '',
+                docId: d.id,
+                fileName: d.fileName,
+                uploadedAt: String(d.uploadedAt ?? ''),
+              }));
+            } catch { /* leave the form listed with no copies rather than hiding it */ }
+            return {
+              id,
+              name: text(r.name),
+              description: text(r.description),
+              date: toDateInput(r.date),
+              templateDocId: text(r.templateDocId),
+              templateFileName: text(r.templateFileName),
+              entries,
+            };
+          }));
+          return { moved, rows: forms };
+        },
+        setMedForms,
+      );
+
+      await pull<Activity>(
+        'activities',
+        async () => ({
+          // Old entries carry a locale-formatted timestamp that MySQL cannot
+          // store, so each is converted before it is uploaded.
+          moved: await migrateLocalCollection(
+            'activities',
+            loadFromStorage<Activity[]>('clinixActivities', []).map((a) => {
+              const parsed = new Date(a.ts);
+              return { msg: a.msg, ts: toSqlDateTime(Number.isNaN(parsed.getTime()) ? new Date() : parsed) };
+            }),
+            'clinixActivitiesMigrated',
+          ),
+          rows: (await listApi<Record<string, unknown>>('activities'))
+            .slice(0, 50)
+            .map((a) => ({ msg: text(a.msg), ts: toDisplayDateTime(a.ts) })),
+        }),
+        setActivities,
+      );
+
       try {
-        const local = loadFromStorage<Consultation[]>('clinixConsultations', []);
-        const moved = await migrateLocalConsultations(local);
-        const rows = await listConsultationsApi();
-        if (cancelled) return;
-        setConsultations(rows);
-        if (moved) showToast(`Moved ${moved} saved consultation${moved === 1 ? '' : 's'} into the database`);
-      } catch {
-        // Backend unreachable — keep showing the cached copy from localStorage.
+        const rows = await listPrescriptionsApi();
+        if (!cancelled) setPrescriptions(rows);
+      } catch { /* the section will simply show nothing dispensed yet */ }
+
+      try {
+        const profile = await getAdminProfileApi();
+        if (!cancelled && profile.name) setAdminProfile(profile);
+      } catch { /* keep the cached profile */ }
+      finally { adminProfileLoaded.current = true; }
+
+      if (!cancelled && moved) {
+        showToast(`Moved ${moved} saved item${moved === 1 ? '' : 's'} into the database`);
       }
     })();
     return () => { cancelled = true; };
   }, [showToast]);
 
+  // The feed is written to the database so every device sees the same history.
+  // On screen a readable local timestamp is shown, but an ISO one is stored:
+  // "7/31/2026, 6:00:45 PM" is not a value MySQL can put in a DATETIME column,
+  // and sorting such strings would not put the newest entry first either.
   const addActivity = useCallback((msg: string) => {
-    setActivities((prev) =>
-      [{ msg, ts: new Date().toLocaleString() }, ...prev].slice(0, 50)
-    );
+    const now = new Date();
+    setActivities((prev) => [{ msg, ts: now.toLocaleString() }, ...prev].slice(0, 50));
+    createApi('activities', { msg, ts: toSqlDateTime(now) }).catch(() => {
+      // The feed is a convenience, not a record anyone acts on — a failed write
+      // is not worth interrupting the user for.
+    });
   }, []);
 
-  function handleLogout() {
+  const endSession = useCallback(() => {
     try {
       localStorage.removeItem('clinixSession');
       localStorage.removeItem('clinixRole');
@@ -629,7 +818,28 @@ export default function App() {
     } catch {}
     setIsLoggedIn(false);
     setActivePage('dashboard');
+  }, []);
+
+  function handleLogout() {
+    // Revoke the token on the server too — clearing it locally alone would
+    // leave a working session behind for anyone who kept a copy.
+    apiLogout().finally(endSession);
   }
+
+  // A token that has expired or been revoked must return the user to sign-in
+  // rather than leaving every panel silently empty.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      showToast('Your session ended — please sign in again');
+      endSession();
+    });
+  }, [endSession, showToast]);
+
+  // A restored "session" in localStorage means nothing without the token that
+  // actually authorises requests; without it, go back to sign-in.
+  useEffect(() => {
+    if (isLoggedIn && !getToken()) endSession();
+  }, [isLoggedIn, endSession]);
 
   function handleLogin(r: Role, username: string) {
     setRole(r);
@@ -729,6 +939,10 @@ export default function App() {
               consultations={consultations}
               setConsultations={setConsultations}
               students={students}
+              inventory={inventory}
+              setInventory={setInventory}
+              prescriptions={prescriptions}
+              setPrescriptions={setPrescriptions}
               role={role}
               currentUser={currentUser}
               globalSearch={globalSearch}

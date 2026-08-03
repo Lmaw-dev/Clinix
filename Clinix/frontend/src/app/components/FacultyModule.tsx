@@ -8,8 +8,8 @@ import { Modal } from './Modal';
 import { PersonDocuments } from './PersonDocuments';
 import { useColleges, normalizeCollegeName } from '../colleges';
 import { canSeeConfidential } from '../auth';
+import { API_URL, apiFetch } from '../api';
 
-const API_URL = (import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001/api`).replace(/\/$/, '');
 
 type Props = {
   faculty: FacultyMember[];
@@ -206,7 +206,7 @@ function printRows(rows: FacultyMember[], title: string) {
 }
 
 async function saveFacultyApi(member: FacultyMember, editingId?: string | null) {
-  const res = await fetch(`${API_URL}/faculty${editingId ? `/${editingId}` : ''}`, {
+  const res = await apiFetch(`${API_URL}/faculty${editingId ? `/${editingId}` : ''}`, {
     method: editingId ? 'PUT' : 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(member),
