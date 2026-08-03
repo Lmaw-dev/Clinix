@@ -513,12 +513,6 @@ function formatShortDate(raw?: string) {
   return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-const STATUS_PILL: Record<string, { bg: string; fg: string }> = {
-  enrolled: { bg: '#ECFDF5', fg: '#15803D' },
-  'not enrolled': { bg: '#F1F5F9', fg: '#475569' },
-  dropped: { bg: '#FFFBEB', fg: '#B45309' },
-};
-
 export function StudentProfileView({
   student, consultations, isAdmin, showToast, onBack, onEdit, onViewHistory,
 }: {
@@ -580,7 +574,6 @@ export function StudentProfileView({
   }, [p]);
 
   const headline = percent >= 100 ? 'All set!' : percent >= 60 ? 'Almost there!' : 'Needs attention';
-  const pill = STATUS_PILL[p.status] || STATUS_PILL.dropped;
   const bloodSign = p.bloodType.endsWith('+') ? 'Positive' : p.bloodType.endsWith('-') ? 'Negative' : '';
   const verified = p.status === 'enrolled';
 
@@ -671,18 +664,9 @@ export function StudentProfileView({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-black dark:text-white" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.15 }}>
-                    {p.name}
-                  </p>
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1"
-                    style={{ background: pill.bg, color: pill.fg, fontSize: 11.5, fontWeight: 600 }}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: pill.fg }} />
-                    {p.status}
-                  </span>
-                </div>
+                <p className="text-black dark:text-white" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+                  {p.name}
+                </p>
                 <p className="mt-2 flex items-center gap-1.5 text-[#2563EB] dark:text-blue-300" style={{ fontSize: 13, fontWeight: 500 }}>
                   <IdCard size={15} />
                   Student ID: {p.studentId}

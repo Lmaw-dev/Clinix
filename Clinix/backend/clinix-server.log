@@ -1,0 +1,6 @@
+[crypto] DATA_ENC_KEY not set (need 64 hex chars). Using an insecure derived key — set DATA_ENC_KEY in .env.
+[web] Serving the built frontend from frontend/dist
+[db] Connected — schema ready.
+Clinix API listening on port 4001 (all interfaces) — e.g. http://<this-pc-ip>:4001
+[accounts] upgraded a legacy password to a bcrypt hash on sign-in
+[accounts] upgraded a legacy password to a bcrypt hash on sign-in
