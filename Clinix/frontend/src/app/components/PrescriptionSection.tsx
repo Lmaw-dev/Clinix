@@ -3,7 +3,7 @@ import { Pill, Plus, Trash2, AlertTriangle, Sparkles, ShieldAlert, PackageX, Boo
 import { InventoryItem } from '../App';
 import {
   Prescription, dispensePrescription, deletePrescriptionApi, OutOfStockError,
-  aiStatusApi, suggestMedicinesApi, type MedicineSuggestion, type SuggestionResult,
+  aiStatusApi, suggestMedicinesApi, type MedicineSuggestion, type SuggestionResult, type AiStatus,
   protocolForComplaint, saveProtocolEntry, type FormularyEntry,
 } from '../store';
 
@@ -160,11 +160,12 @@ export function PrescriptionSection({
   // dispensed automatically: picking one only fills in the medicine field, and
   // a drug the clinic does not stock is shown plainly as unavailable rather
   // than hidden, because knowing what to buy is part of the answer.
-  const [aiOn, setAiOn] = useState(false);
+  const [ai, setAi] = useState<AiStatus>({ enabled: false });
+  const aiOn = ai.enabled;
   const [aiBusy, setAiBusy] = useState(false);
   const [advice, setAdvice] = useState<SuggestionResult | null>(null);
 
-  useEffect(() => { aiStatusApi().then(setAiOn); }, []);
+  useEffect(() => { aiStatusApi().then(setAi); }, []);
 
   // The clinic's own protocol is checked automatically whenever the record is
   // opened: it costs nothing, needs no network beyond the local server, and is
@@ -298,9 +299,20 @@ export function PrescriptionSection({
                 </button>
               </div>
               <p className="text-slate-500 mt-1" style={{ fontSize: 10.5 }}>
-                Based on the complaint and assessment only — no patient name or ID is sent.
-                Suggestions are a reference; you decide what is given.
+                Runs on this PC — nothing leaves the clinic. Based on the complaint and
+                assessment only; no patient name or ID is used. Suggestions are a
+                reference, you decide what is given.
               </p>
+              {ai.warning && (
+                <p className="flex items-start gap-1.5 mt-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5 text-amber-800 dark:text-amber-300" style={{ fontSize: 10.5 }}>
+                  <AlertTriangle size={11} className="mt-0.5 shrink-0" /> {ai.warning}
+                </p>
+              )}
+              {aiBusy && (
+                <p className="text-slate-400 mt-1" style={{ fontSize: 10.5 }}>
+                  The local model can take up to a minute, longer on the first run after a restart.
+                </p>
+              )}
 
               {advice && (
                 <div className="mt-2.5 space-y-2">
