@@ -3,6 +3,8 @@ import { ThemeProvider } from './ThemeContext';
 import { LoginPage } from './components/LoginPage';
 import { Sidebar } from './components/Sidebar';
 import { Role, canAccess, isValidRole, apiLogout } from './auth';
+import { ConfirmHost } from './components/ConfirmDialog';
+import { LogoutDialog } from './components/LogoutDialog';
 
 import { Dashboard } from './components/Dashboard';
 import { StudentsModule } from './components/StudentsModule';
@@ -534,6 +536,7 @@ export default function App() {
   const [globalSearch, setGlobalSearch] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   const [students, setStudents] = useState<Student[]>(() => {
     const raw = loadFromStorage<Record<string, unknown>[]>('clinixStudents', []);
@@ -820,7 +823,8 @@ export default function App() {
     setActivePage('dashboard');
   }, []);
 
-  function handleLogout() {
+  function confirmLogout() {
+    setLogoutOpen(false);
     // Revoke the token on the server too — clearing it locally alone would
     // leave a working session behind for anyone who kept a copy.
     apiLogout().finally(endSession);
@@ -863,7 +867,7 @@ export default function App() {
       <LoginPage onLogin={handleLogin} />
     ) : (
     <div className="flex h-screen overflow-hidden bg-blue-50 dark:bg-blue-950">
-      <Sidebar role={role} activePage={activePage} onNavigate={navigate} onLogout={handleLogout} certificatesEnabled={certificatesEnabled} />
+      <Sidebar role={role} activePage={activePage} onNavigate={navigate} onLogout={() => setLogoutOpen(true)} certificatesEnabled={certificatesEnabled} />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <main className="flex-1 overflow-y-auto">
@@ -995,8 +999,16 @@ export default function App() {
           {toast}
         </div>
       )}
+
+      <LogoutDialog
+        open={logoutOpen}
+        onCancel={() => setLogoutOpen(false)}
+        onConfirm={confirmLogout}
+      />
     </div>
     )}
+    {/* Hosts every confirmDialog() call — without it they fall back to window.confirm */}
+    <ConfirmHost />
     </ThemeProvider>
   );
 }
