@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
   GraduationCap,
@@ -9,12 +10,15 @@ import {
   BarChart2,
   ShieldCheck,
   LogOut,
-  Activity,
   ChevronDown,
+  Settings,
+  Sun,
+  Moon,
+  Info,
 } from 'lucide-react';
 
 import { Page } from '../App';
-import { Role, canAccess } from '../auth';
+import { Role, canAccess, ROLE_LABELS, ROLE_DEFAULT_NAMES } from '../auth';
 import { useTheme } from '../ThemeContext';
 import { ClinixLogo } from './ClinixLogo';
 import { APP_VERSION } from '../version';
@@ -43,17 +47,42 @@ export function Sidebar({
   onNavigate,
   onLogout,
   certificatesEnabled = true,
+  userName,
+  username,
 }: {
   role: Role;
   activePage: Page;
   onNavigate: (p: Page) => void;
   onLogout?: () => void;
   certificatesEnabled?: boolean;
+  /** Display name of the signed-in user, shown at the top of the account menu. */
+  userName?: string;
+  /** Their sign-in name, shown under it. */
+  username?: string;
 }) {
-  const { isDark } = useTheme();
+  const { isDark, toggle: toggleTheme } = useTheme();
   const navItems = NAV_ITEMS.filter((item) =>
     canAccess(role, item.id) && (item.id !== 'certificates' || certificatesEnabled),
   );
+
+  // The footer block opens an account menu rather than jumping straight to a
+  // page, so Settings, the theme and signing out all sit in one place.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const footerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!footerRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
 
   const bg        = isDark ? '#0D1230' : '#1B2A6E';
   const divider   = isDark ? '#131D4D' : '#273685';
@@ -63,6 +92,17 @@ export function Sidebar({
   const activeBg  = 'rgba(245,197,24,0.15)';
   const activeBorder = 'rgba(245,197,24,0.35)';
   const settingsActive = activePage === 'settings';
+
+  // The pop-up menu is a card, not part of the navy panel.
+  const menuBg     = isDark ? '#1E293B' : '#FFFFFF';
+  const menuBorder = isDark ? '#334155' : '#E2E8F0';
+  const menuText   = isDark ? '#E2E8F0' : '#0F172A';
+  const menuMuted  = isDark ? '#94A3B8' : '#64748B';
+  const menuColors = {
+    text: menuText,
+    muted: menuMuted,
+    hover: isDark ? 'rgba(148,163,184,0.16)' : '#F1F5F9',
+  };
 
   return (
     <aside
@@ -144,52 +184,84 @@ export function Sidebar({
         </ul>
       </nav>
 
-      {/* Bottom actions */}
-      <div className="shrink-0" style={{ padding: '6px 12px 12px', borderTop: `1px solid ${divider}` }}>
-        {/* Logout */}
-        <button
-          onClick={() => onLogout?.()}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all"
-          style={{ fontSize: 13, color: itemInactive }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = itemHoverBg;
-            (e.currentTarget as HTMLElement).style.color = itemHoverColor;
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'transparent';
-            (e.currentTarget as HTMLElement).style.color = itemInactive;
-          }}
-        >
-          <span style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <LogOut size={14} />
-          </span>
-          Logout
-        </button>
-      </div>
+      {/* Footer — the account menu. Settings, the theme and signing out all open
+          from here instead of taking a row of the nav each. */}
+      <div ref={footerRef} className="shrink-0 relative">
+        {menuOpen && (
+          <div
+            role="menu"
+            aria-label="Account menu"
+            className="absolute rounded-xl overflow-hidden"
+            style={{
+              bottom: 'calc(100% + 6px)', left: 10, right: 10, zIndex: 40,
+              background: menuBg,
+              border: `1px solid ${menuBorder}`,
+              boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+              padding: 6,
+            }}
+          >
+            {/* Who is signed in */}
+            <div className="px-3 pt-2 pb-2.5" style={{ borderBottom: `1px solid ${menuBorder}` }}>
+              <p className="truncate" style={{ fontSize: 12.5, fontWeight: 600, color: menuText, lineHeight: 1.3 }}>
+                {userName || ROLE_DEFAULT_NAMES[role]}
+              </p>
+              <p className="truncate" style={{ fontSize: 11, color: menuMuted, lineHeight: 1.4 }}>
+                {username ? `${username} · ${ROLE_LABELS[role]}` : ROLE_LABELS[role]}
+              </p>
+            </div>
 
-      {/* Settings — opened from the version block rather than a labelled nav item */}
-      {canAccess(role, 'settings') && (
+            <div style={{ paddingTop: 4 }}>
+              {canAccess(role, 'settings') && (
+                <MenuItem
+                  icon={Settings}
+                  label="Settings"
+                  active={settingsActive}
+                  onClick={() => { setMenuOpen(false); onNavigate('settings'); }}
+                  colors={menuColors}
+                />
+              )}
+              <MenuItem
+                icon={isDark ? Sun : Moon}
+                label={isDark ? 'Light mode' : 'Dark mode'}
+                onClick={toggleTheme}
+                colors={menuColors}
+              />
+              <MenuItem
+                icon={Info}
+                label={`Clinix v${APP_VERSION}`}
+                muted
+                onClick={() => setMenuOpen(false)}
+                colors={menuColors}
+              />
+            </div>
+
+            <div style={{ borderTop: `1px solid ${menuBorder}`, marginTop: 4, paddingTop: 4 }}>
+              <MenuItem
+                icon={LogOut}
+                label="Log out"
+                onClick={() => { setMenuOpen(false); onLogout?.(); }}
+                colors={menuColors}
+              />
+            </div>
+          </div>
+        )}
+
         <button
-          onClick={() => onNavigate('settings')}
-          title="Settings"
-          aria-label="Settings"
-          className="shrink-0 w-full flex items-center gap-3 transition-colors"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className="w-full flex items-center gap-3 transition-colors"
           style={{
             padding: '12px 16px',
             borderTop: `1px solid ${divider}`,
-            background: settingsActive ? 'rgba(255,255,255,0.06)' : 'transparent',
+            background: menuOpen || settingsActive ? 'rgba(255,255,255,0.08)' : 'transparent',
           }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = itemHoverBg; }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = settingsActive ? 'rgba(255,255,255,0.06)' : 'transparent';
+            (e.currentTarget as HTMLElement).style.background =
+              menuOpen || settingsActive ? 'rgba(255,255,255,0.08)' : 'transparent';
           }}
         >
-          <span
-            className="flex items-center justify-center shrink-0 rounded-full"
-            style={{ width: 34, height: 34, background: '#F5C518' }}
-          >
-            <Activity size={18} style={{ color: bg }} strokeWidth={2.6} />
-          </span>
           <span className="text-left min-w-0">
             <span style={{ display: 'block', fontWeight: 700, fontSize: 14, color: '#FFFFFF', lineHeight: 1.2 }}>Clinix</span>
             <span style={{ display: 'block', fontSize: 11, color: '#8FA0DC', lineHeight: 1.3 }}>v{APP_VERSION}</span>
@@ -199,12 +271,50 @@ export function Sidebar({
             className="ml-auto shrink-0"
             style={{
               color: '#8FA0DC',
-              transform: settingsActive ? 'rotate(180deg)' : 'none',
+              transform: menuOpen ? 'rotate(180deg)' : 'none',
               transition: 'transform 0.2s ease',
             }}
           />
         </button>
-      )}
+      </div>
     </aside>
+  );
+}
+
+// ── Account menu row ────────────────────────────────────────────────────────
+// The menu sits on a light card rather than the navy, so it carries its own
+// colours instead of the sidebar's.
+
+type MenuColors = { text: string; muted: string; hover: string };
+
+function MenuItem({
+  icon: Icon, label, onClick, colors, active = false, muted = false,
+}: {
+  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+  label: string;
+  onClick: () => void;
+  colors: MenuColors;
+  active?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <button
+      role="menuitem"
+      onClick={onClick}
+      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors text-left"
+      style={{
+        fontSize: 13,
+        fontWeight: active ? 600 : 400,
+        color: muted ? colors.muted : colors.text,
+        background: active ? colors.hover : 'transparent',
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.background = active ? colors.hover : 'transparent';
+      }}
+    >
+      <Icon size={15} style={{ color: colors.muted }} />
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
