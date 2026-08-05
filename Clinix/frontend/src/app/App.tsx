@@ -956,7 +956,15 @@ export default function App() {
         : <LoginPage onLogin={handleLogin} onLearnMore={showLanding} />
     ) : (
     <div className="flex h-screen overflow-hidden bg-blue-50 dark:bg-blue-950">
-      <Sidebar role={role} activePage={activePage} onNavigate={navigate} onLogout={() => setLogoutOpen(true)} certificatesEnabled={certificatesEnabled} />
+      <Sidebar
+        role={role}
+        activePage={activePage}
+        onNavigate={navigate}
+        onLogout={() => setLogoutOpen(true)}
+        certificatesEnabled={certificatesEnabled}
+        userName={adminProfile.name}
+        username={currentUser}
+      />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <main className="flex-1 overflow-y-auto">
