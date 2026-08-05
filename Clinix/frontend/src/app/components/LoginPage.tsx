@@ -1,9 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { apiLogin, Role } from '../auth';
+import { ClinixLogo } from './ClinixLogo';
 import CAMPUS_PHOTO from '../../assets/campus-gate.png';
 
-type Props = { onLogin: (role: Role, username: string) => void };
+type Props = {
+  onLogin: (role: Role, username: string) => void;
+  /** Opens the landing page that explains the system. */
+  onLearnMore: () => void;
+};
 
 /* ── Design tokens, taken from the reference comp (1024 × 768) ───────────── */
 const FONT      = "'Montserrat', 'Segoe UI', system-ui, sans-serif";
@@ -17,13 +22,11 @@ const NAVY      = '#0B1A54';
 const W = 1024;
 const H = 768;
 
-export function LoginPage({ onLogin }: Props) {
+export function LoginPage({ onLogin, onLearnMore }: Props) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
-
-  const userRef = useRef<HTMLInputElement>(null);
 
   /* Viewport → stage scale. CSS can't divide a length by a length, so the
      scale factor has to be computed here. */
@@ -101,7 +104,6 @@ export function LoginPage({ onLogin }: Props) {
         <label htmlFor="clx-user" className="clx-label">Username</label>
         <input
           id="clx-user"
-          ref={userRef}
           className="clx-field"
           type="text"
           value={username}
@@ -191,7 +193,7 @@ export function LoginPage({ onLogin }: Props) {
         type="button"
         className="clx-btn clx-btn-learn clx-in"
         style={{ marginTop: compact ? 34 : 42, animationDelay: '0.24s' }}
-        onClick={() => userRef.current?.focus()}
+        onClick={onLearnMore}
       >
         Learn More
       </button>
@@ -199,50 +201,9 @@ export function LoginPage({ onLogin }: Props) {
   );
 
   /* ── Brand mark ───────────────────────────────────────────────────────── */
-  /* Vector rebuild of the Clinix logo: gold "C" ring + medical cross, with the
-     left half of the "X" rendered as the blue chevron. Drawn rather than
-     bitmapped so it has no background plate and stays sharp at any size. */
   const brand = (
     <div className="clx-in" style={{ animationDelay: '0.04s' }}>
-      <svg
-        width="70" height="57" viewBox="275 185 800 650"
-        fill="none" role="img" aria-label="Clinix"
-      >
-        <defs>
-          <linearGradient id="clxGold" x1="0.18" y1="0" x2="0.62" y2="1">
-            <stop offset="0%"   stopColor="#FFE372" />
-            <stop offset="42%"  stopColor="#F8C61F" />
-            <stop offset="100%" stopColor="#E39C05" />
-          </linearGradient>
-          <linearGradient id="clxBlue" x1="0.1" y1="0" x2="0.85" y2="1">
-            <stop offset="0%"   stopColor="#0C3ED6" />
-            <stop offset="46%"  stopColor="#2371F2" />
-            <stop offset="100%" stopColor="#062A9B" />
-          </linearGradient>
-        </defs>
-
-        {/* gold X — right half only; the left half is the blue chevron below */}
-        <path d="M900,318 L1075,318 L829,523 L731,459 Z" fill="url(#clxGold)" />
-        <path d="M900,706 L1075,706 L829,501 L731,565 Z" fill="url(#clxGold)" />
-
-        {/* gold "C" ring, open to the right */}
-        <path
-          d="M752.6,223 A325,325 0 1 0 752.6,797 L705.7,708.6 A225,225 0 1 1 705.7,311.4 Z"
-          fill="url(#clxGold)"
-        />
-
-        {/* medical cross inside the ring */}
-        <g fill="url(#clxGold)">
-          <rect x="415" y="476" width="200" height="78" rx="15" />
-          <rect x="476" y="415" width="78"  height="200" rx="15" />
-        </g>
-
-        {/* blue chevron — the left half of the X */}
-        <path
-          d="M540,305 L866,512 L540,719 L540,609 L690,512 L540,415 Z"
-          fill="url(#clxBlue)"
-        />
-      </svg>
+      <ClinixLogo width={70} />
 
       <div
         style={{
@@ -277,25 +238,27 @@ export function LoginPage({ onLogin }: Props) {
         style={{
           position: 'absolute', inset: 0, width: '100%', height: '100%',
           objectFit: 'cover', objectPosition: '50% 58%',
-          filter: 'blur(4px) brightness(0.5) saturate(1.4)',
+          filter: 'blur(4px) brightness(0.6) saturate(1.4)',
           transform: 'scale(1.07)',
         }}
       />
-      {/* deep cobalt wash */}
+      {/* Deep cobalt wash. The alphas are deliberately short of opaque so the
+          campus behind stays legible as a place, not just a blue field — the
+          vignette below carries the contrast the text actually needs. */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
         background:
-          'linear-gradient(158deg, rgba(5,12,52,0.96) 0%, rgba(9,24,94,0.90) 28%, rgba(17,42,136,0.78) 55%, rgba(6,17,68,0.95) 100%)',
+          'linear-gradient(158deg, rgba(5,12,52,0.82) 0%, rgba(9,24,94,0.74) 28%, rgba(17,42,136,0.58) 55%, rgba(6,17,68,0.82) 100%)',
       }} />
       {/* centre light bloom */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
-        background: 'radial-gradient(105% 78% at 40% 50%, rgba(42,92,215,0.34) 0%, rgba(42,92,215,0) 64%)',
+        background: 'radial-gradient(105% 78% at 40% 50%, rgba(42,92,215,0.30) 0%, rgba(42,92,215,0) 64%)',
       }} />
       {/* corner vignette */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
-        background: 'radial-gradient(100% 100% at 48% 44%, rgba(3,8,34,0) 34%, rgba(3,8,34,0.78) 100%)',
+        background: 'radial-gradient(100% 100% at 48% 44%, rgba(3,8,34,0) 34%, rgba(3,8,34,0.80) 100%)',
       }} />
     </div>
   );

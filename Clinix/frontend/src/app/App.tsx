@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ThemeProvider } from './ThemeContext';
 import { LoginPage } from './components/LoginPage';
+import { LandingPage } from './components/LandingPage';
 import { Sidebar } from './components/Sidebar';
 import { Role, canAccess, isValidRole, apiLogout } from './auth';
 import { ConfirmHost } from './components/ConfirmDialog';
@@ -515,12 +516,46 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<string>(() => {
     try { return localStorage.getItem('clinixUser') || ''; } catch { return ''; }
   });
+  // Which of the two signed-out screens is showing. Kept in the URL hash so the
+  // browser's Back button returns to sign-in and a refresh stays put.
+  const [signedOutView, setSignedOutView] = useState<'login' | 'landing'>(() =>
+    window.location.hash === '#learn-more' ? 'landing' : 'login'
+  );
+
+  // Follows Back/Forward while signed out.
+  useEffect(() => {
+    const onHashChange = () =>
+      setSignedOutView(window.location.hash === '#learn-more' ? 'landing' : 'login');
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  const showLanding = useCallback(() => {
+    window.location.hash = 'learn-more';
+    setSignedOutView('landing');
+  }, []);
+
+  const showLogin = useCallback(() => {
+    // Replaced rather than pushed, so Back does not bounce straight into the
+    // landing page the user just left.
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    window.scrollTo(0, 0);
+    setSignedOutView('login');
+  }, []);
+
   // Whether the Medical Certificates page is enabled (toggled in Settings).
   const [certificatesEnabled, setCertificatesEnabled] = useState<boolean>(() => {
     try { const v = localStorage.getItem('clinixShowCertificates'); return v === null ? true : v === 'true'; }
     catch { return true; }
   });
   const [activePage, setActivePage] = useState<Page>('dashboard');
+  // Splash between sign-in and the dashboard. A restored session starts in it
+  // too — the collections still have to be fetched before anything is worth
+  // showing. Progress is counted in completed boot steps, not guessed.
+  const [booting, setBooting] = useState(isLoggedIn);
+  const [bootStep, setBootStep] = useState(0);
+  const [bootStatus, setBootStatus] = useState('Connecting to the clinic server');
+  const BOOT_STEPS = 10;
   // Student profile requested from outside the Students module (e.g. Dashboard search)
   const [profileStudentId, setProfileStudentId] = useState<string | null>(null);
 
@@ -599,21 +634,6 @@ export default function App() {
   // would overwrite the real profile with "Clinic Admin".
   const adminProfileLoaded = useRef(false);
 
-  useEffect(() => {
-    apiFetch(`${API_URL}/students`)
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((rows: Record<string, unknown>[]) => setStudents(rows.map(normalizeStudent)))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    apiFetch(`${API_URL}/faculty`)
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((rows: Record<string, unknown>[]) => setFaculty(rows.map(normalizeFaculty)))
-      .catch(() => {});
-  }, []);
-
-
   // Persist to localStorage
   useEffect(() => { localStorage.setItem('clinixStudents', JSON.stringify(students)); }, [students]);
   useEffect(() => { localStorage.setItem('clinixFaculty', JSON.stringify(faculty)); }, [faculty]);
@@ -630,14 +650,6 @@ export default function App() {
     if (adminProfileLoaded.current) saveAdminProfileApi(adminProfile).catch(() => { /* cached copy stands */ });
   }, [adminProfile]);
   useEffect(() => { try { localStorage.setItem('clinixShowCertificates', String(certificatesEnabled)); } catch { /* ignore */ } }, [certificatesEnabled]);
-
-  // Load system-wide settings from the backend so feature toggles apply to everyone.
-  useEffect(() => {
-    apiFetch(`${API_URL}/settings`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((s) => { if (s && typeof s.showCertificates === 'string') setCertificatesEnabled(s.showCertificates === 'true'); })
-      .catch(() => { /* backend offline — keep the local value */ });
-  }, []);
 
   // Persist the certificates toggle system-wide (shared across devices) + local cache.
   const updateCertificatesEnabled = useCallback((v: boolean) => {
@@ -660,16 +672,38 @@ export default function App() {
   // person's dispensed medicine shows up in everyone's stock count. Whatever is
   // still sitting in localStorage from before is lifted across once, after
   // which the server copy is authoritative.
+  //
+  // This runs only once signed in, and re-runs on each sign-in: every request
+  // below needs the session token, so firing it on the sign-in screen would
+  // only earn a row of 401s and leave the dashboard showing the stale cache.
+  // The splash screen stays up until it finishes.
   useEffect(() => {
+    if (!isLoggedIn) return;
     let cancelled = false;
+    setBooting(true);
+    setBootStep(0);
+
     (async () => {
+      const startedAt = Date.now();
       let moved = 0;
+      let done = 0;
+
+      const step = (label: string) => {
+        if (cancelled) return;
+        setBootStatus(label);
+      };
+      const finishStep = () => {
+        if (cancelled) return;
+        done += 1;
+        setBootStep(done);
+      };
 
       const pull = async <T,>(
         label: string,
         run: () => Promise<{ moved: number; rows: T[] }>,
         apply: (rows: T[]) => void,
       ) => {
+        step(label);
         try {
           const result = await run();
           if (cancelled) return;
@@ -678,12 +712,36 @@ export default function App() {
         } catch {
           // Backend unreachable, or this collection failed — keep the cached
           // copy on screen and let the other collections still load.
-          void label;
+        } finally {
+          finishStep();
         }
       };
 
+      // Directories first: they are what the dashboard and most modules read.
+      await pull<Student>(
+        'Loading student records',
+        async () => {
+          const res = await apiFetch(`${API_URL}/students`);
+          if (!res.ok) throw new Error('students');
+          const rows: Record<string, unknown>[] = await res.json();
+          return { moved: 0, rows: rows.map(normalizeStudent) };
+        },
+        setStudents,
+      );
+
+      await pull<FacultyMember>(
+        'Loading faculty & staff',
+        async () => {
+          const res = await apiFetch(`${API_URL}/faculty`);
+          if (!res.ok) throw new Error('faculty');
+          const rows: Record<string, unknown>[] = await res.json();
+          return { moved: 0, rows: rows.map(normalizeFaculty) };
+        },
+        setFaculty,
+      );
+
       await pull<Consultation>(
-        'consultations',
+        'Loading consultation logs',
         async () => ({
           moved: await migrateLocalConsultations(loadFromStorage<Consultation[]>('clinixConsultations', [])),
           rows: await listConsultationsApi(),
@@ -692,7 +750,7 @@ export default function App() {
       );
 
       await pull<InventoryItem>(
-        'inventory',
+        'Loading medicine inventory',
         async () => ({
           moved: await migrateLocalCollection('inventory', loadFromStorage<InventoryItem[]>('clinixInventory', []), 'clinixInventoryMigrated'),
           rows: (await listApi<Record<string, unknown>>('inventory')).map(normalizeInventory),
@@ -701,7 +759,7 @@ export default function App() {
       );
 
       await pull<MedRecord>(
-        'medical records',
+        'Loading medical records',
         async () => ({
           moved: await migrateLocalCollection('medicalRecords', loadFromStorage<MedRecord[]>('clinixMedRecords', []), 'clinixMedRecordsMigrated'),
           rows: (await listApi<Record<string, unknown>>('medicalRecords')).map(normalizeMedRecord),
@@ -710,7 +768,7 @@ export default function App() {
       );
 
       await pull<Certificate>(
-        'certificates',
+        'Loading medical certificates',
         async () => ({
           moved: await migrateLocalCollection('certificates', loadFromStorage<Certificate[]>('clinixCertificates', []), 'clinixCertificatesMigrated'),
           rows: (await listApi<Record<string, unknown>>('certificates')).map(normalizeCertificate),
@@ -722,7 +780,7 @@ export default function App() {
       // row in `documents` tagged with the form id, so the entries are rebuilt
       // from there. That keeps the file and its listing from drifting apart.
       await pull<MedForm>(
-        'medical forms',
+        'Loading medical forms',
         async () => {
           const moved = await migrateLocalCollection(
             'medicalForms',
@@ -763,7 +821,7 @@ export default function App() {
       );
 
       await pull<Activity>(
-        'activities',
+        'Loading recent activity',
         async () => ({
           // Old entries carry a locale-formatted timestamp that MySQL cannot
           // store, so each is converted before it is uploaded.
@@ -782,23 +840,50 @@ export default function App() {
         setActivities,
       );
 
+      step('Loading dispensed medicine');
       try {
         const rows = await listPrescriptionsApi();
         if (!cancelled) setPrescriptions(rows);
       } catch { /* the section will simply show nothing dispensed yet */ }
+      finishStep();
 
+      step('Loading your profile');
       try {
         const profile = await getAdminProfileApi();
         if (!cancelled && profile.name) setAdminProfile(profile);
       } catch { /* keep the cached profile */ }
       finally { adminProfileLoaded.current = true; }
+      finishStep();
 
-      if (!cancelled && moved) {
+      // System-wide feature toggles, so they apply to everyone rather than per device.
+      step('Applying clinic settings');
+      try {
+        const res = await apiFetch(`${API_URL}/settings`);
+        const s = res.ok ? await res.json() : null;
+        if (!cancelled && s && typeof s.showCertificates === 'string') {
+          setCertificatesEnabled(s.showCertificates === 'true');
+        }
+      } catch { /* backend offline — keep the local value */ }
+      finishStep();
+
+      if (cancelled) return;
+
+      if (moved) {
         showToast(`Moved ${moved} saved item${moved === 1 ? '' : 's'} into the database`);
       }
+
+      // On a fast connection the whole sequence can finish inside a couple of
+      // hundred milliseconds, and a splash that appears and vanishes reads as a
+      // glitch. Hold it just long enough to be seen as deliberate.
+      setBootStatus('Opening your dashboard');
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < MIN_SPLASH_MS) {
+        await new Promise((r) => setTimeout(r, MIN_SPLASH_MS - elapsed));
+      }
+      if (!cancelled) setBooting(false);
     })();
     return () => { cancelled = true; };
-  }, [showToast]);
+  }, [isLoggedIn, showToast]);
 
   // The feed is written to the database so every device sees the same history.
   // On screen a readable local timestamp is shown, but an ISO one is stored:
@@ -846,6 +931,8 @@ export default function App() {
   }, [isLoggedIn, endSession]);
 
   function handleLogin(r: Role, username: string) {
+    // Drop #learn-more so signing out later lands back on the sign-in screen.
+    if (window.location.hash) showLogin();
     setRole(r);
     setCurrentUser(username);
     try { localStorage.setItem('clinixUser', username); } catch { /* ignore */ }
@@ -864,7 +951,9 @@ export default function App() {
   return (
     <ThemeProvider>
     {!isLoggedIn ? (
-      <LoginPage onLogin={handleLogin} />
+      signedOutView === 'landing'
+        ? <LandingPage onSignIn={showLogin} />
+        : <LoginPage onLogin={handleLogin} onLearnMore={showLanding} />
     ) : (
     <div className="flex h-screen overflow-hidden bg-blue-50 dark:bg-blue-950">
       <Sidebar role={role} activePage={activePage} onNavigate={navigate} onLogout={() => setLogoutOpen(true)} certificatesEnabled={certificatesEnabled} />

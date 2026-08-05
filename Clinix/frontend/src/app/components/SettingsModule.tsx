@@ -2,14 +2,16 @@ import { useState, useRef } from 'react';
 import {
   User, Shield, Building2, Monitor, FileText, Bell,
   Database, Clock, Lock, Info, Camera, Check, Eye, EyeOff,
-  Sun, Moon, Download, Upload, RefreshCw, LogOut, Activity,
+  Sun, Moon, Download, Upload, RefreshCw, LogOut,
   ChevronRight, GraduationCap, Plus, Trash2, X,
 } from 'lucide-react';
 
 import { Page, AdminProfile } from '../App';
 import { useTheme } from '../ThemeContext';
+import { APP_VERSION } from '../version';
 import { confirmDialog } from './ConfirmDialog';
-import { canSeeConfidential, currentUsername, changePasswordApi } from '../auth';
+import { ClinixLogo } from './ClinixLogo';
+import { canSeeConfidential, currentUsername, currentRole, changePasswordApi, ROLE_LABELS } from '../auth';
 import {
   useColleges, addCollege, removeCollege, addCourse, removeCourse, resetColleges,
 } from '../colleges';
@@ -47,6 +49,8 @@ type NotifPrefs = {
   emailNewPatient: boolean; emailBackup: boolean;
   emailLowStock: boolean; emailFailedLogin: boolean;
   emailUpdates: boolean; desktop: boolean;
+  // Staff/assistant get one switch for email instead of the per-event list.
+  emailAll: boolean;
 };
 type BackupPrefs = { frequency: 'daily' | 'weekly' | 'monthly'; lastBackup: string };
 type PrivacyPrefs = {
@@ -144,7 +148,9 @@ const DEFAULT_PROFILE: AdminProfile = { name: 'Clinic Admin', photo: '' };
 // ── Settings tabs (keeps the page short instead of one long scroll) ───────────
 type TabId = 'account' | 'security' | 'clinic' | 'prefs' | 'data' | 'about';
 
-const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ size?: number }> }> = [
+type TabDef = { id: TabId; label: string; icon: React.ComponentType<{ size?: number }> };
+
+const TABS: TabDef[] = [
   { id: 'account',  label: 'Account',       icon: User },
   { id: 'security', label: 'Security',      icon: Shield },
   { id: 'clinic',   label: 'Clinic',        icon: Building2 },
@@ -153,8 +159,11 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ size?:
   { id: 'about',    label: 'About',         icon: Info },
 ];
 
-// Tabs only the main admin may open (clinic-wide setup + backups).
-const ADMIN_ONLY_TABS: TabId[] = ['clinic', 'data'];
+// Staff and assistant accounts only manage themselves: their own profile,
+// their password, their notifications and how the app looks on their device.
+// Everything clinic-wide (clinic profile, colleges, record rules, backups,
+// audit log, privacy, feature toggles) stays with the main admin. Their page is
+// short enough to read as one scroll, so it gets no tabs at all.
 
 
 // ── main component ────────────────────────────────────────────────────────────
@@ -205,7 +214,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
   // ── Notif prefs state
   const [notif, setNotif] = useState<NotifPrefs>(() => ls('clinixNotifPrefs', {
     emailNewPatient: true, emailBackup: true, emailLowStock: true,
-    emailFailedLogin: true, emailUpdates: true, desktop: true,
+    emailFailedLogin: true, emailUpdates: true, desktop: true, emailAll: true,
   }));
   const [notifSaved, setNotifSaved] = useState(false);
 
@@ -332,6 +341,8 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
   const activities: Array<{ msg: string; ts: string }> = ls('clinixActivities', []);
 
   const initials = account.fullName.split(' ').filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase() || 'AD';
+  // Staff and assistants cannot set their own role — it is shown as-is from the account.
+  const roleLabel = ROLE_LABELS[currentRole()];
 
   // ── Render helpers
   const selClass = `${INPUT} appearance-none`;
@@ -340,6 +351,146 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
     { id: 'green', label: 'Horizonte Claro', color: '#6C7FC8' },
     { id: 'teal', label: 'Sol de Minas', color: '#F5C518' },
   ];
+
+  // ── Staff / assistant settings ────────────────────────────────────────────
+  // A deliberately small page: their own details, their password, their
+  // notifications and their theme. Nothing here changes anyone else's clinic.
+  // Short enough that tabs would only hide it — everything is on one scroll.
+  function renderStaffSection() {
+    const emailOn = notif.emailAll !== false; // saved before this switch existed → on
+    return (
+      <>
+        <SectionHeading icon={User} label="My Profile" />
+          <SectionCard title="My Profile" desc="Your name, photo and contact details">
+            {/* Photo */}
+            <div className="flex items-center gap-5 mb-6 pb-6 border-b border-blue-100 dark:border-slate-700">
+              <div className="relative shrink-0">
+                {accountPhoto ? (
+                  <img src={accountPhoto} alt="Profile" className="w-20 h-20 rounded-2xl object-cover border-2 border-blue-100 dark:border-slate-600 shadow" />
+                ) : (
+                  <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white shadow" style={{ background: 'linear-gradient(135deg,#6C7FC8,#37479A)', fontSize: 24, fontWeight: 700 }}>{initials}</div>
+                )}
+                <button onClick={() => photoRef.current?.click()} title="Change profile picture" className="absolute -bottom-1.5 -right-1.5 w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow border-2 border-white dark:border-slate-800 hover:bg-blue-700 transition-colors">
+                  <Camera size={13} />
+                </button>
+                <input ref={photoRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-black dark:text-slate-100" style={{ fontSize: 16, fontWeight: 700 }}>{account.fullName || roleLabel}</p>
+                <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: 12 }}>{roleLabel}</p>
+              </div>
+              {accountPhoto && <button onClick={() => setAccountPhoto('')} className="text-red-500 hover:text-red-600 text-xs transition-colors">Remove photo</button>}
+            </div>
+
+            {/* Only the fields they own — role, department and status stay with the admin */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <Field label="Full Name">
+                  <input value={account.fullName} onChange={e => setAccount(a => ({ ...a, fullName: e.target.value }))} placeholder="Full name" className={INPUT} style={{ fontSize: 13 }} />
+                </Field>
+              </div>
+              <Field label="Email Address">
+                <input type="email" value={account.email} onChange={e => setAccount(a => ({ ...a, email: e.target.value }))} placeholder="email@bisu.edu.ph" className={INPUT} style={{ fontSize: 13 }} />
+              </Field>
+              <Field label="Contact Number">
+                <input value={account.contact} onChange={e => setAccount(a => ({ ...a, contact: e.target.value }))} placeholder="09XX XXX XXXX" className={INPUT} style={{ fontSize: 13 }} />
+              </Field>
+            </div>
+            <SaveBar onSave={saveAccount} saved={accountSaved} />
+          </SectionCard>
+
+        <SectionHeading icon={Lock} label="Password" />
+          <SectionCard title="Change Password"
+            action={<button onClick={() => setShowPwForm(v => !v)} className="px-4 py-2 rounded-xl border border-blue-100 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13 }}>{showPwForm ? 'Cancel' : 'Change Password'}</button>}>
+            {!showPwForm ? (
+              <p className="text-slate-400" style={{ fontSize: 13 }}>Choose a password of at least 8 characters that you do not use anywhere else.</p>
+            ) : (
+              <div className="space-y-4">
+                {(['current', 'next', 'confirm'] as const).map(k => (
+                  <Field key={k} label={k === 'current' ? 'Current Password' : k === 'next' ? 'New Password' : 'Confirm New Password'}>
+                    <div className="relative">
+                      <input type={showPw[k] ? 'text' : 'password'} value={pw[k]}
+                        onChange={e => setPw(p => ({ ...p, [k]: e.target.value }))}
+                        placeholder="••••••••" className={`${INPUT} pr-10`} style={{ fontSize: 13 }} />
+                      <button type="button" onClick={() => setShowPw(p => ({ ...p, [k]: !p[k] }))} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        {showPw[k] ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                  </Field>
+                ))}
+                <div className="flex justify-end">
+                  <button onClick={changePassword} disabled={pwSaving} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>{pwSaving ? 'Updating…' : 'Update Password'}</button>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+
+        <SectionHeading icon={Bell} label="Notifications" />
+          <SectionCard title="Notifications" desc="Choose how Clinix reaches you">
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-4 py-1">
+                <div>
+                  <p className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>Email Notifications</p>
+                  <p className="text-slate-400" style={{ fontSize: 12 }}>Send alerts to your email address</p>
+                </div>
+                <Toggle on={emailOn} onToggle={() => setNotif(n => ({ ...n, emailAll: !emailOn }))} />
+              </div>
+              <div className="flex items-start justify-between gap-4 py-1 border-t border-blue-100 dark:border-slate-700 pt-4">
+                <div>
+                  <p className="text-black dark:text-slate-300" style={{ fontSize: 13, fontWeight: 500 }}>System Notifications</p>
+                  <p className="text-slate-400" style={{ fontSize: 12 }}>Show notifications inside Clinix on this device</p>
+                </div>
+                <Toggle on={notif.desktop} onToggle={() => setNotif(n => ({ ...n, desktop: !n.desktop }))} />
+              </div>
+            </div>
+          </SectionCard>
+          <div className="flex justify-end">
+            <button onClick={saveNotif} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all" style={{ fontSize: 13, fontWeight: 600, background: '#4C5CAE' }}>
+              {notifSaved && <Check size={14} />}{notifSaved ? 'Saved!' : 'Save Notifications'}
+            </button>
+          </div>
+
+        <SectionHeading icon={Monitor} label="Appearance" />
+          <SectionCard title="Appearance" desc="Control how Clinix looks on your device">
+            {/* Light / Dark */}
+            <div className="mb-5">
+              <p className="text-slate-600 dark:text-slate-400 mb-2" style={{ fontSize: 12, fontWeight: 500 }}>Mode</p>
+              <div className="flex gap-3">
+                {([['light', Sun, 'Light'], ['dark', Moon, 'Dark']] as const).map(([id, Icon, label]) => (
+                  <button key={id} onClick={() => { if ((id === 'dark') !== isDark) toggleTheme(); }}
+                    className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all"
+                    style={{ borderColor: (id === 'dark') === isDark ? '#4C5CAE' : '#DEE3F5', background: (id === 'dark') === isDark ? '#EEF1FA' : 'transparent' }}>
+                    <Icon size={16} style={{ color: (id === 'dark') === isDark ? '#4C5CAE' : '#94A3B8' }} />
+                    <span style={{ fontSize: 13, fontWeight: 500, color: (id === 'dark') === isDark ? '#4C5CAE' : '#64748B' }}>{label}</span>
+                    {(id === 'dark') === isDark && <Check size={14} style={{ color: '#4C5CAE', marginLeft: 'auto' }} />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Theme colour */}
+            <div>
+              <p className="text-slate-600 dark:text-slate-400 mb-2" style={{ fontSize: 12, fontWeight: 500 }}>Theme</p>
+              <div className="flex gap-3">
+                {accentOptions.map(({ id, label, color }) => (
+                  <button key={id} onClick={() => setSysPrefs(p => ({ ...p, accent: id }))}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all"
+                    style={{ borderColor: sysPrefs.accent === id ? color : '#DEE3F5', background: sysPrefs.accent === id ? `${color}15` : 'transparent' }}>
+                    <span className="w-4 h-4 rounded-full" style={{ background: color }} />
+                    <span style={{ fontSize: 13, fontWeight: 500, color: sysPrefs.accent === id ? color : '#64748B' }}>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </SectionCard>
+          <div className="flex justify-end">
+            <button onClick={savePrefs} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all" style={{ fontSize: 13, fontWeight: 600, background: '#4C5CAE' }}>
+              {prefsSaved && <Check size={14} />}{prefsSaved ? 'Saved!' : 'Save Appearance'}
+            </button>
+          </div>
+      </>
+    );
+  }
 
   // ── Section content — only the active tab's sections are rendered
   function renderSection() {
@@ -855,7 +1006,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
         <SectionCard title="System Information">
             <div className="flex items-center gap-4 mb-6 pb-6 border-b border-blue-100 dark:border-slate-700">
               <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#6C7FC8,#37479A)' }}>
-                <Activity size={24} className="text-white" />
+                <ClinixLogo width={34} />
               </div>
               <div>
                 <p className="text-black dark:text-white" style={{ fontSize: 18, fontWeight: 800 }}>Clinix</p>
@@ -864,7 +1015,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
             </div>
             <div className="space-y-3">
               {[
-                ['Version', '2.1.0'],
+                ['Version', APP_VERSION],
                 ['Build Number', `build-${new Date().getFullYear()}0708`],
                 ['Database Version', 'LocalStorage v1.0'],
                 ['Developer', 'BISU Computer Science Department'],
@@ -878,7 +1029,7 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               ))}
             </div>
             <div className="flex gap-3 mt-5">
-              <button onClick={() => showToast('Clinix is up to date (v2.1.0)')} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>
+              <button onClick={() => showToast(`Clinix is up to date (v${APP_VERSION})`)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>
                 <RefreshCw size={14} />Check for Updates
               </button>
             </div>
@@ -908,14 +1059,17 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
     <div className="w-full max-w-screen-xl">
       <div className="mb-6">
         <h1 className="text-black dark:text-white" style={{ fontWeight: 800, fontSize: 22 }}>Settings</h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-1" style={{ fontSize: 13 }}>Manage your account, clinic, and system preferences</p>
+        <p className="text-slate-500 dark:text-slate-400 mt-1" style={{ fontSize: 13 }}>
+          {isAdmin ? 'Manage your account, clinic, and system preferences' : 'Manage your profile, password and preferences'}
+        </p>
       </div>
 
-      {/* Tabs — keeps each group short instead of one long scroll.
-          Clinic setup and backups are admin-only; everyone can reach their own
-          account, password, appearance and About. */}
+      {/* Tabs — the admin's settings are long enough that one scroll would bury
+          them. Staff and assistants have only their own four sections, so they
+          read them straight down with no tabs. */}
+      {isAdmin && (
       <div className="mb-5 flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-px">
-        {TABS.filter((t) => isAdmin || !ADMIN_ONLY_TABS.includes(t.id)).map(({ id, label, icon: Icon }) => {
+        {TABS.map(({ id, label, icon: Icon }) => {
           const active = tab === id;
           return (
             <button
@@ -937,8 +1091,9 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           );
         })}
       </div>
+      )}
 
-      {renderSection()}
+      {isAdmin ? renderSection() : renderStaffSection()}
     </div>
   );
 }
