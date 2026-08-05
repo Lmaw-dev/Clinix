@@ -185,53 +185,8 @@ if ($envText -match '(?m)^\s*DATA_ENC_KEY\s*=\s*[0-9a-fA-F]{64}\s*$') {
   }
 }
 
-# -- 4. Local AI model (optional) -----------------------------------------------
-Step 4 'Checking the local AI model for medicine suggestions'
-
-# The suggestion feature runs a language model on THIS PC through Ollama, so no
-# patient information leaves the clinic. It is entirely optional: without it the
-# rest of Clinix works unchanged and the panel simply reports itself off.
-$ollama = (Get-Command ollama -ErrorAction SilentlyContinue).Source
-if (-not $ollama) {
-  $candidate = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'
-  if (Test-Path $candidate) { $ollama = $candidate }
-}
-
-if (-not $ollama) {
-  Note 'Ollama is not installed - medicine suggestions will stay off.'
-  Note 'To enable them later: install from https://ollama.com/download, then'
-  Note "  run 'ollama pull $AiModel' and restart Clinix."
-} else {
-  Ok "Ollama found: $ollama"
-
-  # Memory is the deciding factor, and getting it wrong looks like a hang rather
-  # than an error: the model swaps to disk and never finishes answering. Say so
-  # here, while it can still be acted on.
-  $ramGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
-  if ($ramGB -lt 12) {
-    Note "This PC has $ramGB GB RAM, so Clinix defaults to the small llama3.2:3b"
-    Note '  model (about 2 GB). A 7B model such as mistral needs ~5 GB free and'
-    Note '  swaps to disk on a machine this size, which looks like a hang.'
-    Note '  IMPORTANT: test the model on real presentations before a nurse uses it.'
-    Note '  A 1.2B model, given a patient vomiting blood, suggested four medicines'
-    Note '  and advised no referral. 3B has not been measured. If it gets a'
-    Note '  referral case wrong, set AI_SUGGESTIONS=false and rely on the formulary.'
-  } else {
-    Ok "$ramGB GB RAM - enough for a 7B model; set OLLAMA_MODEL=mistral for better answers"
-  }
-
-  $pulled = & $ollama list 2>$null
-  if ($pulled -and ($pulled -match [regex]::Escape($AiModel))) {
-    Ok "Model '$AiModel' is already pulled"
-  } else {
-    Note "Model '$AiModel' is not pulled yet."
-    Note "  Run this once, on a good connection: ollama pull $AiModel"
-    Note '  (Several GB - it took over 15 minutes on a 1.2 MB/s link during testing.)'
-  }
-}
-
-# -- 5. Build the frontend so the server can serve it ---------------------------
-Step 5 'Building the user interface'
+# -- 4. Build the frontend so the server can serve it ---------------------------
+Step 4 'Building the user interface'
 
 # Always rebuild. An existing frontend\dist from an earlier checkout would keep
 # serving the OLD interface after a git pull, which looks exactly like "my
@@ -245,8 +200,8 @@ try {
   Ok 'Interface rebuilt into frontend\dist'
 } finally { Pop-Location }
 
-# -- 6. Start the Clinix server automatically at sign-in ------------------------
-Step 6 'Registering the Clinix server to start at sign-in'
+# -- 5. Start the Clinix server automatically at sign-in ------------------------
+Step 5 'Registering the Clinix server to start at sign-in'
 
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 
@@ -303,8 +258,8 @@ Start-ScheduledTask -TaskName $TaskName
 Start-Sleep -Seconds 6
 Ok 'Clinix server started'
 
-# -- 7. Desktop shortcut --------------------------------------------------------
-Step 7 'Creating the desktop shortcut'
+# -- 6. Desktop shortcut --------------------------------------------------------
+Step 6 'Creating the desktop shortcut'
 
 $url = 'http://localhost:4001'
 $shortcut = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Clinix.url'
@@ -313,7 +268,7 @@ Set-Content -Path $shortcut -Value $shortcutBody -Encoding ASCII
 Ok "Shortcut created: $shortcut"
 
 # -- Verify --------------------------------------------------------------------
-Step 8 'Checking that the app answers'
+Step 7 'Checking that the app answers'
 
 $healthy = $false
 foreach ($attempt in 1..10) {

@@ -1,10 +1,10 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Pill, Plus, Trash2, AlertTriangle, Sparkles, ShieldAlert, PackageX, BookmarkPlus, Stethoscope } from 'lucide-react';
+import { Pill, Plus, Trash2, AlertTriangle, PackageX, BookmarkPlus, Stethoscope } from 'lucide-react';
 import { InventoryItem } from '../App';
 import {
   Prescription, dispensePrescription, deletePrescriptionApi, OutOfStockError,
-  aiStatusApi, suggestMedicinesApi, type MedicineSuggestion, type SuggestionResult, type AiStatus,
   protocolForComplaint, saveProtocolEntry, type FormularyEntry,
+  learnedSuggestions, type LearnedSuggestion,
 } from '../store';
 
 // ── Prescribing from the consultation ────────────────────────────────────────
@@ -155,35 +155,19 @@ export function PrescriptionSection({
     }
   }
 
-  // ── Suggestions ────────────────────────────────────────────────────────────
-  // A reference the nurse can consult, not a decision. Suggestions are never
-  // dispensed automatically: picking one only fills in the medicine field, and
-  // a drug the clinic does not stock is shown plainly as unavailable rather
-  // than hidden, because knowing what to buy is part of the answer.
-  const [ai, setAi] = useState<AiStatus>({ enabled: false });
-  const aiOn = ai.enabled;
-  const [aiBusy, setAiBusy] = useState(false);
-  const [advice, setAdvice] = useState<SuggestionResult | null>(null);
-
-  // Re-checked whenever the section is opened, not just once on mount. The
-  // status carries a free-memory reading, and memory is the one thing here that
-  // changes minute to minute — a figure fetched when the page loaded is stale by
-  // the time anyone reads it. Closing a browser tab should make the warning go
-  // away; it used to persist until a full reload.
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    aiStatusApi().then((s) => { if (!cancelled) setAi(s); });
-    return () => { cancelled = true; };
-  }, [enabled]);
-
   // The clinic's own protocol is checked automatically whenever the record is
   // opened: it costs nothing, needs no network beyond the local server, and is
   // the answer the nurse already decided on. The AI stays behind a button.
   const [protocol, setProtocol] = useState<FormularyEntry[]>([]);
+  // Learned from this clinic's own protocol and dispensing history. Shown only
+  // when the exact protocol lookup found nothing: an exact match is the better
+  // answer, and two lists saying the same thing is noise.
+  const [learned, setLearned] = useState<LearnedSuggestion[]>([]);
+
   useEffect(() => {
     let cancelled = false;
     protocolForComplaint(chiefComplaint || '').then((rows) => { if (!cancelled) setProtocol(rows); });
+    learnedSuggestions(chiefComplaint || '').then((rows) => { if (!cancelled) setLearned(rows); });
     return () => { cancelled = true; };
   }, [chiefComplaint]);
 
@@ -211,34 +195,6 @@ export function PrescriptionSection({
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not save to protocol');
     }
-  }
-
-  async function askForSuggestions() {
-    setAiBusy(true);
-    try {
-      // Only clinical text is passed — no name, ID, birthdate or contact.
-      const result = await suggestMedicinesApi({ purpose, chiefComplaint, assessment, age, sex });
-      setAdvice(result);
-      if (!result.suggestions.length && !result.redFlags.length) {
-        showToast('No suggestions for this complaint');
-      }
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not get suggestions');
-    } finally {
-      setAiBusy(false);
-      // Inference itself moves the memory figure; re-read it so the panel
-      // reflects the machine as it is now rather than before the model loaded.
-      aiStatusApi().then(setAi).catch(() => { /* keep the previous reading */ });
-    }
-  }
-
-  /** Fill the medicine field from a suggestion the clinic actually stocks. */
-  function useSuggestion(s: MedicineSuggestion) {
-    const item = inventory.find((i) => i.code === s.itemCode);
-    if (!item) { showToast(`${s.genericName} is not in the inventory`); return; }
-    // Only the medicine is carried over. The dosage box stays empty on purpose:
-    // the model is not asked for a dose and must not appear to supply one.
-    choose(item);
   }
 
   const fieldClass = 'w-full border border-blue-100 dark:border-slate-600 rounded-lg px-3 py-2 text-black dark:text-slate-200 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -296,92 +252,47 @@ export function PrescriptionSection({
             </div>
           )}
 
-          {!readOnly && aiOn && (
-            <div className="rounded-lg bg-violet-50 dark:bg-slate-700/40 border border-violet-100 dark:border-slate-600 p-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5 text-violet-800 dark:text-violet-300" style={{ fontSize: 12, fontWeight: 600 }}>
-                  <Sparkles size={13} /> Suggested medicines
-                </span>
-                <button
-                  type="button"
-                  onClick={askForSuggestions}
-                  disabled={aiBusy || busy}
-                  className="px-2.5 py-1 rounded-md bg-violet-600 text-white disabled:opacity-60"
-                  style={{ fontSize: 11, fontWeight: 600 }}
-                >
-                  {aiBusy ? 'Thinking…' : advice ? 'Ask again' : 'Suggest'}
-                </button>
-              </div>
-              <p className="text-slate-500 mt-1" style={{ fontSize: 10.5 }}>
-                Runs on this PC — nothing leaves the clinic. Based on the complaint and
-                assessment only; no patient name or ID is used. Suggestions are a
-                reference, you decide what is given.
+          {!readOnly && protocol.length === 0 && learned.length > 0 && (
+            <div className="rounded-lg bg-emerald-50 dark:bg-slate-700/40 border border-emerald-100 dark:border-slate-600 p-2.5">
+              <span className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300" style={{ fontSize: 12, fontWeight: 600 }}>
+                <Stethoscope size={13} /> Usually given here
+              </span>
+              <p className="text-slate-500 mt-0.5 mb-2" style={{ fontSize: 10.5 }}>
+                Learned from this clinic's own records — no exact protocol entry matched this wording.
               </p>
-              {ai.warning && (
-                <p className="flex items-start gap-1.5 mt-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5 text-amber-800 dark:text-amber-300" style={{ fontSize: 10.5 }}>
-                  <AlertTriangle size={11} className="mt-0.5 shrink-0" /> {ai.warning}
-                </p>
-              )}
-              {aiBusy && (
-                <p className="text-slate-400 mt-1" style={{ fontSize: 10.5 }}>
-                  The local model can take up to a minute, longer on the first run after a restart.
-                </p>
-              )}
-
-              {advice && (
-                <div className="mt-2.5 space-y-2">
-                  {advice.referralAdvised && (
-                    <p className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-900/20 px-2 py-1.5 text-red-700 dark:text-red-300" style={{ fontSize: 11.5, fontWeight: 600 }}>
-                      <ShieldAlert size={13} className="mt-0.5 shrink-0" />
-                      Referral advised — this may need a doctor rather than medicine.
-                    </p>
-                  )}
-
-                  {advice.redFlags.length > 0 && (
-                    <ul className="rounded-md bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5 space-y-0.5">
-                      {advice.redFlags.map((f) => (
-                        <li key={f} className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300" style={{ fontSize: 11.5 }}>
-                          <AlertTriangle size={12} className="mt-0.5 shrink-0" /> {f}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {advice.suggestions.map((s) => (
-                    <div key={s.genericName} className="rounded-md bg-white dark:bg-slate-700 border border-violet-100 dark:border-slate-600 px-2.5 py-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-black dark:text-slate-200" style={{ fontSize: 12.5, fontWeight: 600 }}>{s.genericName}</p>
-                          <p className="text-slate-500" style={{ fontSize: 10.5 }}>{s.drugClass}</p>
-                        </div>
-                        {s.inStock ? (
-                          <button
-                            type="button"
-                            onClick={() => useSuggestion(s)}
-                            disabled={busy}
-                            className="shrink-0 px-2 py-1 rounded-md border border-violet-300 text-violet-700 dark:text-violet-300 hover:bg-violet-50"
-                            style={{ fontSize: 10.5, fontWeight: 600 }}
-                          >
-                            Use ({s.available} {s.unit})
-                          </button>
-                        ) : (
-                          <span className="shrink-0 flex items-center gap-1 text-slate-400" style={{ fontSize: 10.5 }}>
-                            <PackageX size={11} /> not in stock
-                          </span>
-                        )}
-                      </div>
-                      {s.rationale && <p className="text-slate-600 dark:text-slate-400 mt-1" style={{ fontSize: 11 }}>{s.rationale}</p>}
-                      {s.cautions && (
-                        <p className="text-amber-700 dark:text-amber-400 mt-0.5" style={{ fontSize: 10.5 }}>
-                          Caution: {s.cautions}
-                        </p>
-                      )}
+              <div className="space-y-1.5">
+                {learned.map((s) => (
+                  <div key={s.itemCode} className="flex items-start justify-between gap-2 rounded-md bg-white dark:bg-slate-700 border border-emerald-100 dark:border-slate-600 px-2.5 py-1.5">
+                    <div className="min-w-0">
+                      <p className="text-black dark:text-slate-200 truncate" style={{ fontSize: 12.5, fontWeight: 600 }}>{s.itemName}</p>
+                      {/* How sure, and on what evidence. A suggestion standing on
+                          two records should not look like one standing on forty. */}
+                      <p className="text-slate-500" style={{ fontSize: 10.5 }}>
+                        {Math.round(s.confidence * 100)}% · from {s.examples} record{s.examples === 1 ? '' : 's'}
+                        {s.matchedWords.length ? ` · matched "${s.matchedWords.join('", "')}"` : ''}
+                      </p>
                     </div>
-                  ))}
-
-                  {advice.notes && <p className="text-slate-500" style={{ fontSize: 11 }}>{advice.notes}</p>}
-                </div>
-              )}
+                    {s.inStock ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const item = inventory.find((i) => i.code === s.itemCode);
+                          if (item) choose(item); else showToast(`${s.itemName} is not in the inventory`);
+                        }}
+                        disabled={busy}
+                        className="shrink-0 px-2 py-1 rounded-md border border-emerald-300 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50"
+                        style={{ fontSize: 10.5, fontWeight: 600 }}
+                      >
+                        Use ({s.available} {s.unit})
+                      </button>
+                    ) : (
+                      <span className="shrink-0 flex items-center gap-1 text-slate-400" style={{ fontSize: 10.5 }}>
+                        <PackageX size={11} /> out of stock
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
