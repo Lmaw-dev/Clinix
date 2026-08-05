@@ -7,15 +7,17 @@ import {
   Award,
   MessageSquare,
   BarChart2,
-  Settings,
   ShieldCheck,
   LogOut,
   Activity,
+  ChevronDown,
 } from 'lucide-react';
 
 import { Page } from '../App';
 import { Role, canAccess } from '../auth';
 import { useTheme } from '../ThemeContext';
+import { ClinixLogo } from './ClinixLogo';
+import { APP_VERSION } from '../version';
 
 const NAV_ITEMS: Array<{
   id: Page;
@@ -31,7 +33,8 @@ const NAV_ITEMS: Array<{
   { id: 'consultations', label: 'Consultation Logs', icon: MessageSquare },
   { id: 'reports', label: 'Reports & Statistics', icon: BarChart2 },
   { id: 'accounts', label: 'Accounts', icon: ShieldCheck },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  // Settings is not listed here — it is opened from the version block pinned to
+  // the sidebar footer.
 ];
 
 export function Sidebar({
@@ -59,6 +62,7 @@ export function Sidebar({
   const itemHoverColor = '#FFFFFF';
   const activeBg  = 'rgba(245,197,24,0.15)';
   const activeBorder = 'rgba(245,197,24,0.35)';
+  const settingsActive = activePage === 'settings';
 
   return (
     <aside
@@ -68,11 +72,11 @@ export function Sidebar({
       {/* Brand */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex items-center gap-3">
-          <div
-            className="flex items-center justify-center shrink-0 rounded-xl"
-            style={{ width: 36, height: 36, background: 'linear-gradient(135deg, #F5C518, #E3B10D)' }}
-          >
-            <Activity size={17} style={{ color: '#1B2A6E' }} />
+          {/* The mark sits straight on the navy, as it does on the sign-in and
+              landing screens — a gold plate behind it would swallow the gold
+              "C" and cross. */}
+          <div className="flex items-center justify-center shrink-0" style={{ width: 36, height: 36 }}>
+            <ClinixLogo width={36} />
           </div>
           <div>
             <p style={{ fontWeight: 700, fontSize: 14, color: '#FFFFFF', lineHeight: 1.2 }}>Clinix</p>
@@ -162,6 +166,45 @@ export function Sidebar({
           Logout
         </button>
       </div>
+
+      {/* Settings — opened from the version block rather than a labelled nav item */}
+      {canAccess(role, 'settings') && (
+        <button
+          onClick={() => onNavigate('settings')}
+          title="Settings"
+          aria-label="Settings"
+          className="shrink-0 w-full flex items-center gap-3 transition-colors"
+          style={{
+            padding: '12px 16px',
+            borderTop: `1px solid ${divider}`,
+            background: settingsActive ? 'rgba(255,255,255,0.06)' : 'transparent',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = itemHoverBg; }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.background = settingsActive ? 'rgba(255,255,255,0.06)' : 'transparent';
+          }}
+        >
+          <span
+            className="flex items-center justify-center shrink-0 rounded-full"
+            style={{ width: 34, height: 34, background: '#F5C518' }}
+          >
+            <Activity size={18} style={{ color: bg }} strokeWidth={2.6} />
+          </span>
+          <span className="text-left min-w-0">
+            <span style={{ display: 'block', fontWeight: 700, fontSize: 14, color: '#FFFFFF', lineHeight: 1.2 }}>Clinix</span>
+            <span style={{ display: 'block', fontSize: 11, color: '#8FA0DC', lineHeight: 1.3 }}>v{APP_VERSION}</span>
+          </span>
+          <ChevronDown
+            size={16}
+            className="ml-auto shrink-0"
+            style={{
+              color: '#8FA0DC',
+              transform: settingsActive ? 'rotate(180deg)' : 'none',
+              transition: 'transform 0.2s ease',
+            }}
+          />
+        </button>
+      )}
     </aside>
   );
 }
