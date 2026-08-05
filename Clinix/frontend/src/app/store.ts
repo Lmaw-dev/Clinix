@@ -206,7 +206,6 @@ export async function saveProtocolEntry(entry: {
 export type MedicineSuggestion = {
   genericName: string;
   drugClass: string;
-  typicalDose: string;
   rationale: string;
   cautions: string;
   inStock: boolean;
@@ -223,15 +222,20 @@ export type SuggestionResult = {
   notes: string;
 };
 
-/** Is the feature configured on the server at all? */
-export async function aiStatusApi(): Promise<boolean> {
+export type AiStatus = { enabled: boolean; model?: string; parameterSize?: string; reason?: string; warning?: string };
+
+/**
+ * Whether suggestions are available, and if not, why. "Ollama is not running"
+ * and "the model is not installed" need different fixes, so the screen says
+ * which one it is instead of just hiding the panel.
+ */
+export async function aiStatusApi(): Promise<AiStatus> {
   try {
     const res = await apiFetch(`${API_URL}/ai/status`);
-    if (!res.ok) return false;
-    const d = await res.json();
-    return Boolean(d.enabled);
+    if (!res.ok) return { enabled: false };
+    return await res.json();
   } catch {
-    return false;
+    return { enabled: false, reason: 'Could not reach the Clinix server' };
   }
 }
 

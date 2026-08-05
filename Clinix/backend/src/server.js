@@ -12,7 +12,7 @@ import { ensureDbUpdates, pingDb, pool } from './db.js';
 import { encrypt, decrypt } from './crypto.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { ensureMysqlRunning, autostartHint } from './mysql-autostart.js';
-import { aiEnabled, suggestMedicines, matchAgainstInventory } from './ai-suggest.js';
+import { aiStatus, suggestMedicines, matchAgainstInventory } from './ai-suggest.js';
 import { ensureSessionTable, createSession, revokeSession, requireAuth, requireRole } from './auth.js';
 
 let dbReady = false;
@@ -764,24 +764,34 @@ app.get('/api/formulary/suggest', async (req, res, next) => {
 // returns them for the nurse to accept or ignore. Dispensing stays a separate,
 // deliberate action.
 //
-// Each call costs money and leaves the building, so it is rate limited far more
-// tightly than the rest of the API.
+// The model runs on this PC and holds it for tens of seconds per request, so
+// the limit protects the clinic's own machine rather than a bill.
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 20, // per IP per minute
+  limit: 6, // per IP per minute
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many suggestion requests. Please wait a moment.' },
 });
 
-app.get('/api/ai/status', (_req, res) => res.json({ enabled: aiEnabled() }));
+// Reports why the feature is off, not just that it is — "Ollama is not running"
+// and "the model is not installed" need different fixes.
+app.get('/api/ai/status', async (_req, res) => {
+  try { res.json(await aiStatus()); }
+  catch { res.json({ enabled: false, reason: 'Could not check the local model' }); }
+});
 
 app.post('/api/ai/suggest-medicines', aiLimiter, async (req, res, next) => {
   try {
-    if (!aiEnabled()) {
-      res.status(503).json({ error: 'Medicine suggestions are turned off (no ANTHROPIC_API_KEY set).' });
-      return;
-    }
+    // Read stock first: the model is told what this clinic actually carries, so
+    // it answers using the clinic's own medicine names instead of a synonym the
+    // matcher below would then fail to recognise.
+    const [rows] = await pool.query('SELECT * FROM inventory_items');
+    const inventory = rows.map((r) => fromDb(tables.inventory, r));
+    const stockedNames = inventory
+      .filter((i) => !i.archived && Number(i.qty ?? 0) > 0)
+      .map((i) => i.name)
+      .filter(Boolean);
 
     // Only clinical fields are forwarded. Whatever else the client sent —
     // including a name or student ID — is dropped here rather than trusted not
@@ -793,16 +803,14 @@ app.post('/api/ai/suggest-medicines', aiLimiter, async (req, res, next) => {
       age: req.body?.age,
       sex: req.body?.sex,
       vitals: req.body?.vitals,
+      stockedNames,
     });
-
-    const [rows] = await pool.query('SELECT * FROM inventory_items');
-    const inventory = rows.map((r) => fromDb(tables.inventory, r));
 
     res.json({ ...result, suggestions: matchAgainstInventory(result.suggestions, inventory) });
   } catch (error) {
     if (error.status) { res.status(error.status).json({ error: error.message }); return; }
     console.error('[ai] suggestion failed:', error.message);
-    res.status(502).json({ error: 'Could not reach the suggestion service. Please decide clinically without it.' });
+    res.status(502).json({ error: 'Could not reach the local model. Please decide clinically without it.' });
   }
 });
 
