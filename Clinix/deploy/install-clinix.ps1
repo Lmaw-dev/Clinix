@@ -36,7 +36,7 @@ param(
   [string]$ServiceName   = 'ClinixMySQL',
   [string]$TaskName      = 'Clinix Server',
   # Model used for medicine suggestions; must match a name from 'ollama list'.
-  [string]$AiModel       = 'mistral'
+  [string]$AiModel       = 'llama3.2:3b'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -209,11 +209,15 @@ if (-not $ollama) {
   # here, while it can still be acted on.
   $ramGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
   if ($ramGB -lt 12) {
-    Note "This PC has $ramGB GB RAM. A 7B model such as mistral needs about 5 GB free"
-    Note '  and will be unusably slow here. Either use a 16 GB PC for the clinic, or'
-    Note "  set OLLAMA_MODEL to a small model (e.g. llama3.2:3b) in backend\.env."
+    Note "This PC has $ramGB GB RAM, so Clinix defaults to the small llama3.2:3b"
+    Note '  model (about 2 GB). A 7B model such as mistral needs ~5 GB free and'
+    Note '  swaps to disk on a machine this size, which looks like a hang.'
+    Note '  IMPORTANT: test the model on real presentations before a nurse uses it.'
+    Note '  A 1.2B model, given a patient vomiting blood, suggested four medicines'
+    Note '  and advised no referral. 3B has not been measured. If it gets a'
+    Note '  referral case wrong, set AI_SUGGESTIONS=false and rely on the formulary.'
   } else {
-    Ok "$ramGB GB RAM - enough for a 7B model"
+    Ok "$ramGB GB RAM - enough for a 7B model; set OLLAMA_MODEL=mistral for better answers"
   }
 
   $pulled = & $ollama list 2>$null

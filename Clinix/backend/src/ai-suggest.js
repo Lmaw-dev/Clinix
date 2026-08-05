@@ -23,7 +23,7 @@ import os from 'node:os';
 //    or touches inventory.
 
 const DEFAULT_URL = 'http://127.0.0.1:11434';
-const DEFAULT_MODEL = 'mistral';
+const DEFAULT_MODEL = 'llama3.2:3b';
 
 // Local inference on a clinic PC is slow — tens of seconds is normal, and the
 // model has to be loaded into memory on the first call after a restart.
@@ -37,10 +37,20 @@ function modelName() {
   return process.env.OLLAMA_MODEL || DEFAULT_MODEL;
 }
 
-// Smallest model this feature will run on. See the check in aiStatus() for the
-// measurement behind the number. Overridable for testing, but lowering it is a
-// clinical decision, not a configuration one.
-const MIN_PARAM_BILLIONS = Number(process.env.OLLAMA_MIN_PARAMS || 7);
+// Smallest model this feature will run on.
+//
+// Set to 3 so a 3B model runs on an 8 GB clinic PC, which is the hardware
+// actually available. 1B stays blocked: a 1.2B model was measured against four
+// presentations and, given a patient vomiting blood with rebound tenderness,
+// suggested four medicines and advised no referral (see aiStatus).
+//
+// 3B itself has NOT been measured against those presentations — the floor was
+// lowered to make the feature usable on the available hardware, not because 3B
+// was shown to be safe. Anyone running this in a live clinic should put the
+// configured model through real presentations first, including one that needs
+// referral rather than medicine, and switch the feature off if it gets that
+// case wrong. A 7B model on a 16 GB PC remains the better setup.
+const MIN_PARAM_BILLIONS = Number(process.env.OLLAMA_MIN_PARAMS || 3);
 
 /** "7.2B" / "1.2B" / "15.7B" -> 7.2 / 1.2 / 15.7. Null when Ollama reports nothing. */
 function parseParamSize(text) {
@@ -64,10 +74,19 @@ export async function aiStatus() {
     const body = await res.json();
     const installed = (body.models ?? []).map((m) => String(m.name ?? ''));
     const wanted = modelName();
-    // Ollama reports "mistral:latest" for a model pulled as "mistral".
-    const entry = (body.models ?? []).find(
-      (m) => m.name === wanted || String(m.name).split(':')[0] === wanted.split(':')[0],
-    );
+    // Ollama reports "mistral:latest" for a model pulled as "mistral", so a
+    // configured name with no tag may match the ":latest" tag.
+    //
+    // A configured name WITH a tag must match exactly. Comparing only the part
+    // before the colon would let "llama3.2:3b" match an installed
+    // "llama3.2:1b" — silently running a different, smaller model than the one
+    // configured. The tag is the size here, so treating it as decoration is how
+    // you end up dispensing advice from a model nobody chose.
+    const entry = (body.models ?? []).find((m) => {
+      const name = String(m.name ?? '');
+      if (wanted.includes(':')) return name === wanted;
+      return name === wanted || name === `${wanted}:latest`;
+    });
     if (!entry) {
       return { enabled: false, reason: `Ollama is running but the "${wanted}" model is not installed. Run: ollama pull ${wanted}` };
     }
@@ -88,7 +107,7 @@ export async function aiStatus() {
       return {
         enabled: false,
         reason: `"${wanted}" is a ${entry.details.parameter_size} model — too small to be relied on for medicine suggestions. ` +
-                `Use a ${MIN_PARAM_BILLIONS}B or larger model (e.g. mistral), which needs about 5 GB of free RAM.`,
+                `Use a ${MIN_PARAM_BILLIONS}B or larger model (e.g. llama3.2:3b).`,
       };
     }
 
@@ -97,12 +116,29 @@ export async function aiStatus() {
     // indistinguishable from a hang. Measured: mistral (4.4 GB) on a machine
     // with 0.8 GB free produced nothing in four minutes. Warn before the nurse
     // clicks and waits, rather than after.
+    // Warn only when free memory is below the model's own size — a case where
+    // the two figures in the message plainly disagree and the reader needs no
+    // explanation. Earlier versions warned across a headroom band above the
+    // model size too, which produced sentences like "2.4 GB free; needs about
+    // 2.4 GB" and "2.1 GB free; needs 2.0 GB". A warning whose own numbers look
+    // fine is worse than no warning: it trains people to dismiss the next one.
+    //
+    // The band above the model size is exactly where this check is least
+    // trustworthy anyway. os.freemem() counts strictly free memory, while
+    // Windows also holds reclaimable cache it hands over under pressure — 1.11
+    // GB reported against 1.26 GB actually available, measured here. Being
+    // quiet in the band we cannot call correctly is the honest choice; if it
+    // does turn out to be tight, the request still fails with a clear timeout
+    // message naming memory as the likely cause.
     const modelBytes = Number(entry.size ?? 0);
     const freeBytes = os.freemem();
-    const warning = modelBytes && freeBytes < modelBytes * 1.15
-      ? `Only ${(freeBytes / 1e9).toFixed(1)} GB of memory is free but "${wanted}" needs about ` +
-        `${(modelBytes / 1e9).toFixed(1)} GB. Suggestions will be very slow or time out. ` +
-        'Close other programs, or use a PC with more RAM.'
+    const gb = (n) => (n / 1e9).toFixed(1);
+
+    // Suppress when both sides round to the same displayed figure: the gap is
+    // immaterial, and the sentence would read as a contradiction.
+    const warning = modelBytes && freeBytes < modelBytes && gb(freeBytes) !== gb(modelBytes)
+      ? `Only ${gb(freeBytes)} GB of memory is free and "${wanted}" is a ${gb(modelBytes)} GB model. ` +
+        'Suggestions may be slow or time out — closing other programs will help.'
       : null;
 
     return {
@@ -125,6 +161,17 @@ export async function aiEnabled() {
 // data, not prose. Ollama constrains generation to this schema, which is what
 // makes a small local model usable here at all — it cannot wander off into
 // commentary when the grammar only permits these fields.
+//
+// NOTE THE ABSENCE OF A DOSE FIELD. It was there, and was removed after
+// measurement: asked the same dysmenorrhea case three times, a 3B model gave
+// "500mg PO tds" (reasonable), "500mg" (no frequency), and "2-3 tablets every
+// 6 hours, max 12 doses in 24 hours" — up to 18,000mg/day of mefenamic acid
+// against a 1,250mg maximum. Roughly fourteen times the ceiling, printed as
+// confidently as the correct answer.
+//
+// The model is useful for triage and for narrowing which drug fits. It is not
+// useful for dosing, and a dose beside a drug name reads as authoritative. The
+// nurse knows doses; the formulary records them. So the model is not asked.
 const SUGGESTION_SCHEMA = {
   type: 'object',
   properties: {
@@ -135,11 +182,10 @@ const SUGGESTION_SCHEMA = {
         properties: {
           genericName: { type: 'string' },
           drugClass: { type: 'string' },
-          typicalDose: { type: 'string' },
           rationale: { type: 'string' },
           cautions: { type: 'string' },
         },
-        required: ['genericName', 'drugClass', 'typicalDose', 'rationale', 'cautions'],
+        required: ['genericName', 'drugClass', 'rationale', 'cautions'],
       },
     },
     redFlags: { type: 'array', items: { type: 'string' } },
@@ -160,6 +206,8 @@ Rules:
 - Put anything in this presentation that needs a doctor rather than medicine into redFlags, and set referralAdvised to true when referral is the safe action. Returning no suggestions with a clear red flag is a correct answer.
 - If the complaint is too vague to answer responsibly, return no suggestions and say what else to check in notes.
 - Keep every field short. One sentence each.
+- Never state a dose, strength schedule, or frequency anywhere, including in rationale or cautions. The nurse determines dosing.
+- Only suggest medicines that treat this presentation. Do not pad the list with items merely because they are in stock — vitamins and unrelated drugs are not answers.
 - You are given clinical details only. There is no patient identity, and you must not ask for one.`;
 
 /**
@@ -262,7 +310,6 @@ function normalizeSuggestion(s) {
   return {
     genericName: str(s?.genericName),
     drugClass: str(s?.drugClass),
-    typicalDose: str(s?.typicalDose),
     rationale: str(s?.rationale),
     cautions: str(s?.cautions),
   };

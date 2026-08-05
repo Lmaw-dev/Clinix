@@ -206,7 +206,6 @@ export async function saveProtocolEntry(entry: {
 export type MedicineSuggestion = {
   genericName: string;
   drugClass: string;
-  typicalDose: string;
   rationale: string;
   cautions: string;
   inStock: boolean;
