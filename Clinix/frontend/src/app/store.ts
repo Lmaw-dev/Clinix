@@ -198,61 +198,32 @@ export async function saveProtocolEntry(entry: {
   });
 }
 
-// ── AI medicine suggestions ──────────────────────────────────────────────────
-// Advisory only. The server is sent the complaint and assessment text — never
-// the patient's name, ID or other identifying details — and returns candidate
-// medicines. Nothing is dispensed until the nurse acts on one.
+// ── What this clinic usually gives ───────────────────────────────────────────
+// Trained on the clinic's own protocol and dispensing history. Generalises past
+// exact wording, and returns nothing when the complaint's words are unfamiliar
+// — silence rather than a guess.
 
-export type MedicineSuggestion = {
-  genericName: string;
-  drugClass: string;
-  rationale: string;
-  cautions: string;
+export type LearnedSuggestion = {
+  itemCode: string;
+  itemName: string;
+  confidence: number;
+  matchedWords: string[];
+  examples: number;
   inStock: boolean;
-  itemCode: string | null;
-  itemName: string | null;
   available: number;
   unit: string;
 };
 
-export type SuggestionResult = {
-  suggestions: MedicineSuggestion[];
-  redFlags: string[];
-  referralAdvised: boolean;
-  notes: string;
-};
-
-export type AiStatus = { enabled: boolean; model?: string; parameterSize?: string; reason?: string; warning?: string };
-
-/**
- * Whether suggestions are available, and if not, why. "Ollama is not running"
- * and "the model is not installed" need different fixes, so the screen says
- * which one it is instead of just hiding the panel.
- */
-export async function aiStatusApi(): Promise<AiStatus> {
+export async function learnedSuggestions(complaint: string): Promise<LearnedSuggestion[]> {
+  if (!complaint.trim()) return [];
   try {
-    const res = await apiFetch(`${API_URL}/ai/status`);
-    if (!res.ok) return { enabled: false };
-    return await res.json();
+    const res = await apiFetch(`${API_URL}/suggest/learned?complaint=${encodeURIComponent(complaint)}`);
+    if (!res.ok) return [];
+    const d = await res.json();
+    return Array.isArray(d.suggestions) ? d.suggestions : [];
   } catch {
-    return { enabled: false, reason: 'Could not reach the Clinix server' };
+    return [];
   }
-}
-
-export async function suggestMedicinesApi(clinical: {
-  purpose?: string; chiefComplaint?: string; assessment?: string;
-  age?: string; sex?: string; vitals?: string;
-}): Promise<SuggestionResult> {
-  const res = await apiFetch(`${API_URL}/ai/suggest-medicines`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    // Only clinical fields are sent. The server drops anything else regardless,
-    // but nothing identifying is put on the wire in the first place.
-    body: JSON.stringify(clinical),
-  });
-  const body = await res.json().catch(() => ({} as { error?: string }));
-  if (!res.ok) throw new Error(body.error || 'Could not get suggestions');
-  return body as SuggestionResult;
 }
 
 // ── Prescriptions ────────────────────────────────────────────────────────────

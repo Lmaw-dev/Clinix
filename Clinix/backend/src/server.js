@@ -12,7 +12,7 @@ import { ensureDbUpdates, pingDb, pool } from './db.js';
 import { encrypt, decrypt } from './crypto.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { ensureMysqlRunning, autostartHint } from './mysql-autostart.js';
-import { aiStatus, suggestMedicines, matchAgainstInventory } from './ai-suggest.js';
+import { suggestFromHistory, modelStats } from './learned-suggest.js';
 import { ensureSessionTable, createSession, revokeSession, requireAuth, requireRole } from './auth.js';
 
 let dbReady = false;
@@ -52,7 +52,7 @@ const apiLimiter = rateLimit({
 app.use('/api', apiLimiter);
 
 // Every /api route below this line requires a valid session token, except the
-// handful listed as public in auth.js (health, db-status, login, ai/status).
+// handful listed as public in auth.js (health, db-status, login).
 // This sits above the route definitions on purpose: a route added later is
 // protected by default rather than by the author remembering to protect it.
 app.use('/api', requireAuth());
@@ -725,6 +725,50 @@ app.delete('/api/documents/:id', async (req, res, next) => {
 // there by the nurse. Matching is loose because nobody types a complaint the
 // same way twice — "dysmenorrhea", "Dysmenorrhea since this morning" and
 // "menstrual cramps" should all find the same protocol row.
+// ── What this clinic usually gives ───────────────────────────────────────────
+// Trained on the clinic's own formulary and dispensing history. Unlike the exact
+// protocol lookup above, this generalises: "having fever since last night"
+// reaches the same answer as "Fever". Unlike the language model, it stays
+// silent on a complaint whose words it has never seen — which is the behaviour
+// that matters, because the alternative is a confident wrong answer.
+//
+// Costs nothing to run and needs no network, so it is safe to call on every
+// consultation rather than behind a button.
+app.get('/api/suggest/learned', async (req, res, next) => {
+  try {
+    const complaint = String(req.query.complaint ?? '');
+    if (!complaint.trim()) { res.json({ suggestions: [], trainedOn: 0 }); return; }
+
+    const result = await suggestFromHistory(complaint);
+
+    // Attach live stock so the panel can show what is dispensable right now.
+    const [stockRows] = await pool.query('SELECT * FROM inventory_items');
+    const stock = new Map(stockRows.map((r) => [r.code, r]));
+
+    res.json({
+      ...result,
+      suggestions: result.suggestions.map((s) => {
+        const item = stock.get(s.itemCode);
+        const qty = Number(item?.qty ?? 0);
+        return {
+          ...s,
+          itemName: item ? item.name : s.itemName,
+          inStock: Boolean(item) && qty > 0 && !Number(item.archived),
+          available: qty,
+          unit: item?.unit ?? '',
+        };
+      }),
+    });
+  } catch (error) { next(error); }
+});
+
+// How much the model has learned — shown to the nurse and useful evidence for
+// the write-up: the system's knowledge is the clinic's own, and it is countable.
+app.get('/api/suggest/learned/stats', async (_req, res, next) => {
+  try { res.json(await modelStats()); }
+  catch (error) { next(error); }
+});
+
 app.get('/api/formulary/suggest', async (req, res, next) => {
   try {
     const complaint = String(req.query.complaint ?? '').toLowerCase().trim();
@@ -756,62 +800,6 @@ app.get('/api/formulary/suggest', async (req, res, next) => {
 
     res.json({ matches });
   } catch (error) { next(error); }
-});
-
-// ── AI medicine suggestions ──────────────────────────────────────────────────
-// Advisory only. This endpoint reads nothing from the patient record and writes
-// nothing anywhere — it takes clinical text, asks for candidate medicines, and
-// returns them for the nurse to accept or ignore. Dispensing stays a separate,
-// deliberate action.
-//
-// The model runs on this PC and holds it for tens of seconds per request, so
-// the limit protects the clinic's own machine rather than a bill.
-const aiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  limit: 6, // per IP per minute
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many suggestion requests. Please wait a moment.' },
-});
-
-// Reports why the feature is off, not just that it is — "Ollama is not running"
-// and "the model is not installed" need different fixes.
-app.get('/api/ai/status', async (_req, res) => {
-  try { res.json(await aiStatus()); }
-  catch { res.json({ enabled: false, reason: 'Could not check the local model' }); }
-});
-
-app.post('/api/ai/suggest-medicines', aiLimiter, async (req, res, next) => {
-  try {
-    // Read stock first: the model is told what this clinic actually carries, so
-    // it answers using the clinic's own medicine names instead of a synonym the
-    // matcher below would then fail to recognise.
-    const [rows] = await pool.query('SELECT * FROM inventory_items');
-    const inventory = rows.map((r) => fromDb(tables.inventory, r));
-    const stockedNames = inventory
-      .filter((i) => !i.archived && Number(i.qty ?? 0) > 0)
-      .map((i) => i.name)
-      .filter(Boolean);
-
-    // Only clinical fields are forwarded. Whatever else the client sent —
-    // including a name or student ID — is dropped here rather than trusted not
-    // to have been included.
-    const result = await suggestMedicines({
-      purpose: req.body?.purpose,
-      chiefComplaint: req.body?.chiefComplaint,
-      assessment: req.body?.assessment,
-      age: req.body?.age,
-      sex: req.body?.sex,
-      vitals: req.body?.vitals,
-      stockedNames,
-    });
-
-    res.json({ ...result, suggestions: matchAgainstInventory(result.suggestions, inventory) });
-  } catch (error) {
-    if (error.status) { res.status(error.status).json({ error: error.message }); return; }
-    console.error('[ai] suggestion failed:', error.message);
-    res.status(502).json({ error: 'Could not reach the local model. Please decide clinically without it.' });
-  }
 });
 
 // ── Admin profile ────────────────────────────────────────────────────────────

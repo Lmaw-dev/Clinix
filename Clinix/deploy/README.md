@@ -104,59 +104,57 @@ Stop-Process -Name node -Force -ErrorAction SilentlyContinue
 Start-ScheduledTask -TaskName 'Clinix Server'
 ```
 
-## AI medicine suggestions (optional) — and the PC it needs
+## Medicine suggestions
 
-The suggestion panel on a consultation runs a language model **on the clinic PC
-itself**, through [Ollama](https://ollama.com/download). Nothing clinical is sent
-anywhere: no third party sees a complaint, there is no per-request cost, and it
-keeps working when the internet does not. The alternative — a free hosted API —
-was rejected on exactly that point: the free tiers train on what you send them
-and allow human review, which is not an acceptable trade for patient complaints.
+When a nurse opens a consultation, Clinix suggests what this clinic usually
+gives for that complaint. Two sources, in order:
 
-The whole feature is optional. Without Ollama, Clinix runs unchanged and the
-panel reports itself off with the reason.
+1. **Clinic protocol** — exact entries the nurse recorded ("for Dysmenorrhea we
+   give Mefenamic Acid"). Editable in the app.
+2. **Usually given here** — a classifier trained on the clinic's own protocol
+   and dispensing history. It generalises past exact wording, so "having fever
+   since last night" reaches the same answer as "Fever".
 
-### Hardware — this is the part that decides whether it works
+Both run on the clinic's own server. Nothing is sent anywhere, there is no
+per-request cost, no model to install, and no GPU. Answers are immediate.
 
-**Measured on the development laptop, not estimated.** With 7.7 GB of RAM and
-about 0.8 GB free, `mistral` (a 7B model, 4.4 GB) produced **nothing in four
-minutes** — it swaps to disk and effectively never answers. It does not error;
-it just appears to hang, which is the worst way for this to fail.
+**Neither ever supplies a dose.** The dose is the nurse's decision and comes
+from her protocol entry, not from any suggestion.
 
-| Clinic PC RAM | What runs | Verdict |
-| --- | --- | --- |
-| 16 GB | `mistral` / `llama3.1:8b` | Recommended. This is the configuration to buy for. |
-| 8 GB | small models only (`llama3.2:3b`) | Works, but a 3B model's drug doses are not something to rely on |
-| 8 GB + a 7B model | nothing | Appears to hang. Do not ship this. |
+**The classifier stays silent on complaints it has not seen.** That is
+deliberate and enforced in code: a medicine sharing no word with the complaint
+is excluded no matter how often it is dispensed, so the most common item cannot
+win an unfamiliar complaint by frequency alone. Silence is the correct answer
+when the system does not know.
 
-If the clinic PC is still being specified, **ask for 16 GB of RAM.** It is an
-inexpensive upgrade and it is the single thing this feature depends on.
+It learns as the clinic is used — every dispensing against a complaint becomes
+another example. `GET /api/suggest/learned/stats` reports how much it knows.
 
-### Setup
+### Seeding it
+
+A new clinic starts with nothing to learn from. To create a starting protocol
+from whatever the clinic stocks:
 
 ```powershell
-# 1. Install Ollama from https://ollama.com/download
-# 2. Pull the model (several GB - do this on a good connection)
-ollama pull mistral
-# 3. Restart Clinix. The panel turns itself on.
+cd backend
+node src\seed-formulary.js
 ```
 
-The download is large and slow links drop it: on a 1.2 MB/s connection during
-testing a 1.3 GB model took over 15 minutes and failed once partway through.
-`ollama pull` resumes, so re-run it rather than starting over. Do this before
-deployment day, not on it.
+This writes ~20 **draft** entries for common complaints, drawn only from
+in-stock over-the-counter medicines, with no doses. Prescription-only items the
+clinic may stock — antibiotics, antihypertensives, salbutamol, steroid drops —
+are deliberately excluded: those need a physician's assessment, not a lookup
+table. Every row is marked for the nurse to review, correct or delete before
+the clinic relies on it.
 
-Settings live in `backend\.env` (`AI_SUGGESTIONS`, `OLLAMA_MODEL`,
-`OLLAMA_URL`, `OLLAMA_TIMEOUT_MS`) — see `backend\.env.example`.
+### Why not a language model
 
-### What the model is and is not told
-
-It receives the purpose of visit, chief complaint, assessment, age and sex, plus
-the list of medicines the clinic currently stocks so it answers using your own
-item names. It is never given the patient's name, student ID, birthdate,
-contact number or address — even though it is running locally. Suggestions are
-advisory: choosing one only fills in the medicine field, and the nurse still
-enters the quantity and confirms.
+One was built and measured, then removed. A 1B model, given a patient vomiting
+blood with rebound tenderness, suggested four medicines including loperamide and
+advised no referral. A 3B model got the triage right but returned doses varying
+from correct to fourteen times the maximum across identical requests. The
+findings are written up in `docs/ai-evaluation.md` — worth reading before anyone
+proposes adding one back.
 
 ## For a teammate who just pulled the changes
 

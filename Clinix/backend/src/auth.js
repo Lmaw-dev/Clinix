@@ -24,7 +24,6 @@ const PUBLIC_PATHS = new Set([
   '/api/health',
   '/api/db-status',
   '/api/login',
-  '/api/ai/status',
 ]);
 
 function hashToken(token) {
