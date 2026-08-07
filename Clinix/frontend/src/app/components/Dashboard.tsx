@@ -153,7 +153,8 @@ export function Dashboard({
 
   // ── Derived stats ────────────────────────────────────────────────────────
   const enrolledCount = students.filter((s) => s.status === 'enrolled').length;
-  const archivedCount = students.length - enrolledCount;
+  const alumniCount = students.filter((s) => s.status === 'graduated').length;
+  const droppedCount = students.length - enrolledCount - alumniCount;
 
   const todayKey = new Date().toISOString().slice(0, 10);
   const consultToday = consultations.filter((c) => c.date === todayKey).length;
@@ -588,11 +589,14 @@ export function Dashboard({
 
         {/* ── KPI cards ── */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-          <KpiCard icon={GraduationCap} accent={ACCENT.blue} title="Total Students"
+          {/* The headline is the whole roster on file, because that is what the
+              clinic is responsible for keeping. The breakdown below it is what
+              says how many of those are currently walking the campus. */}
+          <KpiCard icon={GraduationCap} accent={ACCENT.blue} title="Student Records"
             value={students.length.toLocaleString()}
             rows={[
-              { color: ACCENT.green, text: `${enrolledCount} Active Students` },
-              { color: C.txtMuted, text: `${archivedCount} Archived` },
+              { color: ACCENT.green, text: `${enrolledCount} Enrolled` },
+              { color: C.txtMuted, text: `${alumniCount} Alumni · ${droppedCount} Dropped` },
             ]} />
           <KpiCard icon={Users} accent={ACCENT.purple} title="Faculty & Staff"
             value={faculty.length.toLocaleString()}

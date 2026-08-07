@@ -11,6 +11,10 @@ export type College = { name: string; courses: string[] };
 export const YEAR_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 
 const STORAGE_KEY = 'clinixColleges';
+const YEARS_KEY = 'clinixCourseYears';
+
+/** How many years a program runs when nobody has said otherwise. */
+export const DEFAULT_COURSE_YEARS = 4;
 
 const DEFAULT_COLLEGES: College[] = [
   { name: 'CTECH', courses: ['BSCS', 'BSIT-FPST', 'BSIT-ELECT'] },
@@ -41,12 +45,38 @@ function load(): College[] {
   }
 }
 
+// ── Program length ──────────────────────────────────────────────────────────
+// Year-end processing needs to know when a student has reached the *end* of
+// their program, and that is not the same year level for everyone: a 2-year
+// course graduates at 2nd Year, a 4-year one at 4th. Kept as a course → years
+// map rather than a field on College.courses so nothing that already reads the
+// plain string list has to change.
+
+function loadYears(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(YEARS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, number> = {};
+    for (const [course, years] of Object.entries(parsed)) {
+      const n = Number(years);
+      if (Number.isFinite(n) && n >= 1 && n <= YEAR_OPTIONS.length) out[course] = Math.round(n);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 // Reassigned (new reference) on every mutation so useSyncExternalStore detects change.
 let colleges: College[] = load();
+let courseYears: Record<string, number> = loadYears();
 const listeners = new Set<() => void>();
 
 function persist() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(colleges)); } catch { /* ignore quota errors */ }
+  try { localStorage.setItem(YEARS_KEY, JSON.stringify(courseYears)); } catch { /* ignore quota errors */ }
   listeners.forEach((fn) => fn());
 }
 
@@ -65,6 +95,35 @@ export function getColleges(): College[] {
 /** Reactive read — components re-render when the list changes. */
 export function useColleges(): College[] {
   return useSyncExternalStore(subscribe, getColleges, getColleges);
+}
+
+/** How many years the given course runs. */
+export function courseYearsFor(course: string): number {
+  return courseYears[(course || '').trim()] ?? DEFAULT_COURSE_YEARS;
+}
+
+/** The whole course → years map, for sending to year-end processing. */
+export function getCourseYears(): Record<string, number> {
+  return courseYears;
+}
+
+export function useCourseYears(): Record<string, number> {
+  return useSyncExternalStore(subscribe, getCourseYears, getCourseYears);
+}
+
+/** Set a program's length. Passing the default removes the override. */
+export function setCourseYears(course: string, years: number): Result {
+  const key = (course || '').trim();
+  if (!key) return { ok: false, error: 'No course given' };
+  const n = Math.round(Number(years));
+  if (!Number.isFinite(n) || n < 1 || n > YEAR_OPTIONS.length) {
+    return { ok: false, error: `Program length must be between 1 and ${YEAR_OPTIONS.length} years` };
+  }
+  const next = { ...courseYears };
+  if (n === DEFAULT_COURSE_YEARS) delete next[key]; else next[key] = n;
+  courseYears = next;
+  persist();
+  return { ok: true };
 }
 
 /** Normalize a stored/imported college name to its canonical casing, if known. */
@@ -117,6 +176,8 @@ export function removeCourse(collegeName: string, course: string): Result {
   colleges = colleges.map((x) =>
     x.name === collegeName ? { ...x, courses: x.courses.filter((cc) => cc !== course) } : x,
   );
+  const { [course]: _removed, ...rest } = courseYears;
+  courseYears = rest;
   persist();
   return { ok: true };
 }
@@ -124,6 +185,7 @@ export function removeCourse(collegeName: string, course: string): Result {
 /** Restore the built-in default colleges/courses. */
 export function resetColleges(): Result {
   colleges = clone(DEFAULT_COLLEGES);
+  courseYears = {};
   persist();
   return { ok: true };
 }

@@ -122,7 +122,12 @@ export function ReportsModule({ students, inventory, certificates, consultations
   };
 
   // ── Derived stats ────────────────────────────────────────────────────────
+  // "Active population" means currently enrolled. Graduates and dropped
+  // students are excluded from these counts but never from the data itself —
+  // their consultations still appear in the historical, per-school-year figures
+  // below, which is the whole reason the records are retained.
   const enrolled = useMemo(() => students.filter(s => s.status === 'enrolled'), [students]);
+  const alumni = useMemo(() => students.filter(s => s.status === 'graduated'), [students]);
   const lowStock = useMemo(() => inventory.filter(i => i.qty >= 0 && i.qty < 5), [inventory]);
   const pending = useMemo(() => certificates.filter(c => c.status === 'Pending'), [certificates]);
   const approved = useMemo(() => certificates.filter(c => c.status === 'Approved'), [certificates]);
@@ -817,8 +822,12 @@ export function ReportsModule({ students, inventory, certificates, consultations
           <SectionCard title="Student Statistics" icon={GraduationCap}>
             <StatRow label="Most Active Program" value={courseMap[0]?.[0] || 'N/A'} color={SERIES} />
             <StatRow label="Enrolled Students" value={enrolled.length} />
-            <StatRow label="Avg. Consultations / Student" value={students.length ? (consultations.length / students.length).toFixed(1) : '—'} />
-            <StatRow label="With Medical Conditions" value={students.filter(s => s.medicalConditions && s.medicalConditions !== 'None recorded').length} />
+            {/* Active-population figures count the enrolled only. Dividing by
+                every row on file would dilute the average with alumni who left
+                years ago and stopped generating visits. */}
+            <StatRow label="Avg. Consultations / Student" value={enrolled.length ? (consultations.length / enrolled.length).toFixed(1) : '—'} />
+            <StatRow label="With Medical Conditions" value={enrolled.filter(s => s.medicalConditions && s.medicalConditions !== 'None recorded').length} />
+            <StatRow label="Alumni Records Retained" value={alumni.length} />
           </SectionCard>
           <div className="lg:col-span-2">
             <SectionCard title="Enrollment by Program" subtitle="Enrolled students per academic program" icon={BarChart2}>

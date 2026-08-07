@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Eye, Search, X, UserRound, CheckCircle2, ClipboardCheck, Activity } from 'lucide-react';
+import { Plus, Eye, Search, X, UserRound, CheckCircle2, ClipboardCheck, Activity, AlertCircle } from 'lucide-react';
 import { Consultation, Student, InventoryItem, CONSULTATION_PURPOSES, ConsultationPurpose, purposeOf, isConsultationVisit } from '../App';
 import { Role, canManageConsultationLog, canRecordVitals } from '../auth';
 import { Modal } from './Modal';
@@ -134,6 +134,10 @@ export function ConsultationsModule({ consultations, setConsultations, students,
     addActivity(`Consultation confirmed: ${c.studentName || c.studentId}`);
   }
 
+  // Graduates and dropped students still turn up in the search — their record is
+  // retained and has to be findable — but they cannot be attached to a NEW visit.
+  // They are shown greyed out with the reason instead of being hidden, so nobody
+  // is left wondering whether the record was deleted.
   const studentMatches = useMemo(() => {
     const q = studentSearch.trim().toLowerCase();
     if (!q) return [];
@@ -141,6 +145,13 @@ export function ConsultationsModule({ consultations, setConsultations, students,
       .filter((s) => [s.name, s.studentId, s.course, s.yearLevel].join(' ').toLowerCase().includes(q))
       .slice(0, 8);
   }, [students, studentSearch]);
+
+  /** The student a typed ID points at, when it is one we hold a record for. */
+  const linkedStudent = useMemo(
+    () => students.find((s) => s.studentId === form.studentId.trim()),
+    [students, form.studentId],
+  );
+  const linkedInactive = linkedStudent && linkedStudent.status !== 'enrolled' ? linkedStudent : null;
 
   const query = globalSearch.trim().toLowerCase();
   const visible = useMemo(
@@ -163,6 +174,10 @@ export function ConsultationsModule({ consultations, setConsultations, students,
   function linkStudent(studentId: string) {
     const s = students.find((x) => x.studentId === studentId);
     if (!s) { setForm((f) => ({ ...f, studentId })); return; }
+    if (s.status !== 'enrolled') {
+      showToast(`${s.name} is ${s.status} — their history is on file, but no new consultation can be logged against it.`);
+      return;
+    }
     setForm((f) => ({
       ...f,
       studentId: s.studentId,
@@ -176,6 +191,12 @@ export function ConsultationsModule({ consultations, setConsultations, students,
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.studentName.trim() && !form.studentId.trim()) { showToast('Enter a name or ID'); return; }
+    // The ID field can also be typed by hand, so the check cannot live only on
+    // the picker.
+    if (linkedInactive) {
+      showToast(`${linkedInactive.name} is ${linkedInactive.status} — no new consultation can be logged against that record.`);
+      return;
+    }
     const rec: Consultation = {
       id: String(Date.now()),
       studentId: form.studentId.trim(),
@@ -321,21 +342,31 @@ export function ConsultationsModule({ consultations, setConsultations, students,
               )}
               {studentOpen && studentMatches.length > 0 && (
                 <div className="absolute left-0 right-0 top-full z-20 mt-1.5 max-h-64 overflow-auto rounded-xl border border-blue-100 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-800">
-                  {studentMatches.map((s) => (
+                  {studentMatches.map((s) => {
+                    const inactive = s.status !== 'enrolled';
+                    return (
                     <button
                       key={s.studentId}
                       type="button"
+                      disabled={inactive}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => { linkStudent(s.studentId); setStudentSearch(s.name); setStudentOpen(false); }}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-slate-700"
+                      title={inactive ? `${s.name} is ${s.status} — record on file, but closed to new consultations` : undefined}
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left ${inactive ? 'cursor-not-allowed opacity-55' : 'hover:bg-blue-50 dark:hover:bg-slate-700'}`}
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600"><UserRound size={15} /></div>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-black dark:text-slate-100" style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
                         <span className="block truncate text-slate-500" style={{ fontSize: 12 }}>{s.studentId} · {[s.course, s.yearLevel].filter(Boolean).join(' ') || 'No course'}</span>
                       </span>
+                      {inactive && (
+                        <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-slate-500 dark:bg-slate-700 dark:text-slate-400" style={{ fontSize: 10.5, fontWeight: 600 }}>
+                          {s.status}
+                        </span>
+                      )}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -381,9 +412,20 @@ export function ConsultationsModule({ consultations, setConsultations, students,
           <label><span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Chief Complaint</span><textarea value={form.chiefComplaint} onChange={(e) => setForm((f) => ({ ...f, chiefComplaint: e.target.value }))} placeholder="Headache, fever, checkup…" className={`${fieldClass} resize-none`} rows={2} style={{ fontSize: 13 }} required /></label>
           <label><span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Management</span><textarea value={form.management} onChange={(e) => setForm((f) => ({ ...f, management: e.target.value }))} placeholder="Treatment given, medication, referral…" className={`${fieldClass} resize-none`} rows={2} style={{ fontSize: 13 }} /></label>
 
+          {linkedInactive && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-900/40 dark:bg-amber-900/20">
+              <AlertCircle size={14} className="mt-px shrink-0 text-amber-600" />
+              <p className="text-amber-800 dark:text-amber-200" style={{ fontSize: 12 }}>
+                <strong>{linkedInactive.name}</strong> is {linkedInactive.status}. Their consultation
+                history stays on file and can still be viewed or printed, but no new visit can be
+                logged against the record.
+              </p>
+            </div>
+          )}
+
           <div className="flex justify-end gap-3">
             <button type="button" onClick={() => setShowModal(false)} className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-600 transition-colors" style={{ fontSize: 13 }}>Cancel</button>
-            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors" style={{ fontSize: 13 }}>Save</button>
+            <button type="submit" disabled={Boolean(linkedInactive)} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 transition-colors" style={{ fontSize: 13 }}>Save</button>
           </div>
         </form>
       </Modal>

@@ -139,6 +139,9 @@ const tables = {
       email: 'email',
       medicalConditions: 'medical_conditions',
       status: 'status',
+      dateGraduated: 'date_graduated',
+      statusUpdatedAt: 'status_updated_at',
+      statusUpdatedBy: 'status_updated_by',
       photo: 'photo',
       birthdate: 'birthdate',
       bloodType: 'blood_type',
@@ -169,8 +172,8 @@ const tables = {
       landlordContact: 'landlord_contact',
     },
     // Personal / health fields are encrypted at rest. IDs, course code, year,
-    // status and the boarding flag stay plaintext so search, filtering and joins
-    // keep working.
+    // status, the graduation date, the status audit columns and the boarding
+    // flag stay plaintext so search, filtering, reporting and joins keep working.
     encrypted: [
       'name', 'lastName', 'firstName', 'middleInitial', 'gender', 'contactNumber', 'email', 'medicalConditions', 'photo',
       'birthdate', 'bloodType', 'schoolYear', 'guardianName', 'guardianRelationship', 'guardianContact', 'confidentialNotes',
@@ -949,6 +952,129 @@ app.delete('/api/prescriptions/:id', async (req, res, next) => {
   }
 });
 
+// ── Student status: audit trail and year-end promotion ───────────────────────
+
+const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+
+/** '2nd Year' → 2. Returns 0 for a blank or unrecognised value. */
+function yearNumber(level) {
+  const i = YEAR_LEVELS.indexOf(String(level || '').trim());
+  return i < 0 ? 0 : i + 1;
+}
+
+function sqlToday() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * Decide the status audit columns for a student UPDATE, in place on `row`.
+ *
+ * The caller's own values for these have already been stripped — it sends back
+ * the whole student record it was given, audit columns included, so taking them
+ * at face value would let anyone forge "changed by X at Y". They are re-derived
+ * here, and only when the status genuinely differs from what is already stored:
+ * re-saving an unrelated field must not rewrite the history of who last
+ * graduated or dropped this student.
+ */
+async function stampStatusChange(row, studentId, user, requestedGradDate) {
+  const [rows] = await pool.query('SELECT status, date_graduated FROM students WHERE student_id = ?', [studentId]);
+  const before = rows[0];
+  if (!before || before.status === row.status) return;
+
+  row.status_updated_at = new Date();
+  row.status_updated_by = user?.accountId ?? null;
+  // Leaving a stale graduation date on someone who turned out not to have
+  // graduated would misreport them in every historical, per-SY report.
+  row.date_graduated = row.status === 'graduated' ? (requestedGradDate || sqlToday()) : null;
+}
+
+/**
+ * Work out what end-of-school-year processing would do, without doing it.
+ *
+ * `courseYears` maps a course code to how many years that program runs, so a
+ * 2-year course graduates at 2nd Year and a 4-year one at 4th. Anything not
+ * listed falls back to 4. Only enrolled students are touched: a graduate stays
+ * graduated and a dropped student is not quietly promoted back into the roster.
+ */
+async function planYearEnd(courseYears) {
+  const [rows] = await pool.query(
+    `SELECT student_id, name, last_name, first_name, course_code, year_level
+     FROM students WHERE status = 'enrolled'`,
+  );
+  const promote = [];
+  const graduate = [];
+  const skipped = [];
+  for (const r of rows) {
+    const finalYear = Math.min(Number(courseYears?.[r.course_code]) || 4, YEAR_LEVELS.length);
+    const current = yearNumber(r.year_level);
+    const entry = {
+      studentId: r.student_id,
+      name: decrypt(r.name) || [decrypt(r.first_name), decrypt(r.last_name)].filter(Boolean).join(' '),
+      course: r.course_code,
+      yearLevel: r.year_level,
+      finalYear,
+    };
+    // A blank or unreadable year level cannot be promoted by guessing — the
+    // record is listed so somebody fixes it rather than silently skipped.
+    if (!current) { skipped.push({ ...entry, reason: 'No year level recorded' }); continue; }
+    if (current >= finalYear) graduate.push({ ...entry, nextYearLevel: null });
+    else promote.push({ ...entry, nextYearLevel: YEAR_LEVELS[current] });
+  }
+  return { promote, graduate, skipped };
+}
+
+function yearEndBody(req) {
+  const courseYears = req.body?.courseYears && typeof req.body.courseYears === 'object' ? req.body.courseYears : {};
+  return { courseYears, dateGraduated: String(req.body?.dateGraduated || '').trim() || sqlToday() };
+}
+
+// Preview first, always. A one-click year-end would move 300+ records on a
+// mis-click, and the roster is never as tidy as the rule assumes: irregulars,
+// shiftees and stop-outs all need a human to look at the list before it runs.
+app.post('/api/students/year-end/preview', requireRole('admin'), async (req, res, next) => {
+  try {
+    const { courseYears } = yearEndBody(req);
+    res.json(await planYearEnd(courseYears));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/students/year-end/commit', requireRole('admin'), async (req, res, next) => {
+  const { courseYears, dateGraduated } = yearEndBody(req);
+  const conn = await pool.getConnection();
+  try {
+    const { promote, graduate, skipped } = await planYearEnd(courseYears);
+    await conn.beginTransaction();
+    const now = new Date();
+    const by = req.user?.accountId ?? null;
+    for (const s of promote) {
+      await conn.query(
+        `UPDATE students SET year_level = ?, status_updated_at = ?, status_updated_by = ?
+         WHERE student_id = ? AND status = 'enrolled'`,
+        [s.nextYearLevel, now, by, s.studentId],
+      );
+    }
+    for (const s of graduate) {
+      await conn.query(
+        `UPDATE students SET status = 'graduated', date_graduated = ?, status_updated_at = ?, status_updated_by = ?
+         WHERE student_id = ? AND status = 'enrolled'`,
+        [dateGraduated, now, by, s.studentId],
+      );
+    }
+    await conn.commit();
+    console.log(`[students] year-end: ${promote.length} promoted, ${graduate.length} graduated by account ${by}`);
+    res.json({ promoted: promote.length, graduated: graduate.length, skipped: skipped.length, dateGraduated });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    next(error);
+  } finally {
+    conn.release();
+  }
+});
+
 app.get('/api/:resource', async (req, res, next) => {
   try {
     const config = routeConfig(req, res);
@@ -959,7 +1085,16 @@ app.get('/api/:resource', async (req, res, next) => {
       if (req.query.college) { where.push('c.college_code = ?'); values.push(String(req.query.college).toUpperCase()); }
       if (req.query.course) { where.push('s.course_code = ?'); values.push(String(req.query.course).toUpperCase()); }
       if (req.query.yearLevel) { where.push('s.year_level = ?'); values.push(req.query.yearLevel); }
-      if (req.query.status) { where.push('s.status = ?'); values.push(req.query.status); }
+      // status=enrolled, status=graduated,dropped, or status=all for everyone.
+      // Omitting it also returns everyone: the app loads the roster once and
+      // switches between the Enrolled / Alumni / Dropped views in the browser.
+      if (req.query.status && req.query.status !== 'all') {
+        const wanted = String(req.query.status).split(',').map((v) => v.trim()).filter(Boolean);
+        if (wanted.length) {
+          where.push(`s.status IN (${wanted.map(() => '?').join(', ')})`);
+          values.push(...wanted);
+        }
+      }
       if (req.query.q) {
         values.push(`%${req.query.q}%`);
         where.push(`CONCAT_WS(' ', s.student_id, s.last_name, s.first_name, s.middle_name, s.name, s.course_code, s.year_level, s.gender, s.contact_number, s.medical_conditions) LIKE ?`);
@@ -998,6 +1133,13 @@ app.post('/api/:resource', async (req, res, next) => {
     const config = routeConfig(req, res);
     if (!config) return;
     const row = toDb(config, req.body);
+    if (req.params.resource === 'students') {
+      // Same reasoning as the PUT path: the audit columns are the server's to
+      // write, not the caller's to claim.
+      row.status_updated_at = new Date();
+      row.status_updated_by = req.user?.accountId ?? null;
+      row.date_graduated = row.status === 'graduated' ? (req.body.dateGraduated || sqlToday()) : null;
+    }
     const columns = Object.keys(row);
     if (!columns.length) {
       res.status(400).json({ error: 'No valid fields' });
@@ -1020,6 +1162,17 @@ app.put('/api/:resource/:id', async (req, res, next) => {
     if (!config) return;
     const row = toDb(config, req.body);
     delete row[config.id];
+    if (req.params.resource === 'students') {
+      // Unconditional: a payload with no `status` but a forged `statusUpdatedBy`
+      // must still have that stripped, so the strip cannot live behind the
+      // "did the status change?" check.
+      delete row.status_updated_at;
+      delete row.status_updated_by;
+      delete row.date_graduated;
+      if (row.status !== undefined) {
+        await stampStatusChange(row, req.params.id, req.user, req.body.dateGraduated);
+      }
+    }
     const columns = Object.keys(row);
     if (!columns.length) {
       res.status(400).json({ error: 'No valid fields' });

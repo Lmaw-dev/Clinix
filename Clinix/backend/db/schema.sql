@@ -28,7 +28,13 @@ CREATE TABLE students (
   contact_number VARCHAR(32) NULL,
   email TEXT NULL,
   medical_conditions TEXT NULL,
-  status ENUM ('enrolled', 'not enrolled', 'dropped') NOT NULL DEFAULT 'enrolled',
+  -- A graduate keeps their row and their medical history; only this column
+  -- moves. See date_graduated / status_updated_* below for the audit trail.
+  status ENUM ('enrolled', 'graduated', 'dropped') NOT NULL DEFAULT 'enrolled',
+  date_graduated DATE NULL,
+  status_updated_at DATETIME NULL,
+  -- accounts.id, which is VARCHAR(40)
+  status_updated_by VARCHAR(40) NULL,
   photo LONGTEXT NULL,
   birthdate TEXT NULL,
   blood_type TEXT NULL,
@@ -59,6 +65,7 @@ CREATE TABLE students (
   landlord_contact TEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_students_status (status),
   CONSTRAINT fk_students_course FOREIGN KEY (course_code) REFERENCES courses (code) ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT chk_students_id_digits CHECK (student_id REGEXP '^[0-9]{6}$')
 ) ENGINE = InnoDB;

@@ -4,8 +4,9 @@ import {
   ArrowLeft, Phone, Mail, CalendarDays, BookOpen, HeartPulse, Users, Home, MapPin, Building2,
   ChevronDown, ChevronUp, IdCard, Layers, CircleDot, Droplet, Scale, FolderOpen, Ruler, Activity,
   ClipboardList, PhoneCall, Clock, Stethoscope, CalendarClock, MinusCircle, AlertCircle,
+  GraduationCap,
 } from 'lucide-react';
-import { Student, Consultation, normalizeStudent } from '../App';
+import { Student, StudentStatus, Consultation, normalizeStudent, STUDENT_STATUSES } from '../App';
 import { Modal } from './Modal';
 import { PersonDocuments, ProfileDocuments, usePersonDocuments } from './PersonDocuments';
 import { useColleges, YEAR_OPTIONS } from '../colleges';
@@ -32,6 +33,18 @@ type Props = {
 type TabId = 'list' | 'form' | 'import';
 type SortOrder = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
 
+/** Which slice of the roster the list is showing. Same page, same table. */
+type StatusView = StudentStatus | 'all';
+
+const STATUS_VIEWS: { id: StatusView; label: string }[] = [
+  { id: 'enrolled', label: 'Enrolled' },
+  // "Alumni Records", not "Archive" — these are not discarded records, they are
+  // retained ones, and the wording is what tells staff it is safe to look here.
+  { id: 'graduated', label: 'Alumni Records' },
+  { id: 'dropped', label: 'Dropped' },
+  { id: 'all', label: 'All' },
+];
+
 const defaultForm = {
   studentId: '',
   lastName: '',
@@ -43,6 +56,8 @@ const defaultForm = {
   contactNumber: '',
   email: '',
   medicalConditions: '',
+  status: 'enrolled' as StudentStatus,
+  dateGraduated: '',
   photo: '',
   birthdate: '',
   bloodType: '',
@@ -128,10 +143,24 @@ function StudentAvatar({
   );
 }
 
-function StatusBadge({ status }: { status: Student['status'] }) {
-  const styles: Record<string, string> = {
+const STATUS_LABELS: Record<StudentStatus, string> = {
+  enrolled: 'Enrolled',
+  graduated: 'Graduated',
+  dropped: 'Dropped',
+};
+
+const STATUS_TONES: Record<StudentStatus, { fg: string; bg: string }> = {
+  enrolled: { fg: '#16A34A', bg: '#ECFDF5' },
+  graduated: { fg: '#0E7490', bg: '#ECFEFF' },
+  dropped: { fg: '#B45309', bg: '#FFFBEB' },
+};
+
+function StatusBadge({ status }: { status: StudentStatus }) {
+  // Graduated is deliberately not a warning colour — it is an achievement and a
+  // legitimate record, not an archive or a problem to fix.
+  const styles: Record<StudentStatus, string> = {
     enrolled: 'bg-blue-100 text-blue-700',
-    'not enrolled': 'bg-blue-100 text-slate-600',
+    graduated: 'bg-emerald-100 text-emerald-700',
     dropped: 'bg-yellow-100 text-yellow-700',
   };
   return (
@@ -139,7 +168,7 @@ function StatusBadge({ status }: { status: Student['status'] }) {
       className={`inline-flex px-2 py-0.5 rounded-full ${styles[status] || styles.dropped}`}
       style={{ fontSize: 11, fontWeight: 500 }}
     >
-      {status}
+      {STATUS_LABELS[status] || status}
     </span>
   );
 }
@@ -576,6 +605,13 @@ export function StudentProfileView({
   const headline = percent >= 100 ? 'All set!' : percent >= 60 ? 'Almost there!' : 'Needs attention';
   const bloodSign = p.bloodType.endsWith('+') ? 'Positive' : p.bloodType.endsWith('-') ? 'Negative' : '';
   const verified = p.status === 'enrolled';
+  // An alumnus is not "unverified" — they completed the program. The badge says
+  // which of the two it is rather than lumping every non-enrolled record together.
+  const standing = p.status === 'graduated'
+    ? { label: 'Alumnus', ...STATUS_TONES.graduated }
+    : verified
+      ? { label: 'Verified Student', fg: '#15803D', bg: '#ECFDF5' }
+      : { label: 'Dropped', ...STATUS_TONES.dropped };
 
   const summaryLeft = [
     { label: 'Allergies', value: p.allergies || 'None known', alert: Boolean(p.allergies) },
@@ -649,14 +685,16 @@ export function StudentProfileView({
             </div>
             <span
               className="flex w-full items-center justify-center gap-1.5 rounded-full border px-3 py-1"
-              style={
-                verified
-                  ? { background: '#ECFDF5', borderColor: '#A7F3D0', color: '#15803D', fontSize: 11.5, fontWeight: 600 }
-                  : { background: '#F8FAFC', borderColor: '#E2E8F0', color: '#64748B', fontSize: 11.5, fontWeight: 600 }
-              }
+              style={{
+                background: standing.bg,
+                borderColor: standing.fg,
+                color: standing.fg,
+                fontSize: 11.5,
+                fontWeight: 600,
+              }}
             >
-              <CheckCircle2 size={12} />
-              {verified ? 'Verified Student' : 'Unverified'}
+              {p.status === 'graduated' ? <GraduationCap size={12} /> : <CheckCircle2 size={12} />}
+              {standing.label}
             </span>
           </div>
 
@@ -690,11 +728,15 @@ export function StudentProfileView({
               <HeroMeta icon={Layers} label="Year Level" value={p.yearLevel || '—'} tone="#4F46E5" bg="#EEF2FF" />
               <HeroDivider />
               <HeroMeta
-                icon={CircleDot}
+                icon={p.status === 'graduated' ? GraduationCap : CircleDot}
                 label="Status"
-                value={p.status.charAt(0).toUpperCase() + p.status.slice(1)}
-                tone="#16A34A"
-                bg="#ECFDF5"
+                value={
+                  p.status === 'graduated' && p.dateGraduated
+                    ? `Graduated · ${formatShortDate(p.dateGraduated)}`
+                    : STATUS_LABELS[p.status]
+                }
+                tone={STATUS_TONES[p.status].fg}
+                bg={STATUS_TONES[p.status].bg}
               />
             </div>
 
@@ -970,38 +1012,42 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   const [sortOrder, setSortOrder] = useState<SortOrder>('name-asc');
   const [courseFilter, setCourseFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusView>('enrolled');
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const query = (localSearch || globalSearch).trim().toLowerCase();
+
+  const matchesQuery = (s: Student) =>
+    [s.studentId, s.name, s.lastName, s.firstName, s.middleInitial, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions]
+      .join(' ')
+      .toLowerCase()
+      .includes(query);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<StatusView, number> = { enrolled: 0, graduated: 0, dropped: 0, all: students.length };
+    students.forEach((s) => { counts[s.status]++; });
+    return counts;
+  }, [students]);
+
   const visible = useMemo(
     () =>
       students.filter(
         (s) =>
-          s.status !== 'dropped' &&
+          (statusFilter === 'all' || s.status === statusFilter) &&
           (!courseFilter || normalizeCourseName(s.course) === courseFilter) &&
           (!yearFilter || s.yearLevel === yearFilter) &&
-          [s.studentId, s.name, s.lastName, s.firstName, s.middleInitial, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions]
-            .join(' ')
-            .toLowerCase()
-            .includes(query),
+          matchesQuery(s),
       ).sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)),
-    [students, query, courseFilter, yearFilter],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [students, query, courseFilter, yearFilter, statusFilter],
   );
 
+  // The type-ahead deliberately ignores the status tabs. A graduate walking in
+  // for a copy of their record for employment or a board exam has to be findable
+  // without first knowing to switch to the Alumni view.
   const searchMatches = useMemo(
-    () =>
-      query
-        ? students
-            .filter(
-              (s) =>
-                s.status !== 'dropped' &&
-                [s.studentId, s.name, s.lastName, s.firstName, s.middleInitial, s.course, s.yearLevel, s.gender, s.contactNumber, s.medicalConditions]
-                  .join(' ')
-                  .toLowerCase()
-                  .includes(query),
-            )
-            .slice(0, 6)
-        : [],
+    () => (query ? students.filter(matchesQuery).slice(0, 6) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [students, query],
   );
 
@@ -1023,6 +1069,8 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       contactNumber: s.contactNumber,
       email: s.email || '',
       medicalConditions: s.medicalConditions,
+      status: s.status,
+      dateGraduated: s.dateGraduated || '',
       photo: s.photo || '',
       birthdate: s.birthdate || '',
       bloodType: s.bloodType || '',
@@ -1087,8 +1135,13 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
           landlordContact: form.landlordContact.trim(),
         }
       : { boardingHouseName: 'N/A', boardingHouseAddress: 'N/A', landlordName: 'N/A', landlordContact: 'N/A' };
-    const current = editingId ? students.find((s) => s.studentId === editingId) : null;
-    const record = normalizeStudent({ ...form, ...boarding, status: current?.status || 'enrolled' } as Record<string, unknown>);
+    // Marking someone graduated without saying when leaves every per-school-year
+    // report unable to place them, so the date is required rather than assumed.
+    if (form.status === 'graduated' && !form.dateGraduated) {
+      showToast('Enter the date graduated');
+      return;
+    }
+    const record = normalizeStudent({ ...form, ...boarding } as Record<string, unknown>);
     if (!record.studentId || !record.lastName || !record.firstName) {
       showToast('Student ID, first name, and last name are required');
       return;
@@ -1110,7 +1163,12 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       }
       setStudents((prev) =>
         prev.map((s) =>
-          s.studentId === editingId ? { ...s, ...record } : s
+          s.studentId === editingId
+            // The audit columns are written by the server, so the form has
+            // nothing truthful to put there — keep what we already had rather
+            // than blanking it until the next reload.
+            ? { ...s, ...record, statusUpdatedAt: s.statusUpdatedAt, statusUpdatedBy: s.statusUpdatedBy }
+            : s
         ),
       );
       showToast(`${record.name} updated`);
@@ -1138,9 +1196,9 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
 
   async function handleArchive(s: Student) {
     if (!(await confirmDialog({
-      title: `Archive ${s.name}?`,
-      message: 'The record will be marked as dropped and moved out of the enrolled list. You can edit it again anytime.',
-      confirmLabel: 'Archive',
+      title: `Mark ${s.name} as dropped?`,
+      message: 'The record itself is kept — nothing is deleted and the medical history stays searchable. Only the status changes, and it moves out of the Enrolled view.',
+      confirmLabel: 'Mark as dropped',
     }))) return;
     const archived = { ...s, status: 'dropped' as const };
     try {
@@ -1205,7 +1263,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       'Current Province', 'Current City/Municipality', 'Current Barangay', 'Current Purok/Street', 'Current ZIP',
       'Home Province', 'Home City/Municipality', 'Home Barangay', 'Home Purok/Street', 'Home ZIP',
       'Is Boarding', 'Boarding House Name', 'Boarding House Address', 'Landlord Name', 'Landlord Contact',
-      'Medical Conditions', 'Allergies', 'Current Medications', 'Others', 'Status',
+      'Medical Conditions', 'Allergies', 'Current Medications', 'Others', 'Status', 'Date Graduated',
     ];
     const csv = [headers, ...rows.map((s) => [
       s.studentId, s.lastName, s.firstName, s.middleInitial, s.name, s.course, s.yearLevel, s.gender, s.contactNumber, s.email, s.birthdate, s.bloodType, s.height, s.weight, s.schoolYear,
@@ -1213,7 +1271,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       s.currentProvince, s.currentCity, s.currentBarangay, s.currentPurok, s.currentZip,
       s.homeProvince, s.homeCity, s.homeBarangay, s.homePurok, s.homeZip,
       s.isBoarding ? 'Yes' : 'No', s.boardingHouseName, s.boardingHouseAddress, s.landlordName, s.landlordContact,
-      s.medicalConditions, s.allergies, s.currentMedications, s.medicalOthers, s.status,
+      s.medicalConditions, s.allergies, s.currentMedications, s.medicalOthers, s.status, s.dateGraduated,
     ])].map((row) => row.map(csvCell).join(',')).join('\n');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -1272,7 +1330,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
             {title}
           </p>
           <p className="text-slate-400" style={{ fontSize: 12 }}>
-            {sortedRows.length} enrolled record{sortedRows.length !== 1 ? 's' : ''}
+            {sortedRows.length} {statusFilter === 'all' ? '' : `${statusFilter} `}record{sortedRows.length !== 1 ? 's' : ''}
           </p>
         </div>
 
@@ -1351,13 +1409,18 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                         >
                           <Pencil size={14} />
                         </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleArchive(s); }}
-                          className="p-1.5 rounded-md hover:bg-yellow-50 text-slate-400 hover:text-yellow-600 transition-colors"
-                          title="Archive"
-                        >
-                          <Archive size={14} />
-                        </button>
+                        {/* Only an enrolled student can be dropped. Offering it on
+                            a graduate would imply their record can be taken out
+                            of circulation, which is exactly what must not happen. */}
+                        {s.status === 'enrolled' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleArchive(s); }}
+                            className="p-1.5 rounded-md hover:bg-yellow-50 text-slate-400 hover:text-yellow-600 transition-colors"
+                            title="Mark as dropped"
+                          >
+                            <Archive size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1370,7 +1433,9 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     );
   }
 
-  const tableTitle = [courseFilter, yearFilter].filter(Boolean).join(' / ') || 'All Students';
+  const tableTitle =
+    [STATUS_VIEWS.find((v) => v.id === statusFilter)?.label, courseFilter, yearFilter]
+      .filter(Boolean).join(' / ') || 'All Students';
 
   return (
     <div className="space-y-5 max-w-screen-xl">
@@ -1425,6 +1490,46 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
       {/* ── LIST TAB ── */}
       {tab === 'list' && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-blue-100 dark:border-slate-700">
+          {/* Status views — one page, one table, filtered. Graduates are not on a
+              separate screen because they are not a separate kind of record. */}
+          <div className="flex flex-wrap gap-1 border-b border-blue-100 px-5 pt-4 dark:border-slate-700">
+            {STATUS_VIEWS.map((v) => {
+              const active = statusFilter === v.id;
+              return (
+                <button
+                  key={v.id}
+                  onClick={() => setStatusFilter(v.id)}
+                  className={`flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2.5 transition-colors ${
+                    active
+                      ? 'border-blue-600 text-blue-700 dark:text-blue-300'
+                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                  style={{ fontSize: 13, fontWeight: active ? 600 : 500 }}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  {v.label}
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 ${active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
+                    style={{ fontSize: 11, fontWeight: 600 }}
+                  >
+                    {statusCounts[v.id]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {statusFilter === 'graduated' && (
+            <div className="flex items-start gap-2 border-b border-emerald-100 bg-emerald-50 px-5 py-3 dark:border-emerald-900/40 dark:bg-emerald-900/20">
+              <GraduationCap size={15} className="mt-px shrink-0 text-emerald-600" />
+              <p className="text-emerald-800 dark:text-emerald-200" style={{ fontSize: 12.5 }}>
+                Alumni records are kept in full and stay searchable — a graduate can
+                still be given a copy of their medical record. New consultations are
+                closed off, but their entire history remains readable.
+              </p>
+            </div>
+          )}
+
           <div className="px-5 py-4 border-b border-blue-100">
             <div className="flex flex-wrap items-center gap-3">
               {/* Search — upper left, grows to fill available width */}
@@ -1718,6 +1823,60 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                   />
                 </label>
               </div>
+
+              {/* Status — the one-off path. Most students change status through
+                  Year-End Processing in Settings; this is for the exceptions:
+                  early graduates, late completers, shiftees, stop-outs. */}
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <label>
+                  <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
+                    Status
+                  </span>
+                  <select
+                    value={form.status}
+                    onChange={(e) => {
+                      const status = e.target.value as StudentStatus;
+                      setForm((f) => ({
+                        ...f,
+                        status,
+                        // Prompt with today's date rather than an empty field, and
+                        // drop it again if the student turns out not to have graduated.
+                        dateGraduated: status === 'graduated'
+                          ? (f.dateGraduated || new Date().toISOString().slice(0, 10))
+                          : '',
+                      }));
+                    }}
+                    className={fieldClass}
+                    style={{ fontSize: 13 }}
+                  >
+                    {STUDENT_STATUSES.map((s) => (
+                      <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                    ))}
+                  </select>
+                </label>
+                {form.status === 'graduated' && (
+                  <label>
+                    <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>
+                      Date Graduated
+                    </span>
+                    <input
+                      type="date"
+                      value={form.dateGraduated}
+                      onChange={(e) => setForm((f) => ({ ...f, dateGraduated: e.target.value }))}
+                      className={fieldClass}
+                      style={{ fontSize: 13 }}
+                      required
+                    />
+                  </label>
+                )}
+              </div>
+              {form.status !== 'enrolled' && (
+                <p className="mt-2 flex items-start gap-1.5 text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>
+                  <AlertCircle size={13} className="mt-px shrink-0 text-amber-500" />
+                  The medical record is kept in full and stays searchable. Only new
+                  consultations are closed off.
+                </p>
+              )}
 
               <div className="grid grid-cols-2 gap-4 mt-4">
                 <label>

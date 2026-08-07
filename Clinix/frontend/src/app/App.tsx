@@ -45,6 +45,20 @@ export type AdminProfile = {
   photo: string;
 };
 
+/**
+ * Where a student stands with the school. Graduating does not archive, delete
+ * or relocate anything — the row and its whole medical history stay put, and
+ * only this value moves, so a graduate can still be searched for and handed a
+ * copy of their record years later.
+ */
+export const STUDENT_STATUSES = ['enrolled', 'graduated', 'dropped'] as const;
+export type StudentStatus = (typeof STUDENT_STATUSES)[number];
+
+/** A graduate's record is kept for reference but no longer added to. */
+export function isActiveStudent(s: { status: StudentStatus }): boolean {
+  return s.status === 'enrolled';
+}
+
 export type Student = {
   studentId: string;
   name: string;
@@ -57,7 +71,12 @@ export type Student = {
   contactNumber: string;
   email: string;
   medicalConditions: string;
-  status: 'enrolled' | 'not enrolled' | 'dropped';
+  // A graduate is never deleted or moved elsewhere — the medical record has to
+  // be retained, so only this field changes. See STUDENT_STATUSES below.
+  status: StudentStatus;
+  dateGraduated: string;     // set when status is 'graduated', blank otherwise
+  statusUpdatedAt: string;   // audit: when the status last changed
+  statusUpdatedBy: string;   // audit: accounts.id of whoever changed it
   photo?: string;
   // ── Clinic consultation record info ──
   birthdate: string;
@@ -256,11 +275,14 @@ export type Activity = {
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 export function normalizeStudent(s: Record<string, unknown>): Student {
-  const allowed = ['enrolled', 'not enrolled', 'dropped'] as const;
   const rawStatus = String(s.status ?? '').trim().toLowerCase();
-  const status: Student['status'] = (allowed as readonly string[]).includes(rawStatus)
-    ? (rawStatus as Student['status'])
-    : 'enrolled';
+  // 'not enrolled' is the retired fourth value; the database folds it into
+  // 'dropped', and so does anything still cached in this browser.
+  const status: StudentStatus = (STUDENT_STATUSES as readonly string[]).includes(rawStatus)
+    ? (rawStatus as StudentStatus)
+    : rawStatus === 'not enrolled'
+      ? 'dropped'
+      : 'enrolled';
   const rawId = String(s.studentId ?? '').replace(/\D/g, '').slice(0, 6);
   const fallbackName = String(s.name ?? '').trim();
   const parts = fallbackName.split(/\s+/).filter(Boolean);
@@ -288,6 +310,9 @@ export function normalizeStudent(s: Record<string, unknown>): Student {
     email: String(s.email ?? '').trim(),
     medicalConditions: String(s.medicalConditions ?? '').trim(),
     status,
+    dateGraduated: status === 'graduated' ? toDateInput(s.dateGraduated ?? s.date_graduated ?? '') : '',
+    statusUpdatedAt: String(s.statusUpdatedAt ?? s.status_updated_at ?? '').trim(),
+    statusUpdatedBy: String(s.statusUpdatedBy ?? s.status_updated_by ?? '').trim(),
     photo: typeof s.photo === 'string' && s.photo ? s.photo : undefined,
     birthdate: String(s.birthdate ?? '').trim(),
     bloodType: String(s.bloodType ?? s.blood_type ?? '').trim(),
@@ -666,6 +691,22 @@ export default function App() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2500);
   }, []);
+
+  /**
+   * Re-read the roster from the server. Needed after a bulk change the browser
+   * did not make row by row — year-end processing rewrites hundreds of records
+   * server-side, so the copy in state is stale the moment it commits.
+   */
+  const reloadStudents = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${API_URL}/students`);
+      if (!res.ok) throw new Error('students');
+      const rows: Record<string, unknown>[] = await res.json();
+      setStudents(rows.map(normalizeStudent));
+    } catch {
+      showToast('Saved, but the student list on screen could not be refreshed — reload the page.');
+    }
+  }, [showToast]);
 
   // Every clinic collection lives in the database so all devices see the same
   // data — the staff member's vital signs reach the nurse's screen, and one
@@ -1074,6 +1115,7 @@ export default function App() {
               setAdminProfile={setAdminProfile}
               certificatesEnabled={certificatesEnabled}
               setCertificatesEnabled={updateCertificatesEnabled}
+              onRosterChanged={reloadStudents}
             />
           )}
           {page === 'accounts' && (

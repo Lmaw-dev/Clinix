@@ -236,6 +236,40 @@ export async function ensureDbUpdates() {
     )
   `);
 
+  // ── Student status: enrolled | graduated | dropped ────────────────────────
+  // A graduate is NOT deleted and NOT moved anywhere else. These are medical
+  // records and have to be retained — a student may come back years later
+  // asking for a copy for employment or a board exam. Only the status column
+  // changes; the row stays exactly where it is.
+  //
+  // The old enum had 'not enrolled', which nothing in the UI could ever set and
+  // which said nothing about *why* the person left. It is folded into 'dropped'
+  // (the closest surviving meaning) so the narrowed enum cannot silently blank
+  // those rows out. The widen-update-narrow order matters: narrowing first would
+  // turn every 'not enrolled' into '' before the UPDATE could reach it.
+  const migrateStatus = async () => {
+    await pool.query(`ALTER TABLE students MODIFY status
+      ENUM('enrolled','not enrolled','dropped','graduated') NOT NULL DEFAULT 'enrolled'`);
+    const [r] = await pool.query(`UPDATE students SET status = 'dropped' WHERE status = 'not enrolled'`);
+    if (r.affectedRows) console.log(`[db] students: ${r.affectedRows} "not enrolled" row(s) folded into "dropped"`);
+    await pool.query(`ALTER TABLE students MODIFY status
+      ENUM('enrolled','graduated','dropped') NOT NULL DEFAULT 'enrolled'`);
+  };
+  try { await migrateStatus(); } catch (err) { console.warn(`[db] student status migration skipped: ${err.message}`); }
+
+  // Audit trail for the status column. Who changed it and when is the whole
+  // point: "graduated" is a claim about a person's record, and a year-end batch
+  // touches hundreds of rows at once, so an unattributed change is not good
+  // enough. status_updated_by holds accounts.id, which is VARCHAR(40) here —
+  // not an INT — because that is what the accounts table actually uses.
+  await pool.query(`
+    ALTER TABLE students
+      ADD COLUMN IF NOT EXISTS date_graduated DATE NULL,
+      ADD COLUMN IF NOT EXISTS status_updated_at DATETIME NULL,
+      ADD COLUMN IF NOT EXISTS status_updated_by VARCHAR(40) NULL
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_students_status ON students (status)').catch(() => {});
+
   // ── Widen encrypted columns to TEXT ──
   // AES-256-GCM ciphertext (base64) is longer than the plaintext, so any column
   // that now holds encrypted data must be TEXT to avoid truncation. Guarded so a

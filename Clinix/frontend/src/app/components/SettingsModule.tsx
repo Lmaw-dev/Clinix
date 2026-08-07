@@ -3,7 +3,7 @@ import {
   User, Shield, Building2, Monitor, FileText, Bell,
   Database, Clock, Lock, Info, Camera, Check, Eye, EyeOff,
   Sun, Moon, Download, Upload, RefreshCw, LogOut,
-  ChevronRight, GraduationCap, Plus, Trash2, X,
+  ChevronRight, GraduationCap, Plus, Trash2, X, CalendarClock,
 } from 'lucide-react';
 
 import { Page, AdminProfile } from '../App';
@@ -14,7 +14,11 @@ import { ClinixLogo } from './ClinixLogo';
 import { canSeeConfidential, currentUsername, currentRole, changePasswordApi, ROLE_LABELS } from '../auth';
 import {
   useColleges, addCollege, removeCollege, addCourse, removeCourse, resetColleges,
+  useCourseYears, setCourseYears, getCourseYears, DEFAULT_COURSE_YEARS, YEAR_OPTIONS,
 } from '../colleges';
+import {
+  previewYearEndApi, commitYearEndApi, YearEndCandidate, YearEndPlan,
+} from '../store';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -117,6 +121,47 @@ function SectionHeading({ icon: Icon, label }: { icon: React.ComponentType<{ siz
   );
 }
 
+/**
+ * The preview list for one bucket of year-end changes. Collapsed to the first
+ * few rows with a count, because "300 students will be affected" is the number
+ * the admin needs to see before committing — not 300 lines to scroll past.
+ */
+function YearEndList({ title, rows, describe, tone = 'normal' }: {
+  title: string;
+  rows: YearEndCandidate[];
+  describe: (s: YearEndCandidate) => string;
+  tone?: 'normal' | 'warn';
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (!rows.length) return null;
+  const shown = expanded ? rows : rows.slice(0, 8);
+  return (
+    <div className={`rounded-xl border ${tone === 'warn' ? 'border-amber-200 dark:border-amber-900/50' : 'border-blue-100 dark:border-slate-600'}`}>
+      <div className={`flex items-center justify-between px-4 py-2.5 ${tone === 'warn' ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-blue-50 dark:bg-slate-700/40'}`}>
+        <p className="text-black dark:text-slate-200" style={{ fontSize: 12.5, fontWeight: 600 }}>
+          {title} · {rows.length}
+        </p>
+        {rows.length > 8 && (
+          <button onClick={() => setExpanded(v => !v)} className="text-blue-600 hover:text-blue-700 dark:text-blue-300" style={{ fontSize: 12, fontWeight: 600 }}>
+            {expanded ? 'Show less' : `Show all ${rows.length}`}
+          </button>
+        )}
+      </div>
+      <ul className="divide-y divide-slate-100 dark:divide-slate-700 max-h-72 overflow-y-auto">
+        {shown.map(s => (
+          <li key={s.studentId} className="flex items-center justify-between gap-3 px-4 py-2">
+            <span className="min-w-0">
+              <span className="block truncate text-black dark:text-slate-200" style={{ fontSize: 12.5, fontWeight: 500 }}>{s.name || s.studentId}</span>
+              <span className="block truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{describe(s)}</span>
+            </span>
+            <span className="shrink-0 text-slate-400" style={{ fontSize: 11, fontFamily: 'monospace' }}>{s.studentId}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function SaveBar({ onSave, saved }: { onSave: () => void; saved: boolean }) {
   return (
     <div className="flex justify-end mt-5">
@@ -141,6 +186,8 @@ type Props = {
   setAdminProfile?: React.Dispatch<React.SetStateAction<AdminProfile>>;
   certificatesEnabled?: boolean;
   setCertificatesEnabled?: (v: boolean) => void;
+  /** Re-read the student list after year-end processing rewrote it server-side. */
+  onRosterChanged?: () => void;
 };
 
 const DEFAULT_PROFILE: AdminProfile = { name: 'Clinic Admin', photo: '' };
@@ -168,7 +215,7 @@ const TABS: TabDef[] = [
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_PROFILE, setAdminProfile, certificatesEnabled = true, setCertificatesEnabled }: Props) {
+export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_PROFILE, setAdminProfile, certificatesEnabled = true, setCertificatesEnabled, onRosterChanged }: Props) {
   const { isDark, toggle: toggleTheme } = useTheme();
   const isAdmin = canSeeConfidential();
   const photoRef = useRef<HTMLInputElement>(null);
@@ -231,8 +278,60 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
 
   // ── Colleges & Courses state
   const collegesList = useColleges();
+  const courseYearsMap = useCourseYears();
   const [newCollege, setNewCollege] = useState('');
   const [courseDrafts, setCourseDrafts] = useState<Record<string, string>>({});
+
+  // ── Year-end processing state
+  const [yearEndSy, setYearEndSy] = useState(() => {
+    // A school year is named for the year it starts in, and processing normally
+    // runs at the tail end of it.
+    const y = new Date().getFullYear();
+    return `${y}-${y + 1}`;
+  });
+  const [yearEndDate, setYearEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [yearEndPlan, setYearEndPlan] = useState<YearEndPlan | null>(null);
+  const [yearEndBusy, setYearEndBusy] = useState(false);
+
+  async function runYearEndPreview() {
+    setYearEndBusy(true);
+    try {
+      setYearEndPlan(await previewYearEndApi(getCourseYears()));
+    } catch (err) {
+      setYearEndPlan(null);
+      showToast(err instanceof Error ? err.message : 'Could not build the preview');
+    } finally {
+      setYearEndBusy(false);
+    }
+  }
+
+  async function commitYearEnd() {
+    if (!yearEndPlan) return;
+    const total = yearEndPlan.promote.length + yearEndPlan.graduate.length;
+    // The confirmation spells out the counts rather than asking "are you sure?".
+    // A number is something the admin can check against what they expected.
+    if (!(await confirmDialog({
+      title: `Apply year-end processing for SY ${yearEndSy}?`,
+      message:
+        `${yearEndPlan.promote.length} student(s) move up a year level and ` +
+        `${yearEndPlan.graduate.length} are marked graduated as of ${yearEndDate}. ` +
+        'No record is deleted — graduates keep their full medical history and move to Alumni Records. ' +
+        'This cannot be undone in bulk; individual students can still be corrected from their profile.',
+      confirmLabel: `Apply to ${total} student${total !== 1 ? 's' : ''}`,
+    }))) return;
+
+    setYearEndBusy(true);
+    try {
+      const r = await commitYearEndApi(getCourseYears(), yearEndDate);
+      showToast(`Year-end done — ${r.promoted} promoted, ${r.graduated} graduated`);
+      onRosterChanged?.();
+      setYearEndPlan(null);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Year-end processing failed — nothing was changed');
+    } finally {
+      setYearEndBusy(false);
+    }
+  }
 
   function handleAddCollege() {
     const name = newCollege.trim();
@@ -722,6 +821,24 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                   {col.courses.map((course) => (
                     <span key={course} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-100 dark:bg-slate-700 px-2.5 py-1 text-black dark:text-slate-200" style={{ fontSize: 12, fontWeight: 500 }}>
                       {course}
+                      {/* Program length. Year-end processing graduates a student
+                          on reaching this year level, so a 2-year course does not
+                          get pushed to a 3rd year that does not exist. */}
+                      <input
+                        type="number"
+                        min={1}
+                        max={YEAR_OPTIONS.length}
+                        value={courseYearsMap[course] ?? DEFAULT_COURSE_YEARS}
+                        onChange={e => {
+                          const r = setCourseYears(course, Number(e.target.value));
+                          if (!r.ok) showToast(r.error || 'Could not set the program length');
+                        }}
+                        title={`${course} runs for this many years`}
+                        aria-label={`${course} program length in years`}
+                        className="w-11 rounded border border-blue-200 bg-white px-1 py-0.5 text-center text-black dark:border-slate-500 dark:bg-slate-600 dark:text-slate-200"
+                        style={{ fontSize: 11 }}
+                      />
+                      <span className="text-slate-500 dark:text-slate-400" style={{ fontSize: 10.5 }}>yrs</span>
                       <button onClick={() => handleRemoveCourse(col.name, course)} title="Remove course" className="text-slate-400 hover:text-red-600 transition-colors">
                         <X size={13} />
                       </button>
@@ -746,6 +863,108 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               </div>
             ))}
           </div>
+        </SectionCard>
+
+        <SectionHeading icon={CalendarClock} label="End of School Year" />
+        <SectionCard
+          title="Year-End Processing"
+          desc="Move every enrolled student up one year level, and graduate the ones who have finished their program."
+        >
+          {/* Deliberately two steps. This touches the whole roster at once, and
+              the roster is never as tidy as the rule assumes — irregulars,
+              shiftees and stop-outs all need somebody to read the list first.
+              There is no automatic run and no one-click commit. */}
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 dark:border-slate-600 dark:bg-slate-700/40 mb-5">
+            <p className="text-slate-600 dark:text-slate-300" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+              Nothing is deleted and nothing is moved to another table. A graduating
+              student keeps their row, their documents and their entire consultation
+              history — only their status changes to <strong>Graduated</strong>, and
+              they move to the Alumni Records view under Students.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="School Year Ending">
+              <input
+                value={yearEndSy}
+                onChange={e => setYearEndSy(e.target.value)}
+                placeholder="2026-2027"
+                className={INPUT}
+                style={{ fontSize: 13 }}
+              />
+            </Field>
+            <Field label="Date Graduated">
+              <input
+                type="date"
+                value={yearEndDate}
+                onChange={e => setYearEndDate(e.target.value)}
+                className={INPUT}
+                style={{ fontSize: 13 }}
+              />
+            </Field>
+          </div>
+          <p className="text-slate-400 mt-1.5" style={{ fontSize: 11.5 }}>
+            Program lengths come from Colleges &amp; Courses above — a course set to
+            2 years graduates at 2nd Year.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3 mt-5">
+            <button
+              onClick={runYearEndPreview}
+              disabled={yearEndBusy}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
+              style={{ fontSize: 13, fontWeight: 600 }}
+            >
+              <RefreshCw size={14} className={yearEndBusy ? 'animate-spin' : ''} />
+              {yearEndBusy ? 'Working…' : yearEndPlan ? 'Refresh preview' : 'Preview changes'}
+            </button>
+            {yearEndPlan && (
+              <button
+                onClick={commitYearEnd}
+                disabled={yearEndBusy || (!yearEndPlan.promote.length && !yearEndPlan.graduate.length)}
+                className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-5 py-2.5 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 transition-colors"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                <Check size={14} />
+                Apply to {yearEndPlan.promote.length + yearEndPlan.graduate.length} student
+                {yearEndPlan.promote.length + yearEndPlan.graduate.length !== 1 ? 's' : ''}
+              </button>
+            )}
+          </div>
+
+          {yearEndPlan && (
+            <div className="mt-5 space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                {([
+                  ['Promoted', yearEndPlan.promote.length, '#2563EB'],
+                  ['Graduating', yearEndPlan.graduate.length, '#0E7490'],
+                  ['Needs attention', yearEndPlan.skipped.length, '#B45309'],
+                ] as const).map(([label, n, colour]) => (
+                  <div key={label} className="rounded-xl border border-blue-100 px-4 py-3 dark:border-slate-600">
+                    <p style={{ fontSize: 22, fontWeight: 700, color: colour }}>{n}</p>
+                    <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{label}</p>
+                  </div>
+                ))}
+              </div>
+
+              <YearEndList
+                title="Graduating"
+                rows={yearEndPlan.graduate}
+                describe={s => `${s.course} · ${s.yearLevel} → Graduated`}
+              />
+              <YearEndList
+                title="Promoted"
+                rows={yearEndPlan.promote}
+                describe={s => `${s.course} · ${s.yearLevel} → ${s.nextYearLevel}`}
+              />
+              <YearEndList
+                title="Skipped — fix these first"
+                rows={yearEndPlan.skipped}
+                describe={s => s.reason || 'Cannot be processed'}
+                tone="warn"
+              />
+            </div>
+          )}
         </SectionCard>
 
         </>)}

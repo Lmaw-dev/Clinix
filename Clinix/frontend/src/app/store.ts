@@ -139,6 +139,63 @@ export function persist(promise: Promise<unknown>, showToast: (m: string) => voi
   });
 }
 
+// ── End-of-school-year processing ────────────────────────────────────────────
+// Promote every enrolled student one year level, and graduate the ones who have
+// reached the end of their program. Nothing is deleted or moved: a graduate's
+// row and their whole medical history stay exactly where they are.
+//
+// This runs on the server in one transaction rather than as a few hundred
+// separate saves from the browser, so a dropped connection halfway through
+// cannot leave the roster half-promoted.
+
+export type YearEndCandidate = {
+  studentId: string;
+  name: string;
+  course: string;
+  yearLevel: string;
+  /** The last year level of this student's program. */
+  finalYear: number;
+  /** Where they are going, or null when they are graduating. */
+  nextYearLevel: string | null;
+  /** Only on skipped rows — why they could not be processed. */
+  reason?: string;
+};
+
+export type YearEndPlan = {
+  promote: YearEndCandidate[];
+  graduate: YearEndCandidate[];
+  skipped: YearEndCandidate[];
+};
+
+export type YearEndResult = {
+  promoted: number;
+  graduated: number;
+  skipped: number;
+  dateGraduated: string;
+};
+
+async function yearEnd(action: 'preview' | 'commit', body: object): Promise<Response> {
+  return request(`/students/year-end/${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** What year-end processing *would* do. Changes nothing. */
+export async function previewYearEndApi(courseYears: Record<string, number>): Promise<YearEndPlan> {
+  const res = await yearEnd('preview', { courseYears });
+  return res.json();
+}
+
+export async function commitYearEndApi(
+  courseYears: Record<string, number>,
+  dateGraduated: string,
+): Promise<YearEndResult> {
+  const res = await yearEnd('commit', { courseYears, dateGraduated });
+  return res.json();
+}
+
 // ── Admin profile ────────────────────────────────────────────────────────────
 // A single row rather than a collection, so it has its own pair of calls.
 
