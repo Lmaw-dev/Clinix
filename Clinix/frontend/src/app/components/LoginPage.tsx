@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { apiLogin, Role } from '../auth';
 import { ClinixLogo } from './ClinixLogo';
 import CAMPUS_PHOTO from '../../assets/campus-gate.png';
@@ -27,6 +27,7 @@ export function LoginPage({ onLogin, onLearnMore }: Props) {
   const [password, setPassword] = useState('');
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
   /* Viewport → stage scale. CSS can't divide a length by a length, so the
      scale factor has to be computed here. */
@@ -116,15 +117,28 @@ export function LoginPage({ onLogin, onLearnMore }: Props) {
         <div style={{ height: 20 }} />
 
         <label htmlFor="clx-pass" className="clx-label">Password</label>
-        <input
-          id="clx-pass"
-          className="clx-field clx-field-pass"
-          type="password"
-          value={password}
-          onChange={e => { setPassword(e.target.value); setError(''); }}
-          placeholder="••••••••••••"
-          autoComplete="current-password"
-        />
+        <div className="clx-pass-wrap">
+          <input
+            id="clx-pass"
+            className="clx-field clx-field-pass"
+            type={showPass ? 'text' : 'password'}
+            value={password}
+            onChange={e => { setPassword(e.target.value); setError(''); }}
+            placeholder="••••••••••••"
+            autoComplete="current-password"
+          />
+          <button
+            type="button"
+            className="clx-eye"
+            onClick={() => setShowPass(s => !s)}
+            aria-label={showPass ? 'Hide password' : 'Show password'}
+            aria-pressed={showPass}
+            // keeps the field focused when the eye is clicked mid-typing
+            onMouseDown={e => e.preventDefault()}
+          >
+            {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
 
         {error && (
           <div className="clx-error" role="alert">
@@ -328,6 +342,38 @@ export function LoginPage({ onLogin, onLearnMore }: Props) {
       /* the bullet glyph sits tiny at 13px, so the masked placeholder reads as
          a row of full stops unless it is bumped up */
       .clx-field-pass::placeholder { font-size: 17px; letter-spacing: 1px; }
+      /* room for the eye button so long passwords don't run under it */
+      .clx-pass-wrap { position: relative; }
+      .clx-pass-wrap .clx-field { padding-right: 44px; }
+      /* the button covers part of the pill, so hover has to come from the wrap */
+      .clx-pass-wrap:hover .clx-field:not(:focus) { background: rgba(255,255,255,0.26); }
+      /* Edge draws its own reveal eye — two would sit side by side */
+      .clx-field-pass::-ms-reveal { display: none; }
+
+      .clx-eye {
+        position: absolute;
+        top: 0;
+        right: 4px;
+        height: 38px;
+        width: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: none;
+        background: none;
+        color: rgba(255,255,255,0.72);
+        cursor: pointer;
+        border-radius: 999px;
+        transition: color 0.18s;
+      }
+      .clx-eye:hover        { color: #FFFFFF; }
+      .clx-eye:focus-visible {
+        outline: 2px solid ${YELLOW};
+        outline-offset: -2px;
+        color: #FFFFFF;
+      }
+
       .clx-field:hover        { background: rgba(255,255,255,0.26); }
       .clx-field:focus {
         background: rgba(255,255,255,0.30);
