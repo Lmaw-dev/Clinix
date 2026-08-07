@@ -87,6 +87,15 @@ export function ConsultationsModule({ consultations, setConsultations, students,
   const canManage = canManageConsultationLog(role);
   const canTakeVitals = canRecordVitals(role);
 
+  // For staff the assessment is the only thing a row leads to, so the whole row
+  // opens it — the icon at the end is a second way in, not the only one. Roles
+  // that manage the log have two destinations per row, so their rows stay
+  // button-driven to keep it unambiguous which one they asked for.
+  const rowOpensRecord = canTakeVitals && !canManage;
+  function openRecord(c: Consultation) {
+    if (isConsultationVisit(c)) setRecordFor(c);
+  }
+
   // Update on screen straight away, then persist. If the server rejects it the
   // change is rolled back and said out loud, so nobody walks away believing a
   // vital sign was saved when it was not.
@@ -238,8 +247,18 @@ export function ConsultationsModule({ consultations, setConsultations, students,
               {visible.length === 0 ? (
                 <tr><td colSpan={12} className="text-center py-12 text-slate-400" style={{ fontSize: 13 }}>No records logged</td></tr>
               ) : (
-                visible.map((c) => (
-                  <tr key={c.id} className="hover:bg-blue-50 dark:hover:bg-slate-700/30 transition-colors">
+                visible.map((c) => {
+                  const clickable = rowOpensRecord && isConsultationVisit(c);
+                  return (
+                  <tr
+                    key={c.id}
+                    className={`hover:bg-blue-50 dark:hover:bg-slate-700/30 transition-colors ${clickable ? 'cursor-pointer' : ''}`}
+                    onClick={clickable ? () => openRecord(c) : undefined}
+                    onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRecord(c); } } : undefined}
+                    tabIndex={clickable ? 0 : undefined}
+                    role={clickable ? 'button' : undefined}
+                    title={clickable ? (hasVitals(c) ? 'View / edit assessment & vital signs' : 'Take assessment & vital signs') : undefined}
+                  >
                     <td className={`${td} whitespace-nowrap`} style={{ fontSize: 13 }}>{c.date || '—'}</td>
                     <td className={`${td} whitespace-nowrap`} style={{ fontSize: 13 }}>{c.time || '—'}</td>
                     <td className="px-4 py-3 text-slate-500" style={{ fontSize: 12, fontFamily: 'monospace' }}>{c.studentId || '—'}</td>
@@ -257,7 +276,7 @@ export function ConsultationsModule({ consultations, setConsultations, students,
                             other purposes are logged and closed, so no button. */}
                         {isConsultationVisit(c) && canTakeVitals && (
                           <button
-                            onClick={() => setRecordFor(c)}
+                            onClick={(e) => { e.stopPropagation(); setRecordFor(c); }}
                             title={hasVitals(c) ? 'View / edit assessment & vital signs' : 'Take assessment & vital signs'}
                             className={`p-1.5 rounded-md transition-colors ${hasVitals(c)
                               ? 'text-emerald-600 hover:bg-emerald-50'
@@ -267,12 +286,13 @@ export function ConsultationsModule({ consultations, setConsultations, students,
                           </button>
                         )}
                         {canManage && (
-                          <button onClick={() => { setViewConsult(c); setMgmtDraft(c.management || ''); }} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Eye size={14} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); setViewConsult(c); setMgmtDraft(c.management || ''); }} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Eye size={14} /></button>
                         )}
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

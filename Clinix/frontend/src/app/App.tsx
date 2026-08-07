@@ -1063,6 +1063,7 @@ export default function App() {
               certificates={certificates}
               consultations={consultations}
               activities={activities}
+              role={role}
             />
           )}
           {page === 'settings' && (

@@ -188,6 +188,16 @@ export function canRecordVitals(role: Role): boolean {
   return role === 'admin' || role === 'assistant' || role === 'staff';
 }
 
+// ─── Reports ───────────────────────────────────────────────────────────────
+// Staff read the reports to do their job, but a report is a bulk extract of
+// student medical data — taking a copy of it off the system is the nurse's and
+// the assistant's call, not theirs. Their view of Reports is strictly read-only.
+
+/** Export, generate or print a report — i.e. take records out of the system. */
+export function canExportReports(role: Role): boolean {
+  return role === 'admin' || role === 'assistant';
+}
+
 /** The role of the currently signed-in user (read from the session). */
 export function currentRole(): Role {
   try {

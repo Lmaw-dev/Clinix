@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { Student, FacultyMember, MedRecord, MedForm, InventoryItem, Certificate, Consultation, Activity as ActivityType } from '../App';
 import { useTheme } from '../ThemeContext';
+import { Role, canExportReports } from '../auth';
 
 type Props = {
   students: Student[];
@@ -23,6 +24,7 @@ type Props = {
   certificates: Certificate[];
   consultations: Consultation[];
   activities: ActivityType[];
+  role: Role;
 };
 
 type Tab = 'overview' | 'consultations' | 'inventory' | 'certificates';
@@ -55,8 +57,12 @@ function pctChange(a: number, b: number) {
   return Math.round(((a - b) / b) * 100);
 }
 
-export function ReportsModule({ students, inventory, certificates, consultations }: Props) {
+export function ReportsModule({ students, inventory, certificates, consultations, role }: Props) {
   const { isDark } = useTheme();
+  // Staff read the numbers only. Everything that takes a copy of the records
+  // out of the system — export, generate, print — is hidden from them; the
+  // filters and tabs stay, since changing what you look at is still looking.
+  const canExport = canExportReports(role);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [dateFilter, setDateFilter] = useState<DateFilter>('month');
   const [customFrom, setCustomFrom] = useState('');
@@ -737,7 +743,10 @@ export function ReportsModule({ students, inventory, certificates, consultations
           })()}
         </SectionCard>
 
-        {/* Recent Generated Reports — compact list */}
+        {/* Recent Generated Reports — compact list. This card is nothing but an
+            export launcher, so it is left out entirely for a read-only role
+            rather than shown with dead buttons. */}
+        {canExport && (
         <SectionCard title="Recent Reports" subtitle="Standard reports available for export" icon={FileText}
           action={
             <button onClick={() => setShowExport(true)}
@@ -771,6 +780,7 @@ export function ReportsModule({ students, inventory, certificates, consultations
             ))}
           </div>
         </SectionCard>
+        )}
       </div>
     );
   }
@@ -1075,16 +1085,20 @@ export function ReportsModule({ students, inventory, certificates, consultations
               style={{ background: C.card, border: `1px solid ${C.cardBorder}`, fontSize: 12, fontWeight: 600, color: C.txtSecond }}>
               <RefreshCw size={13} /> Refresh
             </button>
-            <button onClick={() => window.print()} title="Print this report"
-              className="flex items-center gap-1.5 rounded-xl px-3 py-2 transition-colors"
-              style={{ background: C.card, border: `1px solid ${C.cardBorder}`, fontSize: 12, fontWeight: 600, color: C.txtSecond }}>
-              <Printer size={13} /> Print
-            </button>
-            <button onClick={() => setShowExport(true)} title="Export reports"
-              className="flex items-center gap-1.5 rounded-xl px-4 py-2 font-semibold transition-opacity hover:opacity-90"
-              style={{ background: PRIMARY_BTN, color: '#fff', fontSize: 12 }}>
-              <Download size={13} /> Export
-            </button>
+            {canExport && (
+              <>
+                <button onClick={() => window.print()} title="Print this report"
+                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 transition-colors"
+                  style={{ background: C.card, border: `1px solid ${C.cardBorder}`, fontSize: 12, fontWeight: 600, color: C.txtSecond }}>
+                  <Printer size={13} /> Print
+                </button>
+                <button onClick={() => setShowExport(true)} title="Export reports"
+                  className="flex items-center gap-1.5 rounded-xl px-4 py-2 font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: PRIMARY_BTN, color: '#fff', fontSize: 12 }}>
+                  <Download size={13} /> Export
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1161,8 +1175,9 @@ export function ReportsModule({ students, inventory, certificates, consultations
       {/* Tab Content */}
       {renderTab()}
 
-      {/* Export Modal */}
-      {showExport && <ExportModal />}
+      {/* Export Modal — the role check is repeated here so no leftover state
+          can put the dialog on screen for someone who cannot export. */}
+      {showExport && canExport && <ExportModal />}
     </div>
   );
 }
