@@ -12,6 +12,7 @@ import { PersonDocuments, ProfileDocuments, usePersonDocuments } from './PersonD
 import { useColleges, YEAR_OPTIONS } from '../colleges';
 import { canSeeConfidential } from '../auth';
 import { confirmDialog } from './ConfirmDialog';
+import { PhotoCapture, cameraAvailable, cameraUnavailableReason } from './PhotoCapture';
 import { API_URL, apiFetch } from '../api';
 
 
@@ -1014,6 +1015,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   const [yearFilter, setYearFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusView>('enrolled');
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const query = (localSearch || globalSearch).trim().toLowerCase();
 
@@ -1690,14 +1692,6 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                     <User size={28} className="text-slate-400" />
                   </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => photoInputRef.current?.click()}
-                  className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md hover:bg-blue-700 transition-colors"
-                  title="Upload profile"
-                >
-                  <Camera size={13} />
-                </button>
                 <input
                   ref={photoInputRef}
                   type="file"
@@ -1710,8 +1704,31 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
                 <p className="text-black" style={{ fontSize: 13, fontWeight: 500 }}>
                   Profile
                 </p>
-                <p className="text-slate-400 mt-0.5" style={{ fontSize: 12 }}>
-                  Click the camera icon to upload. JPG, PNG up to 8 MB — auto-resized for storage.
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="flex items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-1.5 text-blue-700 hover:bg-blue-50 dark:border-slate-600 dark:text-blue-400 dark:hover:bg-slate-700"
+                    style={{ fontSize: 12, fontWeight: 600 }}
+                  >
+                    <Upload size={13} /> Upload file
+                  </button>
+                  {/* The camera needs a secure context. On the clinic PC
+                      (localhost) that holds; over the LAN the browser blocks it,
+                      so the button explains itself rather than doing nothing. */}
+                  <button
+                    type="button"
+                    onClick={() => cameraAvailable() ? setCameraOpen(true) : showToast(cameraUnavailableReason())}
+                    className="flex items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-1.5 text-blue-700 hover:bg-blue-50 dark:border-slate-600 dark:text-blue-400 dark:hover:bg-slate-700"
+                    style={{ fontSize: 12, fontWeight: 600 }}
+                    title={cameraAvailable() ? 'Take a photo with a camera' : cameraUnavailableReason()}
+                  >
+                    <Camera size={13} /> Take photo
+                  </button>
+                </div>
+                <p className="text-slate-400 mt-1.5" style={{ fontSize: 11.5 }}>
+                  JPG or PNG up to 8 MB — resized automatically. A phone set up as a
+                  webcam appears in the camera list.
                 </p>
                 {form.photo && (
                   <button
@@ -2273,6 +2290,14 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
           </form>
         </div>
       </Modal>
+
+      {/* Camera capture. Produces the same downscaled JPEG the file picker does,
+          so a captured photo and an uploaded one are stored identically. */}
+      <PhotoCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(dataUrl) => setForm((f) => ({ ...f, photo: dataUrl }))}
+      />
 
       {/* ── IMPORT TAB ── */}
       <Modal

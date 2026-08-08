@@ -1128,10 +1128,42 @@ app.get('/api/:resource/:id', async (req, res, next) => {
   }
 });
 
+// ── Oversized image guard ────────────────────────────────────────────────────
+// A photo is stored as a base64 data URL, encrypted, in a LONGTEXT column. The
+// column is not the constraint — MySQL's max_allowed_packet is, and on a stock
+// XAMPP that is 1 MB. Encryption adds about a third (measured: a 500 KB photo
+// lands as 683 KB), so anything past roughly 780 KB kills the connection
+// mid-write. That surfaced as "read ECONNRESET" and a 500, which tells the
+// nurse nothing and leaves her unsure whether the record saved.
+//
+// The UI already downscales to 480px JPEG, landing at 30-80 KB, so this should
+// never fire in normal use. It exists so that when it does — a pasted
+// screenshot, a browser where the canvas downscale failed — the answer is a
+// sentence rather than a dropped connection.
+const MAX_IMAGE_BYTES = 700 * 1024;
+
+/** Returns an error message when an image field is too large to store, else null. */
+function oversizedImage(body) {
+  for (const field of ['photo']) {
+    const value = body?.[field];
+    if (typeof value !== 'string' || !value) continue;
+    // Encryption inflates the stored value; check what will actually be
+    // written, not what arrived.
+    const stored = Math.ceil(value.length * 1.34);
+    if (stored > MAX_IMAGE_BYTES) {
+      return `That image is too large (about ${Math.round(value.length / 1024)} KB). `
+           + `Please use one under ${Math.floor(MAX_IMAGE_BYTES / 1.34 / 1024)} KB, or crop it smaller.`;
+    }
+  }
+  return null;
+}
+
 app.post('/api/:resource', async (req, res, next) => {
   try {
     const config = routeConfig(req, res);
     if (!config) return;
+    const tooBig = oversizedImage(req.body);
+    if (tooBig) { res.status(413).json({ error: tooBig }); return; }
     const row = toDb(config, req.body);
     if (req.params.resource === 'students') {
       // Same reasoning as the PUT path: the audit columns are the server's to
@@ -1160,6 +1192,8 @@ app.put('/api/:resource/:id', async (req, res, next) => {
   try {
     const config = routeConfig(req, res);
     if (!config) return;
+    const tooBig = oversizedImage(req.body);
+    if (tooBig) { res.status(413).json({ error: tooBig }); return; }
     const row = toDb(config, req.body);
     delete row[config.id];
     if (req.params.resource === 'students') {

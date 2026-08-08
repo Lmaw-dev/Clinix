@@ -724,6 +724,12 @@ export default function App() {
     setBooting(true);
     setBootStep(0);
 
+    // Referenced below but never declared, which threw a ReferenceError inside
+    // the async block — before setBooting(false) ran, so the splash never
+    // cleared and sign-in appeared to hang. Vite strips types without checking
+    // them, so it built cleanly and only failed at runtime.
+    const MIN_SPLASH_MS = 900;
+
     (async () => {
       const startedAt = Date.now();
       let moved = 0;
