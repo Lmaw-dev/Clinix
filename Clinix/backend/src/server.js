@@ -14,6 +14,7 @@ import { hashPassword, verifyPassword } from './password.js';
 import { ensureMysqlRunning, autostartHint } from './mysql-autostart.js';
 import { suggestFromHistory, modelStats } from './learned-suggest.js';
 import { ensureSessionTable, createSession, revokeSession, requireAuth, requireRole } from './auth.js';
+import { requireWriteAccess } from './permissions.js';
 
 let dbReady = false;
 
@@ -56,6 +57,14 @@ app.use('/api', apiLimiter);
 // This sits above the route definitions on purpose: a route added later is
 // protected by default rather than by the author remembering to protect it.
 app.use('/api', requireAuth());
+
+// Knowing *who* is asking is not the same as knowing they may do it. A staff
+// account holds a perfectly valid token and could still send
+// DELETE /api/students/000001 by hand — the sidebar that hides the page from
+// them lives in the browser, where anyone can ignore it. See permissions.js for
+// the map; like the line above, it sits here so a route added later is covered
+// by default rather than by the author remembering.
+app.use('/api', requireWriteAccess());
 
 // ── File uploads (per-person documents) ──────────────────────────────────────
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -499,6 +508,55 @@ export async function seedAccountsIfEmpty() {
   console.log('[accounts] seeded default admin / assistant / staff accounts (username encrypted, password hashed)');
 }
 
+/**
+ * One-time lift of the old shared admin_profile row onto the admin's account.
+ *
+ * The nurse has a name and a photo saved under the previous design; dropping
+ * those routes without moving the data would blank her profile on the next
+ * sign-in. Only fills gaps — an account that already has a name or a photo is
+ * left alone — so this is safe to run on every boot, which is what happens.
+ *
+ * The admin_profile table itself is deliberately left in place. It holds the
+ * only copy of this data until somebody confirms the migration worked.
+ */
+export async function migrateAdminProfileToAccount() {
+  let rows;
+  try {
+    [rows] = await pool.query('SELECT name, photo FROM admin_profile WHERE id = 1');
+  } catch {
+    return; // table never existed on this install
+  }
+  if (!rows.length) return;
+
+  const name = decrypt(rows[0].name) || '';
+  const photo = decrypt(rows[0].photo) || '';
+  if (!name && !photo) return;
+
+  const [admins] = await pool.query(`SELECT * FROM accounts WHERE role = 'admin' LIMIT 1`);
+  if (!admins.length) return;
+  const admin = admins[0];
+
+  const sets = [];
+  const vals = [];
+  const hasName = Boolean(decrypt(admin.first_name) || decrypt(admin.last_name));
+  if (name && !hasName) {
+    const split = splitFullName(name);
+    if (split) {
+      sets.push('first_name = ?', 'last_name = ?');
+      vals.push(encrypt(split.firstName), encrypt(split.lastName));
+    }
+  }
+  if (photo && !decrypt(admin.photo)) {
+    sets.push('photo = ?');
+    vals.push(encrypt(photo));
+  }
+  if (!sets.length) return;
+
+  vals.push(admin.id);
+  await pool.query(`UPDATE accounts SET ${sets.join(', ')} WHERE id = ?`, vals);
+  console.log('[accounts] moved the shared admin profile onto the admin account (name/photo are per-account now)');
+}
+
 app.post('/api/login', authLimiter, async (req, res, next) => {
   try {
     const username = String(req.body?.username ?? '').trim();
@@ -805,27 +863,92 @@ app.get('/api/formulary/suggest', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// ── Admin profile ────────────────────────────────────────────────────────────
-// A single row, not a collection, so it gets its own pair of routes rather than
-// being forced through the generic resource CRUD.
-app.get('/api/admin-profile', async (_req, res, next) => {
+// ── Your own profile ─────────────────────────────────────────────────────────
+// This used to be /api/admin-profile, reading and writing a single shared row in
+// admin_profile. Every role's Settings screen saved to it, so a staff member who
+// changed their photo replaced the name and picture the whole clinic saw — and
+// the only way to stop that was to forbid everyone but the admin from having a
+// profile at all, which is what the dashboard did.
+//
+// A profile belongs to an account. These two routes read and write the profile
+// of whoever is signed in, taken from the session rather than from anything the
+// caller sends, so there is no version of this request that reaches somebody
+// else's row. Changing another person's account is a separate, admin-only thing:
+// see /api/accounts.
+
+/** Profile columns an account owns and may edit about itself. */
+const PROFILE_COLS = {
+  empId: 'emp_id',
+  firstName: 'first_name',
+  lastName: 'last_name',
+  middleName: 'middle_name',
+  birthdate: 'birthdate',
+  email: 'email',
+  address: 'address',
+  contact: 'contact',
+  photo: 'photo',
+};
+
+/**
+ * "Maria Dela Cruz" → { firstName: 'Maria Dela', lastName: 'Cruz' }.
+ *
+ * The Settings screen offers one "Full Name" box, but the accounts table keeps
+ * the parts separate so the roster can sort by surname. Last token wins as the
+ * surname — the same convention the legacy backfill in db.js uses.
+ */
+function splitFullName(full) {
+  const parts = String(full ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return null;
+  if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+  return { firstName: parts.slice(0, -1).join(' '), lastName: parts[parts.length - 1] };
+}
+
+function profileFromDb(row) {
+  const out = { id: row.id, role: row.role, username: decrypt(row.username) };
+  for (const [apiKey, col] of Object.entries(PROFILE_COLS)) out[apiKey] = decrypt(row[col]) || '';
+  // What the sidebar and the dashboard greeting actually show. Falling back to
+  // the username means a freshly created account is never greeted as nobody.
+  out.name = [out.firstName, out.lastName].filter(Boolean).join(' ') || out.username;
+  return out;
+}
+
+app.get('/api/me', async (req, res, next) => {
   try {
-    const [rows] = await pool.query('SELECT name, photo FROM admin_profile WHERE id = 1');
-    if (!rows.length) { res.json({ name: 'Clinic Admin', photo: '' }); return; }
-    res.json({ name: decrypt(rows[0].name) || 'Clinic Admin', photo: decrypt(rows[0].photo) || '' });
+    const [rows] = await pool.query('SELECT * FROM accounts WHERE id = ?', [req.user.accountId]);
+    if (!rows.length) { res.status(404).json({ error: 'Account not found' }); return; }
+    res.json(profileFromDb(rows[0]));
   } catch (error) { next(error); }
 });
 
-app.put('/api/admin-profile', async (req, res, next) => {
+app.put('/api/me', async (req, res, next) => {
   try {
-    const name = encrypt(String(req.body?.name ?? '').trim() || 'Clinic Admin');
-    const photo = encrypt(String(req.body?.photo ?? ''));
-    await pool.query(
-      `INSERT INTO admin_profile (id, name, photo) VALUES (1, ?, ?)
-       ON DUPLICATE KEY UPDATE name = VALUES(name), photo = VALUES(photo)`,
-      [name, photo],
-    );
-    res.json({ ok: true });
+    const body = req.body || {};
+    const tooBig = oversizedImage(body);
+    if (tooBig) { res.status(413).json({ error: tooBig }); return; }
+
+    // One "Full Name" box on screen, two columns underneath. Explicit
+    // first/last still win if a caller sends them.
+    const patch = { ...body };
+    if (patch.fullName !== undefined && patch.firstName === undefined && patch.lastName === undefined) {
+      const split = splitFullName(patch.fullName);
+      if (split) Object.assign(patch, split);
+    }
+
+    const sets = [];
+    const vals = [];
+    for (const [apiKey, col] of Object.entries(PROFILE_COLS)) {
+      if (patch[apiKey] === undefined) continue;
+      sets.push(`${col} = ?`);
+      vals.push(encrypt(String(patch[apiKey])));
+    }
+    // Role and username are identity, not profile: neither is editable here, so
+    // this route can never be used to promote yourself or take over a login.
+    if (!sets.length) { res.status(400).json({ error: 'No profile fields to update' }); return; }
+
+    vals.push(req.user.accountId);
+    await pool.query(`UPDATE accounts SET ${sets.join(', ')} WHERE id = ?`, vals);
+    const [rows] = await pool.query('SELECT * FROM accounts WHERE id = ?', [req.user.accountId]);
+    res.json(profileFromDb(rows[0]));
   } catch (error) { next(error); }
 });
 
@@ -1273,6 +1396,7 @@ async function initDb({ quiet = false } = {}) {
     await ensureDbUpdates();
     await ensureSessionTable();
     await seedAccountsIfEmpty();
+    await migrateAdminProfileToAccount();
     dbReady = true;
     console.log('[db] Connected — schema ready.');
     return true;

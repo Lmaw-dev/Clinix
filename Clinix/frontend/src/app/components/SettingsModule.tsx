@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   User, Shield, Building2, Monitor, FileText, Bell,
   Database, Clock, Lock, Info, Camera, Check, Eye, EyeOff,
@@ -6,7 +6,7 @@ import {
   ChevronRight, GraduationCap, Plus, Trash2, X, CalendarClock,
 } from 'lucide-react';
 
-import { Page, AdminProfile } from '../App';
+import { Page } from '../App';
 import { useTheme } from '../ThemeContext';
 import { APP_VERSION } from '../version';
 import { confirmDialog } from './ConfirmDialog';
@@ -18,6 +18,7 @@ import {
 } from '../colleges';
 import {
   previewYearEndApi, commitYearEndApi, YearEndCandidate, YearEndPlan,
+  saveMyProfileApi, EMPTY_PROFILE, type UserProfile,
 } from '../store';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -31,11 +32,22 @@ function lsSave(key: string, v: unknown) {
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
+// Exactly the fields an account owns about itself, and no more. `username` and
+// `role` were editable here before and persisted nowhere — a staff member could
+// set their role to "Clinic Administrator" and the box would remember it while
+// changing nothing. Both are shown read-only now; changing either is an admin
+// action on the Accounts screen.
 type AccountData = {
-  fullName: string; username: string; email: string;
-  contact: string; employeeId: string; role: string;
-  department: string; status: 'active' | 'inactive';
+  fullName: string; email: string; contact: string;
+  employeeId: string; address: string; birthdate: string;
 };
+
+function accountFrom(p: UserProfile): AccountData {
+  return {
+    fullName: p.name, email: p.email, contact: p.contact,
+    employeeId: p.empId, address: p.address, birthdate: p.birthdate,
+  };
+}
 type ClinicInfo = {
   name: string; address: string; contact: string;
   email: string; officeHours: string; emergency: string;
@@ -182,15 +194,13 @@ function SaveBar({ onSave, saved }: { onSave: () => void; saved: boolean }) {
 type Props = {
   onNavigate: (p: Page) => void;
   showToast: (m: string) => void;
-  adminProfile?: AdminProfile;
-  setAdminProfile?: React.Dispatch<React.SetStateAction<AdminProfile>>;
+  userProfile?: UserProfile;
+  setUserProfile?: React.Dispatch<React.SetStateAction<UserProfile>>;
   certificatesEnabled?: boolean;
   setCertificatesEnabled?: (v: boolean) => void;
   /** Re-read the student list after year-end processing rewrote it server-side. */
   onRosterChanged?: () => void;
 };
-
-const DEFAULT_PROFILE: AdminProfile = { name: 'Clinic Admin', photo: '' };
 
 // ── Settings tabs (keeps the page short instead of one long scroll) ───────────
 type TabId = 'account' | 'security' | 'clinic' | 'prefs' | 'data' | 'about';
@@ -215,20 +225,30 @@ const TABS: TabDef[] = [
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_PROFILE, setAdminProfile, certificatesEnabled = true, setCertificatesEnabled, onRosterChanged }: Props) {
+export function SettingsModule({ onNavigate, showToast, userProfile = EMPTY_PROFILE, setUserProfile, certificatesEnabled = true, setCertificatesEnabled, onRosterChanged }: Props) {
   const { isDark, toggle: toggleTheme } = useTheme();
   const isAdmin = canSeeConfidential();
   const photoRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<TabId>('account');
 
   // ── Account state
-  const [account, setAccount] = useState<AccountData>(() => ls('clinixAccount', {
-    fullName: adminProfile?.name ?? 'Clinic Admin', username: 'clinic.admin',
-    email: 'clinic@bisu-calape.edu.ph', contact: '', employeeId: '',
-    role: 'Clinic Administrator', department: 'Health Services', status: 'active',
-  }));
-  const [accountPhoto, setAccountPhoto] = useState(adminProfile?.photo ?? '');
+  // Seeded from the signed-in account rather than from a `clinixAccount` blob in
+  // localStorage. The old blob was per-browser and invented its defaults
+  // ("clinic.admin", "clinic@bisu-calape.edu.ph"), so the page showed a plausible
+  // profile that belonged to nobody and matched no row in the database.
+  const [account, setAccount] = useState<AccountData>(() => accountFrom(userProfile));
+  const [accountPhoto, setAccountPhoto] = useState(userProfile.photo);
   const [accountSaved, setAccountSaved] = useState(false);
+  const [accountSaving, setAccountSaving] = useState(false);
+
+  // The profile arrives from the server after this component may already have
+  // mounted, and it is replaced wholesale on save. Re-seed the form when it
+  // does; it only changes on load and on a successful save, so this cannot
+  // discard an edit in progress.
+  useEffect(() => {
+    setAccount(accountFrom(userProfile));
+    setAccountPhoto(userProfile.photo);
+  }, [userProfile]);
 
   // ── Security state
   const [twoFa, setTwoFa] = useState(() => ls('clinixTwoFa', false));
@@ -377,10 +397,37 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
     setter(true); setTimeout(() => setter(false), 2000);
   }
 
-  function saveAccount() {
-    lsSave('clinixAccount', account);
-    setAdminProfile?.({ name: account.fullName || 'Clinic Admin', photo: accountPhoto });
-    showToast('Account updated'); saved(setAccountSaved);
+  /**
+   * Save your own profile to the database.
+   *
+   * Awaited rather than fired and forgotten: the previous version handed the
+   * change to an effect that swallowed any failure, so a rejected save still
+   * showed "Account updated" and the user only found out it had not stuck when
+   * they signed in somewhere else.
+   */
+  async function saveAccount() {
+    if (accountSaving) return;
+    setAccountSaving(true);
+    try {
+      const updated = await saveMyProfileApi({
+        fullName: account.fullName,
+        email: account.email,
+        contact: account.contact,
+        empId: account.employeeId,
+        address: account.address,
+        birthdate: account.birthdate,
+        photo: accountPhoto,
+      });
+      // The server composes the display name from the split first/last columns,
+      // so take its answer rather than assuming ours matches.
+      setUserProfile?.(updated);
+      showToast('Profile updated');
+      saved(setAccountSaved);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not save your profile');
+    } finally {
+      setAccountSaving(false);
+    }
   }
 
   function saveClinic() { lsSave('clinixClinicInfo', clinic); showToast('Clinic info saved'); saved(setClinicSaved); }
@@ -444,7 +491,6 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
   const roleLabel = ROLE_LABELS[currentRole()];
 
   // ── Render helpers
-  const selClass = `${INPUT} appearance-none`;
   const accentOptions: Array<{ id: SysPrefs['accent']; label: string; color: string }> = [
     { id: 'blue', label: 'Azul Brant', color: '#1B2A6E' },
     { id: 'green', label: 'Horizonte Claro', color: '#6C7FC8' },
@@ -611,11 +657,8 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 <input ref={photoRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-black dark:text-slate-100" style={{ fontSize: 16, fontWeight: 700 }}>{account.fullName || 'Clinic Admin'}</p>
-                <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: 12 }}>{account.role} · {account.department}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${account.status === 'active' ? 'bg-blue-100 text-blue-700' : 'bg-blue-100 text-slate-500'}`}>{account.status === 'active' ? 'Active' : 'Inactive'}</span>
-                </div>
+                <p className="text-black dark:text-slate-100" style={{ fontSize: 16, fontWeight: 700 }}>{account.fullName || roleLabel}</p>
+                <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: 12 }}>{roleLabel}</p>
               </div>
               {accountPhoto && <button onClick={() => setAccountPhoto('')} className="text-red-500 hover:text-red-600 text-xs transition-colors">Remove photo</button>}
             </div>
@@ -625,8 +668,11 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               <Field label="Full Name">
                 <input value={account.fullName} onChange={e => setAccount(a => ({ ...a, fullName: e.target.value }))} placeholder="Full name" className={INPUT} style={{ fontSize: 13 }} />
               </Field>
+              {/* Your login and your role identify the account rather than
+                  describe it, so neither is editable from your own profile.
+                  Both are managed on the Accounts screen. */}
               <Field label="Username">
-                <input value={account.username} onChange={e => setAccount(a => ({ ...a, username: e.target.value }))} placeholder="username" className={INPUT} style={{ fontSize: 13 }} />
+                <input value={userProfile.username} readOnly disabled className={INPUT} style={{ fontSize: 13, opacity: 0.7 }} />
               </Field>
               <Field label="Email Address">
                 <input type="email" value={account.email} onChange={e => setAccount(a => ({ ...a, email: e.target.value }))} placeholder="email@bisu.edu.ph" className={INPUT} style={{ fontSize: 13 }} />
@@ -637,28 +683,17 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
               <Field label="Employee ID">
                 <input value={account.employeeId} onChange={e => setAccount(a => ({ ...a, employeeId: e.target.value }))} placeholder="EMP-001" className={INPUT} style={{ fontSize: 13 }} />
               </Field>
-              <Field label="Department">
-                <input value={account.department} onChange={e => setAccount(a => ({ ...a, department: e.target.value }))} placeholder="Health Services" className={INPUT} style={{ fontSize: 13 }} />
+              <Field label="Birthdate">
+                <input type="date" value={account.birthdate} onChange={e => setAccount(a => ({ ...a, birthdate: e.target.value }))} className={INPUT} style={{ fontSize: 13 }} />
               </Field>
               <Field label="Role">
-                <select value={account.role} onChange={e => setAccount(a => ({ ...a, role: e.target.value }))} className={selClass} style={{ fontSize: 13 }}>
-                  <option>Clinic Administrator</option>
-                  <option>Nurse</option>
-                  <option>Physician</option>
-                </select>
+                <input value={roleLabel} readOnly disabled className={INPUT} style={{ fontSize: 13, opacity: 0.7 }} />
               </Field>
-              <Field label="Status">
-                <div className="flex gap-3 pt-1">
-                  {(['active', 'inactive'] as const).map(s => (
-                    <button key={s} onClick={() => setAccount(a => ({ ...a, status: s }))}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl border transition-colors"
-                      style={{ fontSize: 13, fontWeight: 500, borderColor: account.status === s ? '#4C5CAE' : '#DEE3F5', background: account.status === s ? '#EEF1FA' : 'transparent', color: account.status === s ? '#4C5CAE' : '#64748B' }}>
-                      <span className="w-3 h-3 rounded-full border-2" style={{ borderColor: account.status === s ? '#4C5CAE' : '#C6CEEC', background: account.status === s ? '#4C5CAE' : 'transparent' }} />
-                      {s.charAt(0).toUpperCase() + s.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </Field>
+              <div className="col-span-2">
+                <Field label="Address">
+                  <input value={account.address} onChange={e => setAccount(a => ({ ...a, address: e.target.value }))} placeholder="Home address" className={INPUT} style={{ fontSize: 13 }} />
+                </Field>
+              </div>
             </div>
             <SaveBar onSave={saveAccount} saved={accountSaved} />
           </SectionCard>

@@ -89,6 +89,13 @@ export async function ensureDbUpdates() {
     )
   `);
 
+  // A profile picture belongs to the person, not to the clinic. It used to live
+  // in admin_profile — a single shared row — so whoever saved their profile last
+  // replaced the name and photo everyone else saw. It is a column on the account
+  // now. LONGTEXT because it holds a base64 data URL, encrypted like every other
+  // personal field. See migrateAdminProfileToAccount() in server.js for the lift.
+  await pool.query('ALTER TABLE accounts ADD COLUMN IF NOT EXISTS photo LONGTEXT NULL').catch(() => {});
+
   // ── Consultation log moves from the browser into the database ──────────────
   // The log used to live in localStorage, which meant the staff member who took
   // the vital signs and the nurse who read them only saw the same data if they

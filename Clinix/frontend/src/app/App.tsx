@@ -18,7 +18,7 @@ import { ConsultationsModule } from './components/ConsultationsModule';
 import { listConsultationsApi, migrateLocalConsultations } from './consultations';
 import {
   listApi, createApi, migrateLocalCollection, text, toDateInput, toSqlDateTime,
-  toDisplayDateTime, getAdminProfileApi, saveAdminProfileApi,
+  toDisplayDateTime, getMyProfileApi, EMPTY_PROFILE, type UserProfile,
   listPrescriptionsApi, type Prescription,
 } from './store';
 import { listDocumentsByForm } from './documents';
@@ -39,11 +39,6 @@ export type Page =
   | 'reports'
   | 'settings'
   | 'accounts';
-
-export type AdminProfile = {
-  name: string;
-  photo: string;
-};
 
 /**
  * Where a student stands with the school. Graduating does not archive, delete
@@ -651,13 +646,13 @@ export default function App() {
   // straight into the database — so there is nothing to migrate and no cache.
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
 
-  const [adminProfile, setAdminProfile] = useState<AdminProfile>(() =>
-    loadFromStorage('clinixAdminProfile', { name: 'Clinic Admin', photo: '' })
-  );
-  // Guards the save-on-change effect below: until the server copy has been
-  // fetched, the state still holds the local default, and writing that back
-  // would overwrite the real profile with "Clinic Admin".
-  const adminProfileLoaded = useRef(false);
+  // The signed-in user's own profile, fetched fresh on each sign-in.
+  //
+  // Deliberately NOT cached in localStorage. It used to be, back when there was
+  // one shared clinic profile — but a per-account profile cached on a shared
+  // clinic PC means signing out as the nurse and in as a staff member greets
+  // them by the nurse's name and photo until the fetch lands.
+  const [userProfile, setUserProfile] = useState<UserProfile>(EMPTY_PROFILE);
 
   // Persist to localStorage
   useEffect(() => { localStorage.setItem('clinixStudents', JSON.stringify(students)); }, [students]);
@@ -668,12 +663,11 @@ export default function App() {
   useEffect(() => { localStorage.setItem('clinixCertificates', JSON.stringify(certificates)); }, [certificates]);
   useEffect(() => { localStorage.setItem('clinixConsultations', JSON.stringify(consultations)); }, [consultations]);
   useEffect(() => { localStorage.setItem('clinixActivities', JSON.stringify(activities)); }, [activities]);
-  // Cached locally so the name/photo show instantly on the next load, and saved
-  // to the database so the same profile follows the account to any device.
-  useEffect(() => {
-    localStorage.setItem('clinixAdminProfile', JSON.stringify(adminProfile));
-    if (adminProfileLoaded.current) saveAdminProfileApi(adminProfile).catch(() => { /* cached copy stands */ });
-  }, [adminProfile]);
+  // The profile is saved explicitly by the Settings screen rather than by an
+  // effect watching this state. The old save-on-change effect fired on the
+  // initial hydration too, which is why it needed a ref to tell a real edit from
+  // a first render — and it swallowed failures, so a rejected save still looked
+  // saved. Settings now awaits the write and reports what actually happened.
   useEffect(() => { try { localStorage.setItem('clinixShowCertificates', String(certificatesEnabled)); } catch { /* ignore */ } }, [certificatesEnabled]);
 
   // Persist the certificates toggle system-wide (shared across devices) + local cache.
@@ -896,10 +890,12 @@ export default function App() {
 
       step('Loading your profile');
       try {
-        const profile = await getAdminProfileApi();
-        if (!cancelled && profile.name) setAdminProfile(profile);
-      } catch { /* keep the cached profile */ }
-      finally { adminProfileLoaded.current = true; }
+        const profile = await getMyProfileApi();
+        if (!cancelled) setUserProfile(profile);
+      } catch {
+        // There is no cached copy to fall back on by design — the sidebar shows
+        // the username instead of somebody else's name.
+      }
       finishStep();
 
       // System-wide feature toggles, so they apply to everyone rather than per device.
@@ -951,6 +947,10 @@ export default function App() {
       localStorage.removeItem('clinixRole');
       localStorage.removeItem('clinixUser');
     } catch {}
+    // The clinic PC is shared. Now that a profile belongs to one account rather
+    // than to the clinic, leaving it in state would greet the next person to
+    // sign in by the previous person's name and photo.
+    setUserProfile(EMPTY_PROFILE);
     setIsLoggedIn(false);
     setActivePage('dashboard');
   }, []);
@@ -1009,7 +1009,7 @@ export default function App() {
         onNavigate={navigate}
         onLogout={() => setLogoutOpen(true)}
         certificatesEnabled={certificatesEnabled}
-        userName={adminProfile.name}
+        userName={userProfile.name || currentUser}
         username={currentUser}
       />
 
@@ -1026,7 +1026,7 @@ export default function App() {
               inventory={inventory}
               activities={activities}
               onNavigate={navigate}
-              adminProfile={adminProfile}
+              userProfile={userProfile}
               role={role}
               onOpenStudentProfile={pageAllowed('students')
                 ? (id) => { setProfileStudentId(id); navigate('students'); }
@@ -1117,8 +1117,8 @@ export default function App() {
             <SettingsModule
               onNavigate={navigate}
               showToast={showToast}
-              adminProfile={adminProfile}
-              setAdminProfile={setAdminProfile}
+              userProfile={userProfile}
+              setUserProfile={setUserProfile}
               certificatesEnabled={certificatesEnabled}
               setCertificatesEnabled={updateCertificatesEnabled}
               onRosterChanged={reloadStudents}

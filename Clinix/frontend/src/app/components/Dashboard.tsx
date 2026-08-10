@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   GraduationCap,
   Users,
@@ -41,9 +41,9 @@ import {
   InventoryItem,
   Activity as ActivityType,
   Page,
-  AdminProfile,
 } from '../App';
 import { Role, ROLE_LABELS, ROLE_DEFAULT_NAMES, canAccess } from '../auth';
+import { isoDate, type UserProfile } from '../store';
 import { useTheme } from '../ThemeContext';
 import { Modal } from './Modal';
 
@@ -77,7 +77,7 @@ type Props = {
   inventory: InventoryItem[];
   activities: ActivityType[];
   onNavigate: (p: Page) => void;
-  adminProfile: AdminProfile;
+  userProfile: UserProfile;
   role: Role;
   /** Opens the full profile page in the Students module (when the role can access it) */
   onOpenStudentProfile?: (studentId: string) => void;
@@ -85,15 +85,46 @@ type Props = {
 
 type QuickResult = { type: 'Student'; person: Student } | { type: 'Faculty & Staff'; person: FacultyMember };
 
+/**
+ * The header date and time, ticking once a second.
+ *
+ * This is its own component on purpose. The clock used to be a `now` state on
+ * the Dashboard itself, so every tick re-rendered the whole page — including the
+ * charts. Recharts rebuilds its layout when it re-renders and its
+ * ResponsiveContainer re-measures, which is what made the bars visibly blink
+ * once a second. Keeping the ticking state down here means a tick repaints these
+ * two spans and nothing else.
+ */
+function LiveClock({ C }: { C: { txtMuted: string; txtPrimary: string } }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <>
+      <span style={{ fontSize: 12, color: C.txtMuted, fontWeight: 500 }}>
+        {now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      </span>
+      <span style={{ width: 1, height: 12, background: C.txtMuted, opacity: 0.3, display: 'inline-block' }} />
+      <span style={{ fontSize: 13, color: C.txtPrimary, fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' }}>
+        {now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+      </span>
+    </>
+  );
+}
+
 export function Dashboard({
-  students, faculty, consultations, medRecords, medForms, inventory, activities, onNavigate, adminProfile, role,
+  students, faculty, consultations, medRecords, medForms, inventory, activities, onNavigate, userProfile, role,
   onOpenStudentProfile,
 }: Props) {
   const { isDark } = useTheme();
 
-  const displayName = role === 'admin'
-    ? (adminProfile.name || ROLE_DEFAULT_NAMES.admin)
-    : ROLE_DEFAULT_NAMES[role];
+  // Every account has its own profile now, so the greeting is the person's own
+  // name whatever their role. It used to be admin-only because there was one
+  // shared profile and showing it to everyone would have shown them the nurse's.
+  const displayName = userProfile.name || ROLE_DEFAULT_NAMES[role];
   const roleLabel = ROLE_LABELS[role];
 
   const C = {
@@ -156,7 +187,7 @@ export function Dashboard({
   const alumniCount = students.filter((s) => s.status === 'graduated').length;
   const droppedCount = students.length - enrolledCount - alumniCount;
 
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = isoDate();
   const consultToday = consultations.filter((c) => c.date === todayKey).length;
   const consultMonth = consultations.filter((c) => isThisMonth(c.date)).length;
 
@@ -164,40 +195,51 @@ export function Dashboard({
   const studentCopies = medForms.reduce((n, f) => n + f.entries.filter((e) => e.ownerType !== 'faculty').length, 0);
   const otherCopies = formCopies - studentCopies;
 
+  // ── Chart data ─────────────────────────────────────────────────────────────
+  // Memoised on the collections they are built from, so a re-render caused by
+  // something unrelated — a keystroke in Quick Search, opening the bell — hands
+  // Recharts the same array it already has instead of a fresh one. Recharts
+  // treats a new `data` identity as new data and rebuilds the chart, which is
+  // what these panels were doing on every render.
+
   // Monthly consultations (last 6 months)
-  const monthlyMap = new Map<string, number>();
-  consultations.forEach((c) => {
-    const d = new Date(c.date);
-    if (!isNaN(d.getTime())) {
-      const key = d.toLocaleString(undefined, { month: 'short', year: '2-digit' });
-      monthlyMap.set(key, (monthlyMap.get(key) || 0) + 1);
-    }
-  });
-  const monthlyData = Array.from(monthlyMap.entries()).slice(-6).map(([name, value]) => ({ name, value }));
+  const monthlyData = useMemo(() => {
+    const monthlyMap = new Map<string, number>();
+    consultations.forEach((c) => {
+      const d = new Date(c.date);
+      if (!isNaN(d.getTime())) {
+        const key = d.toLocaleString(undefined, { month: 'short', year: '2-digit' });
+        monthlyMap.set(key, (monthlyMap.get(key) || 0) + 1);
+      }
+    });
+    return Array.from(monthlyMap.entries()).slice(-6).map(([name, value]) => ({ name, value }));
+  }, [consultations]);
   const hasMonthlyData = monthlyData.some((d) => d.value > 0);
 
   // Department breakdown
-  const deptMap = new Map<string, number>();
-  students.filter((s) => s.status === 'enrolled').forEach((s) => {
-    const k = s.course || 'Unknown';
-    deptMap.set(k, (deptMap.get(k) || 0) + 1);
-  });
-  const deptData = Array.from(deptMap.entries()).slice(0, 6).map(([name, value]) => ({
-    name: name.length > 10 ? name.slice(0, 9) + '…' : name,
-    value,
-  }));
+  const deptData = useMemo(() => {
+    const deptMap = new Map<string, number>();
+    students.filter((s) => s.status === 'enrolled').forEach((s) => {
+      const k = s.course || 'Unknown';
+      deptMap.set(k, (deptMap.get(k) || 0) + 1);
+    });
+    return Array.from(deptMap.entries()).slice(0, 6).map(([name, value]) => ({
+      name: name.length > 10 ? name.slice(0, 9) + '…' : name,
+      value,
+    }));
+  }, [students]);
   const hasDeptData = deptData.some((d) => d.value > 0);
 
   // Common illnesses from medical record keywords
-  const illnessData = ILLNESS_KEYWORDS.map(({ keyword, label }, i) => ({
+  const illnessData = useMemo(() => ILLNESS_KEYWORDS.map(({ keyword, label }, i) => ({
     label,
     fill: CAT[i % CAT.length],
     count: medRecords.filter((r) => r.summary.toLowerCase().includes(keyword)).length,
-  }));
+  })), [medRecords]);
   const illnessTotal = illnessData.reduce((s, x) => s + x.count, 0);
-  const illnessPie = illnessData
+  const illnessPie = useMemo(() => illnessData
     .filter((x) => x.count > 0)
-    .map((x) => ({ name: x.label, value: x.count, fill: x.fill }));
+    .map((x) => ({ name: x.label, value: x.count, fill: x.fill })), [illnessData]);
 
   // Low stock alert — items actually running low (has some stock, below 5),
   // excluding the archived "Medication (Old)" sheet and uncounted (0-qty) items.
@@ -238,21 +280,10 @@ export function Dashboard({
     { label: 'Generate Report', desc: 'View statistics', icon: BarChart2, page: 'reports' as Page, accent: ACCENT.purple, badge: 0 },
   ].filter((a) => canAccess(role, a.page));
 
-  const [now, setNow] = useState(() => new Date());
   const [notifOpen, setNotifOpen] = useState(false);
   const [quickSearch, setQuickSearch] = useState('');
   const [selectedPerson, setSelectedPerson] = useState<QuickResult | null>(null);
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
 
-  const dateStr = now.toLocaleDateString(undefined, {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  });
-  const timeStr = now.toLocaleTimeString(undefined, {
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
   const quickQuery = quickSearch.trim().toLowerCase();
   const quickResults: QuickResult[] = quickQuery ? [
     ...students.filter((s) => [s.name, s.studentId, s.course, s.yearLevel].join(' ').toLowerCase().includes(quickQuery)).map((person) => ({ type: 'Student' as const, person })),
@@ -436,9 +467,7 @@ export function Dashboard({
               padding: '6px 14px',
             }}
           >
-            <span style={{ fontSize: 12, color: C.txtMuted, fontWeight: 500 }}>{dateStr}</span>
-            <span style={{ width: 1, height: 12, background: C.txtMuted, opacity: 0.3, display: 'inline-block' }} />
-            <span style={{ fontSize: 13, color: C.txtPrimary, fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' }}>{timeStr}</span>
+            <LiveClock C={C} />
           </div>
 
           {/* Bell — opens the notification panel */}
@@ -528,11 +557,11 @@ export function Dashboard({
             )}
           </div>
 
-          {/* Admin avatar */}
+          {/* The signed-in user's avatar */}
           <div className="flex items-center gap-2">
-            {role === 'admin' && adminProfile.photo ? (
+            {userProfile.photo ? (
               <img
-                src={adminProfile.photo}
+                src={userProfile.photo}
                 alt={displayName}
                 style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }}
               />

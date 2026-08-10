@@ -72,6 +72,21 @@ export function text(value: unknown): string {
 }
 
 /**
+ * A date as YYYY-MM-DD in *local* time. Defaults to today.
+ *
+ * `new Date().toISOString().slice(0, 10)` is the obvious way to write this and
+ * it is wrong anywhere east of Greenwich: at 07:00 in Manila the UTC date is
+ * still yesterday, so anything comparing against it — "today's consultations",
+ * a seven-day trend — silently reports the wrong day until 8am. Consultation
+ * dates are stored as local calendar days, so they have to be built and
+ * compared as local calendar days. Same reasoning as toDateInput above.
+ */
+export function isoDate(d: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
  * "YYYY-MM-DD HH:MM:SS" in local time, which is what a MySQL DATETIME column
  * accepts. Using toISOString() here would store the UTC instant and shift every
  * timestamp by the local offset.
@@ -196,23 +211,67 @@ export async function commitYearEndApi(
   return res.json();
 }
 
-// ── Admin profile ────────────────────────────────────────────────────────────
-// A single row rather than a collection, so it has its own pair of calls.
+// ── Your own profile ─────────────────────────────────────────────────────────
+// The details of whoever is signed in. There is no id to pass: the server reads
+// the account from the session token, so these calls cannot reach anyone else's
+// profile even if someone edits the request. Managing *other* people's accounts
+// is a separate, admin-only screen (see auth.ts).
+//
+// This replaced a single shared row that every role wrote to, where the last
+// person to save their photo replaced the one the whole clinic saw.
 
-export type AdminProfileData = { name: string; photo: string };
+export type UserProfile = {
+  /** Display name, composed by the server from the first and last name. */
+  name: string;
+  photo: string;
+  firstName: string;
+  lastName: string;
+  middleName: string;
+  empId: string;
+  birthdate: string;
+  email: string;
+  address: string;
+  contact: string;
+  /** Read-only here — changing a login or a role is an admin action. */
+  username: string;
+  role: string;
+};
 
-export async function getAdminProfileApi(): Promise<AdminProfileData> {
-  const res = await request('/admin-profile');
-  const d = await res.json();
-  return { name: text(d.name) || 'Clinic Admin', photo: text(d.photo) };
+export const EMPTY_PROFILE: UserProfile = {
+  name: '', photo: '', firstName: '', lastName: '', middleName: '',
+  empId: '', birthdate: '', email: '', address: '', contact: '',
+  username: '', role: '',
+};
+
+function normalizeProfile(d: Record<string, unknown>): UserProfile {
+  return {
+    name: text(d.name), photo: text(d.photo),
+    firstName: text(d.firstName), lastName: text(d.lastName), middleName: text(d.middleName),
+    empId: text(d.empId), birthdate: text(d.birthdate), email: text(d.email),
+    address: text(d.address), contact: text(d.contact),
+    username: text(d.username), role: text(d.role),
+  };
 }
 
-export async function saveAdminProfileApi(profile: AdminProfileData): Promise<void> {
-  await request('/admin-profile', {
+export async function getMyProfileApi(): Promise<UserProfile> {
+  const res = await request('/me');
+  return normalizeProfile(await res.json());
+}
+
+/**
+ * Save changes to your own profile. `fullName` is accepted as a convenience —
+ * Settings shows one name box, and the server splits it into the first/last
+ * columns the accounts table keeps. Returns the saved profile.
+ */
+export async function saveMyProfileApi(
+  changes: Partial<UserProfile> & { fullName?: string },
+): Promise<UserProfile> {
+  const res = await request('/me', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(profile),
+    body: JSON.stringify(changes),
   });
+  return normalizeProfile(await res.json());
 }
 
 // ── Clinic protocol (the nurse's own formulary) ──────────────────────────────

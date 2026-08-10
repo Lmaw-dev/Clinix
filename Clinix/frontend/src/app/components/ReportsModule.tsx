@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   GraduationCap, Users, Stethoscope, FileText, Pill, Award,
   AlertTriangle, Clock, Download, Printer, RefreshCw,
@@ -13,7 +13,12 @@ import {
 } from 'recharts';
 import { Student, FacultyMember, MedRecord, MedForm, InventoryItem, Certificate, Consultation, Activity as ActivityType } from '../App';
 import { useTheme } from '../ThemeContext';
-import { Role, canExportReports } from '../auth';
+import { Role, canExportReports, currentUsername } from '../auth';
+import { isoDate } from '../store';
+import {
+  toCsv, toXlsx, toPrintHtml, printHtml, downloadBlob, reportFilename,
+  type ReportTable, type ReportMeta,
+} from '../reportExport';
 
 type Props = {
   students: Student[];
@@ -57,7 +62,7 @@ function pctChange(a: number, b: number) {
   return Math.round(((a - b) / b) * 100);
 }
 
-export function ReportsModule({ students, inventory, certificates, consultations, role }: Props) {
+export function ReportsModule({ students, faculty, inventory, certificates, consultations, role }: Props) {
   const { isDark } = useTheme();
   // Staff read the numbers only. Everything that takes a copy of the records
   // out of the system — export, generate, print — is hidden from them; the
@@ -75,6 +80,8 @@ export function ReportsModule({ students, inventory, certificates, consultations
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
   const [trendView, setTrendView] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
   const [diagRange, setDiagRange] = useState<'month' | 'all'>('month');
+  const [previewTables, setPreviewTables] = useState<ReportTable[] | null>(null);
+  const [exportError, setExportError] = useState('');
 
   const C = {
     card: isDark ? '#161F49' : '#FFFFFF',
@@ -121,6 +128,63 @@ export function ReportsModule({ students, inventory, certificates, consultations
     color: C.txtPrimary,
   };
 
+  // ── The reporting period ──────────────────────────────────────────────────
+  // Set by the Date filter above the tabs, and applied to everything that
+  // counts events. Declared here, above the stats, because they read it.
+
+  const dateRange = useMemo(() => {
+    const iso = isoDate;
+    const t = new Date();
+    const today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+
+    switch (dateFilter) {
+      case 'today':
+        return { from: iso(today), to: iso(today), label: 'Today' };
+      case 'week': {
+        const start = new Date(today);
+        start.setDate(today.getDate() - today.getDay());
+        return { from: iso(start), to: iso(today), label: 'This Week' };
+      }
+      case 'year':
+        return { from: iso(new Date(today.getFullYear(), 0, 1)), to: iso(today), label: `Year ${today.getFullYear()}` };
+      case 'custom': {
+        // Either end may be left blank, which reads as open-ended rather than
+        // as an empty range — a report "up to 30 June" is a normal request.
+        const from = customFrom || '';
+        const to = customTo || '';
+        const label = from && to ? `${from} to ${to}` : from ? `From ${from}` : to ? `Up to ${to}` : 'All dates';
+        return { from, to, label };
+      }
+      case 'month':
+      default:
+        return { from: iso(new Date(today.getFullYear(), today.getMonth(), 1)), to: iso(today), label: 'This Month' };
+    }
+  }, [dateFilter, customFrom, customTo]);
+
+  /** Dates are stored as YYYY-MM-DD, so a string compare is a date compare. */
+  const inRange = useCallback((date: string) => {
+    if (!date) return false;
+    const d = date.slice(0, 10);
+    if (dateRange.from && d < dateRange.from) return false;
+    if (dateRange.to && d > dateRange.to) return false;
+    return true;
+  }, [dateRange]);
+
+  // The records that fall inside the period. Everything that counts *events*
+  // is derived from these rather than from the full lists.
+  //
+  // What is NOT narrowed, and why:
+  //   · the roster and the stock list describe how things stand right now, so a
+  //     date range would only empty them — a student does not stop being
+  //     enrolled because you asked about last week;
+  //   · the Today / This Week / This Month cards and the trend and diagnosis
+  //     charts carry their own stated window, and filtering those would make
+  //     their own labels lie;
+  //   · pending certificates are a work queue, not a statistic. Narrowing it
+  //     would hide the oldest requests — exactly the ones needing attention.
+  const periodConsults = useMemo(() => consultations.filter(c => inRange(c.date)), [consultations, inRange]);
+  const periodCerts = useMemo(() => certificates.filter(c => inRange(c.date)), [certificates, inRange]);
+
   // ── Derived stats ────────────────────────────────────────────────────────
   // "Active population" means currently enrolled. Graduates and dropped
   // students are excluded from these counts but never from the data itself —
@@ -129,26 +193,31 @@ export function ReportsModule({ students, inventory, certificates, consultations
   const enrolled = useMemo(() => students.filter(s => s.status === 'enrolled'), [students]);
   const alumni = useMemo(() => students.filter(s => s.status === 'graduated'), [students]);
   const lowStock = useMemo(() => inventory.filter(i => i.qty >= 0 && i.qty < 5), [inventory]);
+  // Pending is a work queue rather than a statistic, so it is deliberately NOT
+  // narrowed to the period: the requests most needing attention are the oldest
+  // ones, and a date filter would be exactly what hid them.
   const pending = useMemo(() => certificates.filter(c => c.status === 'Pending'), [certificates]);
-  const approved = useMemo(() => certificates.filter(c => c.status === 'Approved'), [certificates]);
-  const rejected = useMemo(() => certificates.filter(c => c.status === 'Rejected'), [certificates]);
+  // Approved and rejected are throughput — how many were dealt with in the
+  // period — so these do follow the filter.
+  const approved = useMemo(() => periodCerts.filter(c => c.status === 'Approved'), [periodCerts]);
+  const rejected = useMemo(() => periodCerts.filter(c => c.status === 'Rejected'), [periodCerts]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoDate();
   const consultToday = consultations.filter(c => c.date === today).length;
   const consultWeek = consultations.filter(c => isThisWeek(c.date)).length;
   const consultMonth = consultations.filter(c => isThisMonth(c.date)).length;
   const consultLastMonth = consultations.filter(c => isLastMonth(c.date)).length;
   const consultTrendPct = pctChange(consultMonth, consultLastMonth);
 
-  // Unique patients served, split by person type
+  // Unique patients served in the period, split by person type
   const served = useMemo(() => {
     const stu = new Set<string>(); const fac = new Set<string>();
-    consultations.forEach(c => {
+    periodConsults.forEach(c => {
       const key = c.studentId || c.studentName || c.id;
       if (c.personType === 'faculty') fac.add(key); else stu.add(key);
     });
     return { students: stu.size, faculty: fac.size, total: stu.size + fac.size };
-  }, [consultations]);
+  }, [periodConsults]);
 
   const now = new Date();
   const expiredMeds = inventory.filter(i => {
@@ -174,7 +243,7 @@ export function ReportsModule({ students, inventory, certificates, consultations
     const days: { date: string; label: string; value: number }[] = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
+      const key = isoDate(d);
       const label = d.toLocaleDateString('en', { weekday: 'short' });
       const value = consultations.filter(c => c.date === key).length;
       days.push({ date: key, label, value });
@@ -182,11 +251,11 @@ export function ReportsModule({ students, inventory, certificates, consultations
     return days;
   }, [consultations]);
 
-  // Consultations by department (student course, faculty grouped together)
+  // Consultations by department in the period (faculty grouped together)
   const deptData = useMemo(() => {
     const byId = new Map(students.map(s => [s.studentId, s.course]));
     const m = new Map<string, number>();
-    consultations.forEach(c => {
+    periodConsults.forEach(c => {
       let dept = c.personType === 'faculty'
         ? 'Faculty & Staff'
         : (byId.get(c.studentId) || c.courseOrOffice || 'Other').trim();
@@ -195,7 +264,7 @@ export function ReportsModule({ students, inventory, certificates, consultations
     });
     return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6)
       .map(([name, value]) => ({ name, value }));
-  }, [consultations, students]);
+  }, [periodConsults, students]);
 
   // Medicine stock levels: top 5 by qty
   const medUsage = useMemo(() => {
@@ -216,7 +285,7 @@ export function ReportsModule({ students, inventory, certificates, consultations
     if (trendView === 'daily') {
       for (let i = 13; i >= 0; i--) {
         const d = new Date(nowD); d.setDate(nowD.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
+        const key = isoDate(d);
         out.push({
           label: d.toLocaleDateString('en', { month: 'short', day: 'numeric' }),
           value: consultations.filter(c => c.date === key).length,
@@ -584,10 +653,10 @@ export function ReportsModule({ students, inventory, certificates, consultations
       <div className="space-y-5">
         {/* KPI Cards — 4 only: consultations, patients, inventory, certificates */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-          <OverviewKpi icon={Stethoscope} accent={ACCENT.blue} title="Total Consultations"
-            value={consultations.length.toLocaleString()}
+          <OverviewKpi icon={Stethoscope} accent={ACCENT.blue} title="Consultations"
+            value={periodConsults.length.toLocaleString()}
             deltaPct={consultTrendPct}
-            note={`${consultToday} today · ${consultMonth} this month`} />
+            note={`${dateRange.label} · ${consultations.length.toLocaleString()} all-time`} />
           <OverviewKpi icon={Users} accent={ACCENT.green} title="Patients Served"
             value={served.total.toLocaleString()}
             rows={[
@@ -611,8 +680,10 @@ export function ReportsModule({ students, inventory, certificates, consultations
             value={approved.length}
             badge={pending.length > 0 ? { text: 'Needs Action', color: ACCENT.orange } : undefined}
             rows={[
-              { color: ACCENT.orange, text: `${pending.length} Pending` },
-              { color: C.txtMuted, text: `${certificates.length} Total Requests` },
+              // Pending is the standing queue, not a figure for this period —
+              // hence "all", so the two numbers are not read as one total.
+              { color: ACCENT.orange, text: `${pending.length} Pending (all)` },
+              { color: C.txtMuted, text: `${periodCerts.length} Requests · ${dateRange.label}` },
             ]} />
         </div>
 
@@ -804,9 +875,12 @@ export function ReportsModule({ students, inventory, certificates, consultations
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <SectionCard title="Consultation Summary" icon={Stethoscope}>
+            {/* These three carry their own fixed windows and stay put; the
+                selected-period row below is the one the filter drives. */}
             <StatRow label="Today" value={consultToday} color={SERIES} />
             <StatRow label="This Week" value={consultWeek} />
             <StatRow label="This Month" value={consultMonth} />
+            <StatRow label={`Selected period (${dateRange.label})`} value={periodConsults.length} color={SERIES} />
             <StatRow label="Total All-Time" value={consultations.length} />
             <StatRow label="Avg. Duration" value="11 mins" />
             <StatRow label="Avg. Wait Time" value="7 mins" />
@@ -825,7 +899,7 @@ export function ReportsModule({ students, inventory, certificates, consultations
             {/* Active-population figures count the enrolled only. Dividing by
                 every row on file would dilute the average with alumni who left
                 years ago and stopped generating visits. */}
-            <StatRow label="Avg. Consultations / Student" value={enrolled.length ? (consultations.length / enrolled.length).toFixed(1) : '—'} />
+            <StatRow label={`Avg. Consultations / Student (${dateRange.label})`} value={enrolled.length ? (periodConsults.length / enrolled.length).toFixed(1) : '—'} />
             <StatRow label="With Medical Conditions" value={enrolled.filter(s => s.medicalConditions && s.medicalConditions !== 'None recorded').length} />
             <StatRow label="Alumni Records Retained" value={alumni.length} />
           </SectionCard>
@@ -907,27 +981,34 @@ export function ReportsModule({ students, inventory, certificates, consultations
 
   // ── Certificates Tab ──────────────────────────────────────────────────────
   function CertificatesTab() {
+    // The chart breaks down one set of records, so every slice is drawn from
+    // the same period — mixing the standing pending queue in here would make
+    // the slices add up to more than the requests they came from.
+    const periodPending = periodCerts.filter(c => c.status === 'Pending');
     const certStatusData = [
       { name: 'Approved', value: approved.length, fill: STATUS.good },
-      { name: 'Pending', value: pending.length, fill: STATUS.warn },
+      { name: 'Pending', value: periodPending.length, fill: STATUS.warn },
       { name: 'Rejected', value: rejected.length, fill: STATUS.bad },
     ].filter(d => d.value > 0);
     return (
       <div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard icon={Award} label="Total Issued" value={certificates.length} sub="All certificates" accent={SERIES} />
-          <KpiCard icon={CheckCircle} label="Approved" value={approved.length} sub="Completed requests" accent={STATUS.good} />
-          <KpiCard icon={Clock} label="Pending" value={pending.length} sub="Awaiting review"
+          <KpiCard icon={Award} label="Requests" value={periodCerts.length} sub={dateRange.label} accent={SERIES} />
+          <KpiCard icon={CheckCircle} label="Approved" value={approved.length} sub={dateRange.label} accent={STATUS.good} />
+          {/* The one card that ignores the filter, and says so: an unreviewed
+              request from last month is still waiting today. */}
+          <KpiCard icon={Clock} label="Pending" value={pending.length} sub="Awaiting review · all dates"
             badge={pending.length > 0 ? { text: 'Needs Action', color: STATUS.warn } : undefined} accent={STATUS.warn} />
-          <KpiCard icon={XCircle} label="Rejected" value={rejected.length} sub="Declined requests" accent={STATUS.bad} />
+          <KpiCard icon={XCircle} label="Rejected" value={rejected.length} sub={dateRange.label} accent={STATUS.bad} />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <SectionCard title="Certificate Summary" icon={Award}>
-            <StatRow label="Total" value={certificates.length} />
+            <StatRow label={`Requests (${dateRange.label})`} value={periodCerts.length} />
             <StatRow label="Approved" value={approved.length} color={STATUS.good} />
-            <StatRow label="Pending" value={pending.length} color={STATUS.warn} />
             <StatRow label="Rejected" value={rejected.length} color={STATUS.bad} />
+            <StatRow label="Pending (all dates)" value={pending.length} color={STATUS.warn} />
             <StatRow label="Issued Today" value={certificates.filter(c => c.date === today).length} />
+            <StatRow label="Total All-Time" value={certificates.length} />
           </SectionCard>
           <div className="lg:col-span-2">
             <SectionCard title="Status Distribution" subtitle="Certificate requests by current status" icon={PieIcon}>
@@ -977,6 +1058,225 @@ export function ReportsModule({ students, inventory, certificates, consultations
             </ReportTable>
           </SectionCard>
         )}
+      </div>
+    );
+  }
+
+  // ── Export ────────────────────────────────────────────────────────────────
+  // The dialog has offered CSV, Excel and PDF since before any of them did
+  // anything; these are the pieces that were missing behind it.
+
+  /**
+   * Turn the selected tick-boxes into the tables that get written out.
+   *
+   * Dated records (consultations, certificates) are limited to the chosen
+   * period. A roster or a stock list is a snapshot of how things stand now, so
+   * narrowing those by date would just empty them.
+   */
+  const buildReportTables = useCallback((): ReportTable[] => {
+    const tables: ReportTable[] = [];
+    const dash = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
+
+    if (exportItems.consultation) {
+      const rows = consultations
+        .filter((c) => inRange(c.date))
+        .sort((a, b) => (a.date < b.date ? 1 : -1))
+        .map((c) => [
+          dash(c.date), dash(c.time), dash(c.studentId), dash(c.studentName),
+          c.personType === 'faculty' ? 'Faculty' : 'Student',
+          dash(c.age), dash(c.sex), dash(c.courseOrOffice), dash(c.purpose),
+          dash(c.chiefComplaint), dash(c.assessment), dash(c.management),
+          dash(c.bp), dash(c.temp), dash(c.pr), dash(c.rr), dash(c.o2sat),
+          dash(c.consultStatus || 'Pending'), dash(c.recordedBy), dash(c.confirmedBy),
+        ]);
+      tables.push({
+        title: 'Consultations',
+        columns: ['Date', 'Time', 'ID', 'Name', 'Type', 'Age', 'Sex', 'Course/Office', 'Purpose',
+          'Chief Complaint', 'Assessment', 'Management', 'BP', 'Temp', 'PR', 'RR', 'O2 Sat',
+          'Status', 'Recorded By', 'Confirmed By'],
+        rows,
+      });
+    }
+
+    if (exportItems.studentHealth) {
+      tables.push({
+        title: 'Student Health',
+        columns: ['Student ID', 'Name', 'Course', 'Year', 'Sex', 'Status', 'Blood Type',
+          'Allergies', 'Medical Conditions', 'Current Medications', 'Contact', 'Guardian', 'Guardian Contact'],
+        rows: students.map((s) => [
+          dash(s.studentId), dash(s.name), dash(s.course), dash(s.yearLevel), dash(s.gender),
+          dash(s.status), dash(s.bloodType), dash(s.allergies), dash(s.medicalConditions),
+          dash(s.currentMedications), dash(s.contactNumber), dash(s.guardianName), dash(s.guardianContact),
+        ]),
+      });
+    }
+
+    if (exportItems.inventory) {
+      tables.push({
+        title: 'Inventory',
+        columns: ['Code', 'Item', 'Category', 'Quantity', 'Unit', 'Expiry', 'Status'],
+        rows: inventory.map((i) => {
+          const expired = i.expiry ? new Date(i.expiry) < new Date() : false;
+          const status = i.archived ? 'Archived' : expired ? 'Expired' : i.qty <= 0 ? 'Out of stock' : i.qty < 5 ? 'Low stock' : 'OK';
+          // Quantity stays a number so the column can be totalled in Excel.
+          return [dash(i.code), dash(i.name), dash(i.category), Number(i.qty ?? 0), dash(i.unit), dash(i.expiry), status];
+        }),
+      });
+    }
+
+    if (exportItems.certificates) {
+      tables.push({
+        title: 'Medical Certificates',
+        columns: ['Request ID', 'Student ID', 'Student Name', 'Date', 'Status'],
+        rows: certificates
+          .filter((c) => inRange(c.date))
+          .map((c) => [dash(c.id), dash(c.studentId), dash(c.studentName), dash(c.date), dash(c.status)]),
+      });
+    }
+
+    if (exportItems.faculty) {
+      tables.push({
+        title: 'Faculty Health',
+        columns: ['Staff ID', 'Name', 'College', 'Designation', 'Employment', 'Contact', 'Blood Type', 'Medical History'],
+        rows: faculty.map((f) => [
+          dash(f.staffId), dash(f.name), dash(f.college), dash(f.role),
+          [f.employmentCategory, f.employmentType].filter(Boolean).join(' — ') || '—',
+          dash(f.contact), dash(f.bloodType), dash(f.medicalHistory),
+        ]),
+      });
+    }
+
+    return tables;
+  }, [exportItems, consultations, students, inventory, certificates, faculty, inRange]);
+
+  const exportMeta = useCallback((): ReportMeta => ({
+    period: dateRange.label,
+    generatedAt: new Date(),
+    generatedBy: currentUsername() || 'Clinix',
+  }), [dateRange]);
+
+  function handleGenerate() {
+    const tables = buildReportTables();
+    if (!tables.length) {
+      setExportError('Choose at least one report to include.');
+      return;
+    }
+    setExportError('');
+    const meta = exportMeta();
+
+    if (exportFormat === 'csv') {
+      downloadBlob(
+        new Blob([toCsv(tables, meta)], { type: 'text/csv;charset=utf-8' }),
+        reportFilename('csv', meta.generatedAt),
+      );
+    } else if (exportFormat === 'excel') {
+      downloadBlob(toXlsx(tables, meta), reportFilename('xlsx', meta.generatedAt));
+    } else {
+      // The browser's print dialog writes the PDF — "Destination: Save as PDF".
+      printHtml(toPrintHtml(tables, meta));
+    }
+    setShowExport(false);
+  }
+
+  function handlePreview() {
+    const tables = buildReportTables();
+    if (!tables.length) {
+      setExportError('Choose at least one report to preview.');
+      return;
+    }
+    setExportError('');
+    setPreviewTables(tables);
+    setShowExport(false);
+  }
+
+  // ── Preview Modal ─────────────────────────────────────────────────────────
+  // The same tables the export writes, on screen first. Long tables are capped
+  // so opening a preview of ten thousand consultations cannot lock the browser
+  // up; the export itself is never truncated.
+  const PREVIEW_ROW_LIMIT = 50;
+
+  function PreviewModal({ tables }: { tables: ReportTable[] }) {
+    const meta = { period: dateRange.label, generatedBy: currentUsername() || 'Clinix' };
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: 'rgba(13,18,48,0.55)' }}
+        onClick={() => setPreviewTables(null)}>
+        <div className={`${card} w-full max-w-5xl max-h-[90vh] flex flex-col`}
+          style={{ ...cardStyle, boxShadow: '0 24px 64px rgba(13,18,48,0.35)' }}
+          onClick={e => e.stopPropagation()}>
+
+          <div className="flex items-center justify-between gap-3 p-5 shrink-0" style={{ borderBottom: `1px solid ${C.divider}` }}>
+            <div>
+              <p style={{ fontSize: 15, fontWeight: 700, color: C.txtPrimary }}>Report Preview</p>
+              <p style={{ fontSize: 12, color: C.txtMuted, marginTop: 2 }}>
+                {meta.period} · {tables.length} section{tables.length !== 1 ? 's' : ''} · by {meta.generatedBy}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setPreviewTables(null); setShowExport(true); }}
+                className="px-4 py-2 rounded-xl font-semibold transition-colors"
+                style={{ background: 'transparent', color: C.txtSecond, border: `1px solid ${C.inputBorder}`, fontSize: 12.5 }}>
+                Back to options
+              </button>
+              <button onClick={() => { setPreviewTables(null); handleGenerate(); }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold transition-opacity hover:opacity-90"
+                style={{ background: PRIMARY_BTN, color: '#fff', fontSize: 12.5 }}>
+                <Download size={13} /> Export
+              </button>
+              <button onClick={() => setPreviewTables(null)} title="Close"
+                className="flex items-center justify-center rounded-lg transition-colors"
+                style={{ width: 30, height: 30, color: C.txtMuted, border: `1px solid ${C.inputBorder}` }}>
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-y-auto p-5 space-y-6">
+            {tables.map(t => (
+              <div key={t.title}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: C.txtPrimary, marginBottom: 8 }}>
+                  {t.title}
+                  <span style={{ fontSize: 12, fontWeight: 500, color: C.txtMuted, marginLeft: 8 }}>
+                    {t.rows.length} row{t.rows.length !== 1 ? 's' : ''}
+                  </span>
+                </p>
+                {t.rows.length === 0 ? (
+                  <p style={{ fontSize: 12, color: C.txtMuted, fontStyle: 'italic' }}>No records for this period.</p>
+                ) : (
+                  <>
+                    {/* The table scrolls inside its own box — these reports are
+                        wide, and the page itself must not scroll sideways. */}
+                    <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${C.cardBorder}` }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+                        <thead>
+                          <tr style={{ background: C.tableTh }}>
+                            {t.columns.map(col => (
+                              <th key={col} style={{ textAlign: 'left', padding: '7px 10px', color: C.txtSecond, fontWeight: 600, whiteSpace: 'nowrap' }}>{col}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {t.rows.slice(0, PREVIEW_ROW_LIMIT).map((row, ri) => (
+                            <tr key={ri} style={{ borderTop: `1px solid ${C.divider}` }}>
+                              {row.map((cell, ci) => (
+                                <td key={ci} style={{ padding: '6px 10px', color: C.txtMuted, whiteSpace: 'nowrap', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>{String(cell)}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {t.rows.length > PREVIEW_ROW_LIMIT && (
+                      <p style={{ fontSize: 11.5, color: C.txtMuted, marginTop: 6 }}>
+                        Showing the first {PREVIEW_ROW_LIMIT} of {t.rows.length} rows. The exported file contains all of them.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -1054,12 +1354,29 @@ export function ReportsModule({ students, inventory, certificates, consultations
               </button>
             ))}
           </div>
+          {/* What the chosen format will actually produce, so nobody presses
+              Generate expecting a file and gets a print dialog. */}
+          <p style={{ fontSize: 11.5, color: C.txtMuted, marginBottom: 12, lineHeight: 1.5 }}>
+            {exportFormat === 'pdf'
+              ? 'Opens your print dialog — choose "Save as PDF" as the destination.'
+              : exportFormat === 'excel'
+                ? 'Downloads an .xlsx workbook with one sheet per report.'
+                : 'Downloads a .csv file, one section per report.'}
+            {' '}Covers: <strong style={{ color: C.txtSecond }}>{dateRange.label}</strong>.
+          </p>
+
+          {exportError && (
+            <p style={{ fontSize: 12, color: STATUS.bad, marginBottom: 10 }}>{exportError}</p>
+          )}
+
           <div className="flex gap-3">
-            <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold transition-opacity hover:opacity-90"
+            <button onClick={handleGenerate}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold transition-opacity hover:opacity-90"
               style={{ background: PRIMARY_BTN, color: '#fff', fontSize: 13 }}>
               <Download size={14} /> Generate Report
             </button>
-            <button className="px-5 py-2.5 rounded-xl font-semibold transition-colors"
+            <button onClick={handlePreview}
+              className="px-5 py-2.5 rounded-xl font-semibold transition-colors"
               style={{ background: 'transparent', color: C.txtSecond, border: `1px solid ${C.inputBorder}`, fontSize: 13 }}>
               Preview
             </button>
@@ -1101,7 +1418,7 @@ export function ReportsModule({ students, inventory, certificates, consultations
                   style={{ background: C.card, border: `1px solid ${C.cardBorder}`, fontSize: 12, fontWeight: 600, color: C.txtSecond }}>
                   <Printer size={13} /> Print
                 </button>
-                <button onClick={() => setShowExport(true)} title="Export reports"
+                <button onClick={() => { setExportError(''); setShowExport(true); }} title="Export reports"
                   className="flex items-center gap-1.5 rounded-xl px-4 py-2 font-semibold transition-opacity hover:opacity-90"
                   style={{ background: PRIMARY_BTN, color: '#fff', fontSize: 12 }}>
                   <Download size={13} /> Export
@@ -1181,12 +1498,28 @@ export function ReportsModule({ students, inventory, certificates, consultations
         </div>
       </div>
 
+      {/* What the period does and does not cover. Without this, a filter that
+          moves the consultation figures but leaves the roster and the stock
+          counts alone reads as half-broken rather than as intended. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl px-3.5 py-2.5"
+        style={{ background: C.tableTh, border: `1px solid ${C.cardBorder}` }}>
+        <CalendarDays size={13} style={{ color: SERIES }} />
+        <span style={{ fontSize: 12, color: C.txtSecond, fontWeight: 600 }}>
+          Showing {dateRange.label}
+        </span>
+        <span style={{ fontSize: 12, color: C.txtMuted, lineHeight: 1.5 }}>
+          — consultations and certificates are counted within this period. Student
+          roster and medicine stock are current figures and do not change with it.
+        </span>
+      </div>
+
       {/* Tab Content */}
       {renderTab()}
 
       {/* Export Modal — the role check is repeated here so no leftover state
           can put the dialog on screen for someone who cannot export. */}
       {showExport && canExport && <ExportModal />}
+      {previewTables && canExport && <PreviewModal tables={previewTables} />}
     </div>
   );
 }

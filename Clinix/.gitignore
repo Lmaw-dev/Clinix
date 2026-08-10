@@ -7,3 +7,4 @@ backend/uploads/
 # Written by deploy/install-clinix.ps1 with paths specific to that PC
 deploy/start-clinix-hidden.vbs
 backend/clinix-server.log
+backend/clinix-server.err.log
