@@ -196,6 +196,79 @@ export async function commitYearEndApi(
   return res.json();
 }
 
+// ── Registrar masterlist sync ────────────────────────────────────────────────
+// The registrar's enrolment file is the authority on who is enrolled, in what
+// course, at what year level — so instead of the clinic re-typing year levels
+// every term, the file is uploaded and the roster is reconciled against it.
+//
+// Only enrolment columns move. Nothing in the file describes a student's
+// allergies, guardian or address, so none of those are sent and none are
+// touched; this is a sync, not a whole-record import.
+
+export type MasterlistEntry = {
+  /** Line number in the uploaded file, so a bad row can be found and fixed. */
+  line?: number;
+  studentId: string;
+  name: string;
+  course: string;
+  yearLevel: string;
+  status: string;
+  /** On updates — a readable summary of what moves, e.g. "2nd Year → 3rd Year". */
+  changes?: string;
+  /** On invalid/missing rows — why. */
+  reason?: string;
+};
+
+export type MasterlistPlan = {
+  /** In the file but not in the system yet: new first years, transferees. */
+  create: MasterlistEntry[];
+  /** Year level, course or status differs from what is stored. */
+  update: MasterlistEntry[];
+  /** Read successfully, already correct. */
+  unchanged: MasterlistEntry[];
+  /** Could not be read — the file needs fixing before these count. */
+  invalid: MasterlistEntry[];
+  /** Enrolled here, absent from the file. Never acted on without a tick. */
+  missing: MasterlistEntry[];
+  schoolYear: string;
+};
+
+export type MasterlistResult = {
+  created: number;
+  updated: number;
+  dropped: number;
+  unchanged: number;
+  invalid: number;
+};
+
+async function masterlist(action: 'preview' | 'commit', body: object): Promise<Response> {
+  return request(`/students/masterlist/${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** What the uploaded masterlist *would* change. Changes nothing. */
+export async function previewMasterlistApi(rows: object[], schoolYear: string): Promise<MasterlistPlan> {
+  const res = await masterlist('preview', { rows, schoolYear });
+  return res.json();
+}
+
+/**
+ * Apply the masterlist. The same rows are sent again and re-planned server-side,
+ * so what gets written is derived from the file rather than from a plan the
+ * browser could have edited. `dropMissing` holds only the IDs the admin ticked.
+ */
+export async function commitMasterlistApi(
+  rows: object[],
+  schoolYear: string,
+  dropMissing: string[],
+): Promise<MasterlistResult> {
+  const res = await masterlist('commit', { rows, schoolYear, dropMissing });
+  return res.json();
+}
+
 // ── Admin profile ────────────────────────────────────────────────────────────
 // A single row rather than a collection, so it has its own pair of calls.
 

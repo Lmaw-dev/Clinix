@@ -17,8 +17,10 @@ import {
   useCourseYears, setCourseYears, getCourseYears, DEFAULT_COURSE_YEARS, YEAR_OPTIONS,
 } from '../colleges';
 import {
-  previewYearEndApi, commitYearEndApi, YearEndCandidate, YearEndPlan,
+  previewYearEndApi, commitYearEndApi, YearEndPlan,
+  previewMasterlistApi, commitMasterlistApi, MasterlistPlan,
 } from '../store';
+import { parseMasterlistCsv, MasterlistRow } from '../masterlist';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -122,37 +124,67 @@ function SectionHeading({ icon: Icon, label }: { icon: React.ComponentType<{ siz
 }
 
 /**
- * The preview list for one bucket of year-end changes. Collapsed to the first
- * few rows with a count, because "300 students will be affected" is the number
- * the admin needs to see before committing — not 300 lines to scroll past.
+ * The preview list for one bucket of pending roster changes, shared by year-end
+ * processing and the registrar masterlist import. Collapsed to the first few
+ * rows with a count, because "300 students will be affected" is the number the
+ * admin needs to see before committing — not 300 lines to scroll past.
+ *
+ * Passing `selected` turns the bucket into a pick list: the masterlist import
+ * uses that for students who are enrolled here but absent from the registrar's
+ * file, which are never acted on unless somebody ticks them.
  */
-function YearEndList({ title, rows, describe, tone = 'normal' }: {
+function PreviewList<T extends { studentId: string; name: string }>({
+  title, rows, describe, tone = 'normal', selected, onToggle,
+}: {
   title: string;
-  rows: YearEndCandidate[];
-  describe: (s: YearEndCandidate) => string;
+  rows: T[];
+  describe: (s: T) => string;
   tone?: 'normal' | 'warn';
+  selected?: Set<string>;
+  onToggle?: (ids: string[], on: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (!rows.length) return null;
   const shown = expanded ? rows : rows.slice(0, 8);
+  const pickable = !!selected && !!onToggle;
+  const allOn = pickable && rows.every(s => selected!.has(s.studentId));
   return (
     <div className={`rounded-xl border ${tone === 'warn' ? 'border-amber-200 dark:border-amber-900/50' : 'border-blue-100 dark:border-slate-600'}`}>
       <div className={`flex items-center justify-between px-4 py-2.5 ${tone === 'warn' ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-blue-50 dark:bg-slate-700/40'}`}>
         <p className="text-black dark:text-slate-200" style={{ fontSize: 12.5, fontWeight: 600 }}>
           {title} · {rows.length}
+          {pickable && <span className="text-slate-500 dark:text-slate-400" style={{ fontWeight: 500 }}> · {rows.filter(s => selected!.has(s.studentId)).length} selected</span>}
         </p>
-        {rows.length > 8 && (
-          <button onClick={() => setExpanded(v => !v)} className="text-blue-600 hover:text-blue-700 dark:text-blue-300" style={{ fontSize: 12, fontWeight: 600 }}>
-            {expanded ? 'Show less' : `Show all ${rows.length}`}
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {pickable && (
+            <button onClick={() => onToggle!(rows.map(s => s.studentId), !allOn)} className="text-blue-600 hover:text-blue-700 dark:text-blue-300" style={{ fontSize: 12, fontWeight: 600 }}>
+              {allOn ? 'Clear all' : 'Select all'}
+            </button>
+          )}
+          {rows.length > 8 && (
+            <button onClick={() => setExpanded(v => !v)} className="text-blue-600 hover:text-blue-700 dark:text-blue-300" style={{ fontSize: 12, fontWeight: 600 }}>
+              {expanded ? 'Show less' : `Show all ${rows.length}`}
+            </button>
+          )}
+        </div>
       </div>
       <ul className="divide-y divide-slate-100 dark:divide-slate-700 max-h-72 overflow-y-auto">
         {shown.map(s => (
           <li key={s.studentId} className="flex items-center justify-between gap-3 px-4 py-2">
-            <span className="min-w-0">
-              <span className="block truncate text-black dark:text-slate-200" style={{ fontSize: 12.5, fontWeight: 500 }}>{s.name || s.studentId}</span>
-              <span className="block truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{describe(s)}</span>
+            <span className="flex min-w-0 items-center gap-3">
+              {pickable && (
+                <input
+                  type="checkbox"
+                  checked={selected!.has(s.studentId)}
+                  onChange={e => onToggle!([s.studentId], e.target.checked)}
+                  className="shrink-0 h-4 w-4 accent-amber-600"
+                  aria-label={`Mark ${s.name || s.studentId} as dropped`}
+                />
+              )}
+              <span className="min-w-0">
+                <span className="block truncate text-black dark:text-slate-200" style={{ fontSize: 12.5, fontWeight: 500 }}>{s.name || s.studentId}</span>
+                <span className="block truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{describe(s)}</span>
+              </span>
             </span>
             <span className="shrink-0 text-slate-400" style={{ fontSize: 11, fontFamily: 'monospace' }}>{s.studentId}</span>
           </li>
@@ -330,6 +362,97 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
       showToast(err instanceof Error ? err.message : 'Year-end processing failed — nothing was changed');
     } finally {
       setYearEndBusy(false);
+    }
+  }
+
+  // ── Registrar masterlist state
+  const masterlistInput = useRef<HTMLInputElement>(null);
+  const [mlFileName, setMlFileName] = useState('');
+  const [mlRows, setMlRows] = useState<MasterlistRow[]>([]);
+  const [mlWarnings, setMlWarnings] = useState<string[]>([]);
+  const [mlSy, setMlSy] = useState(() => {
+    const y = new Date().getFullYear();
+    return `${y}-${y + 1}`;
+  });
+  const [mlPlan, setMlPlan] = useState<MasterlistPlan | null>(null);
+  const [mlDrops, setMlDrops] = useState<Set<string>>(new Set());
+  const [mlBusy, setMlBusy] = useState(false);
+
+  function toggleDrop(ids: string[], on: boolean) {
+    setMlDrops(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => (on ? next.add(id) : next.delete(id)));
+      return next;
+    });
+  }
+
+  function handleMasterlistFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Clearing the input means picking the same file twice in a row still fires
+    // a change event, which matters when the encoder fixes the file and re-picks.
+    e.target.value = '';
+    if (!file) return;
+    // Any previous preview describes the previous file and must not survive it.
+    setMlPlan(null);
+    setMlDrops(new Set());
+    setMlFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, ignoredColumns, missingColumns } = parseMasterlistCsv(String(reader.result || ''));
+      setMlRows(rows);
+      const warnings: string[] = [];
+      if (missingColumns.length) warnings.push(`Missing required column(s): ${missingColumns.join(', ')}`);
+      if (ignoredColumns.length) warnings.push(`Ignored column(s): ${ignoredColumns.join(', ')}`);
+      if (!rows.length) warnings.push('No data rows were found below the header.');
+      setMlWarnings(warnings);
+    };
+    reader.onerror = () => { setMlRows([]); setMlWarnings(['Could not read that file.']); };
+    reader.readAsText(file);
+  }
+
+  async function runMasterlistPreview() {
+    if (!mlRows.length) { showToast('Choose a registrar CSV file first'); return; }
+    setMlBusy(true);
+    try {
+      const plan = await previewMasterlistApi(mlRows, mlSy.trim());
+      setMlPlan(plan);
+      // Absent-from-the-file students start unticked on purpose. A per-college
+      // export or a late encoder looks exactly like a student who left, and
+      // pre-ticking them would make dropping the roster the default action.
+      setMlDrops(new Set());
+    } catch (err) {
+      setMlPlan(null);
+      showToast(err instanceof Error ? err.message : 'Could not read that masterlist');
+    } finally {
+      setMlBusy(false);
+    }
+  }
+
+  async function commitMasterlist() {
+    if (!mlPlan) return;
+    const total = mlPlan.create.length + mlPlan.update.length + mlDrops.size;
+    if (!total) { showToast('Nothing to apply — the roster already matches this file'); return; }
+    if (!(await confirmDialog({
+      title: `Apply the registrar masterlist for SY ${mlSy.trim() || '—'}?`,
+      message:
+        `${mlPlan.update.length} student record(s) updated, ${mlPlan.create.length} added, and ` +
+        `${mlDrops.size} marked dropped. Only year level, course, status and school year change — ` +
+        'medical records, guardian details and addresses are left exactly as they are. ' +
+        `${mlPlan.invalid.length} unreadable row(s) will be skipped.`,
+      confirmLabel: `Apply ${total} change${total !== 1 ? 's' : ''}`,
+    }))) return;
+
+    setMlBusy(true);
+    try {
+      const r = await commitMasterlistApi(mlRows, mlSy.trim(), [...mlDrops]);
+      showToast(`Masterlist applied — ${r.updated} updated, ${r.created} added, ${r.dropped} dropped`);
+      onRosterChanged?.();
+      setMlPlan(null);
+      setMlDrops(new Set());
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Import failed — nothing was changed');
+    } finally {
+      setMlBusy(false);
     }
   }
 
@@ -865,10 +988,152 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
           </div>
         </SectionCard>
 
-        <SectionHeading icon={CalendarClock} label="End of School Year" />
+        <SectionHeading icon={CalendarClock} label="Enrolment &amp; School Year" />
+        <SectionCard
+          title="Registrar Masterlist Import"
+          desc="Upload the registrar's enrolled-students file and let it update year levels, courses and enrolment status."
+        >
+          {/* The registrar's file is the authority on who is enrolled, so this is
+              the preferred way to roll the roster into a new term: it carries the
+              irregulars, shiftees and stop-outs that a blanket promotion gets
+              wrong. Preview first, same as year-end — nothing is written until
+              the counts have been read. */}
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 dark:border-slate-600 dark:bg-slate-700/40 mb-5">
+            <p className="text-slate-600 dark:text-slate-300" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+              Only <strong>year level, course, enrolment status and school year</strong> are
+              taken from the file. Medical records, allergies, guardian details, addresses
+              and photos are never touched — the registrar's file does not describe them,
+              so they are left exactly as the clinic recorded them.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="School Year / Term">
+              <input
+                value={mlSy}
+                onChange={e => setMlSy(e.target.value)}
+                placeholder="2026-2027"
+                className={INPUT}
+                style={{ fontSize: 13 }}
+              />
+            </Field>
+            <Field label="Masterlist file">
+              <button
+                onClick={() => masterlistInput.current?.click()}
+                className={`${INPUT} flex items-center gap-2 text-left`}
+                style={{ fontSize: 13 }}
+              >
+                <Upload size={14} className="shrink-0 text-slate-400" />
+                <span className="truncate">{mlFileName || 'Choose a CSV file…'}</span>
+              </button>
+              <input
+                ref={masterlistInput}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleMasterlistFile}
+                className="hidden"
+              />
+            </Field>
+          </div>
+          <p className="text-slate-400 mt-1.5" style={{ fontSize: 11.5 }}>
+            Save the registrar's Excel sheet as <strong>CSV</strong> first (File → Save As → CSV).
+            Columns read: Student ID, Name (or Last/First/Middle), Course, Year Level, Status, Sex.
+            The school year is stamped on everyone found in the file; leave it blank
+            to keep whatever each student already has.
+          </p>
+
+          {mlWarnings.length > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-900/20">
+              {mlWarnings.map(w => (
+                <p key={w} className="text-amber-800 dark:text-amber-200" style={{ fontSize: 12, lineHeight: 1.6 }}>{w}</p>
+              ))}
+            </div>
+          )}
+
+          {mlRows.length > 0 && (
+            <p className="text-slate-500 dark:text-slate-400 mt-3" style={{ fontSize: 12 }}>
+              {mlRows.length} row{mlRows.length !== 1 ? 's' : ''} read from {mlFileName}.
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3 mt-5">
+            <button
+              onClick={runMasterlistPreview}
+              disabled={mlBusy || !mlRows.length}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
+              style={{ fontSize: 13, fontWeight: 600 }}
+            >
+              <RefreshCw size={14} className={mlBusy ? 'animate-spin' : ''} />
+              {mlBusy ? 'Working…' : mlPlan ? 'Refresh preview' : 'Preview changes'}
+            </button>
+            {mlPlan && (
+              <button
+                onClick={commitMasterlist}
+                disabled={mlBusy || !(mlPlan.create.length + mlPlan.update.length + mlDrops.size)}
+                className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-5 py-2.5 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 transition-colors"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                <Check size={14} />
+                Apply {mlPlan.create.length + mlPlan.update.length + mlDrops.size} change
+                {mlPlan.create.length + mlPlan.update.length + mlDrops.size !== 1 ? 's' : ''}
+              </button>
+            )}
+          </div>
+
+          {mlPlan && (
+            <div className="mt-5 space-y-4">
+              <div className="grid grid-cols-4 gap-3">
+                {([
+                  ['Updated', mlPlan.update.length, '#2563EB'],
+                  ['New', mlPlan.create.length, '#0E7490'],
+                  ['Already correct', mlPlan.unchanged.length, '#64748B'],
+                  ['Needs fixing', mlPlan.invalid.length, '#B45309'],
+                ] as const).map(([label, n, colour]) => (
+                  <div key={label} className="rounded-xl border border-blue-100 px-4 py-3 dark:border-slate-600">
+                    <p style={{ fontSize: 22, fontWeight: 700, color: colour }}>{n}</p>
+                    <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{label}</p>
+                  </div>
+                ))}
+              </div>
+
+              <PreviewList
+                title="Updated from the masterlist"
+                rows={mlPlan.update}
+                describe={s => s.changes || 'Changed'}
+              />
+              <PreviewList
+                title="New students to be added"
+                rows={mlPlan.create}
+                describe={s => `${s.course} · ${s.yearLevel} · ${s.status} — medical details still blank`}
+              />
+              <PreviewList
+                title="Rows that could not be read — fix the file and re-upload"
+                rows={mlPlan.invalid}
+                describe={s => `Line ${s.line}: ${s.reason || 'Unreadable'}`}
+                tone="warn"
+              />
+              <PreviewList
+                title="Enrolled here but not in this file — tick to mark dropped"
+                rows={mlPlan.missing}
+                describe={s => `${s.course} · ${s.yearLevel} — stays enrolled unless ticked`}
+                tone="warn"
+                selected={mlDrops}
+                onToggle={toggleDrop}
+              />
+              {mlPlan.missing.length > 0 && (
+                <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5, lineHeight: 1.6 }}>
+                  Nobody in this list is changed unless you tick them. If the file covers only
+                  one college, or the registrar is still encoding, leave them alone — they stay
+                  enrolled and the import can be run again later.
+                </p>
+              )}
+            </div>
+          )}
+        </SectionCard>
+
         <SectionCard
           title="Year-End Processing"
-          desc="Move every enrolled student up one year level, and graduate the ones who have finished their program."
+          desc="No registrar file? Move every enrolled student up one year level, and graduate the ones who have finished their program."
         >
           {/* Deliberately two steps. This touches the whole roster at once, and
               the roster is never as tidy as the rule assumes — irregulars,
@@ -947,17 +1212,17 @@ export function SettingsModule({ onNavigate, showToast, adminProfile = DEFAULT_P
                 ))}
               </div>
 
-              <YearEndList
+              <PreviewList
                 title="Graduating"
                 rows={yearEndPlan.graduate}
                 describe={s => `${s.course} · ${s.yearLevel} → Graduated`}
               />
-              <YearEndList
+              <PreviewList
                 title="Promoted"
                 rows={yearEndPlan.promote}
                 describe={s => `${s.course} · ${s.yearLevel} → ${s.nextYearLevel}`}
               />
-              <YearEndList
+              <PreviewList
                 title="Skipped — fix these first"
                 rows={yearEndPlan.skipped}
                 describe={s => s.reason || 'Cannot be processed'}

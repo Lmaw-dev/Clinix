@@ -14,6 +14,7 @@ import { canSeeConfidential } from '../auth';
 import { confirmDialog } from './ConfirmDialog';
 import { PhotoCapture, cameraAvailable, cameraUnavailableReason } from './PhotoCapture';
 import { API_URL, apiFetch } from '../api';
+import { parseCsvLine, normalizeCsvHeader } from '../masterlist';
 
 
 type Props = {
@@ -174,34 +175,23 @@ function StatusBadge({ status }: { status: StudentStatus }) {
   );
 }
 
-function normalizeCourseName(course: string) {
+/**
+ * A parsed CSV row, held as both the raw cells the file supplied and the fully
+ * normalised student built from them. Updates need the raw keys to know which
+ * fields the file was actually speaking about; inserts need the normalised one.
+ */
+type PendingCsvRow = { raw: Record<string, unknown>; student: Student };
+
+function normalizeCourseName(course: string | undefined) {
+  // A merged CSV update may legitimately carry no course at all, in which case
+  // there is nothing to normalise and nothing to send.
+  if (course === undefined) return undefined;
   const key = course.trim().toUpperCase().replace(/\s+/g, '-');
   return ({
     'BSIT-ELECT-TECH': 'BSIT-ELECT',
     'BSED-MATH': 'BSED-MATH',
     'BSED-ENGLISH': 'BSED-ENGLISH',
   } as Record<string, string>)[key] || key;
-}
-
-function parseCsvLine(line: string) {
-  const cells: string[] = [];
-  let current = '';
-  let quoted = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (quoted && line[i + 1] === '"') { current += '"'; i++; } else { quoted = !quoted; }
-      continue;
-    }
-    if (ch === ',' && !quoted) { cells.push(current.trim()); current = ''; continue; }
-    current += ch;
-  }
-  cells.push(current.trim());
-  return cells;
-}
-
-function normalizeCsvHeader(h: string) {
-  return h.toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
 function parseCsv(text: string): Record<string, unknown>[] {
@@ -214,6 +204,7 @@ function parseCsv(text: string): Record<string, unknown>[] {
     lastname: 'lastName', surname: 'lastName',
     firstname: 'firstName', fullname: 'name',
     middleinitial: 'middleInitial', mi: 'middleInitial',
+    status: 'status', enrollmentstatus: 'status', enrolmentstatus: 'status',
     birthdate: 'birthdate', birthday: 'birthdate', dob: 'birthdate',
     bloodtype: 'bloodType',
     schoolyear: 'schoolYear',
@@ -234,15 +225,19 @@ function parseCsv(text: string): Record<string, unknown>[] {
     isboarding: 'isBoarding', boardinghousename: 'boardingHouseName', boardinghouseaddress: 'boardingHouseAddress',
     landlordname: 'landlordName', landlordcontact: 'landlordContact', landlordcontactnumber: 'landlordContact',
   };
-  const lines = text.replace(/\r/g, '').split('\n').filter((l) => l.trim());
+  const lines = text.replace(/^﻿/, '').replace(/\r/g, '').split('\n').filter((l) => l.trim());
   if (!lines.length) return [];
   const headers = parseCsvLine(lines.shift()!).map(normalizeCsvHeader);
   return lines.map((line) => {
     const vals = parseCsvLine(line);
-    const rec: Record<string, unknown> = { status: 'enrolled' };
+    const rec: Record<string, unknown> = {};
     headers.forEach((h, idx) => {
       const key = HEADER_MAP[h];
-      if (key) rec[key] = vals[idx] ?? '';
+      const value = (vals[idx] ?? '').trim();
+      // Only columns the file actually filled in are recorded. A blank cell is
+      // "the registrar had nothing to say about this", not "erase what the
+      // clinic has" — see how the import merges over an existing student.
+      if (key && value) rec[key] = value;
     });
     return rec;
   });
@@ -1008,7 +1003,7 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
   }, [openProfileId, students, onProfileOpened]);
   const [showFormModal, setShowFormModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [pendingCsv, setPendingCsv] = useState<Student[]>([]);
+  const [pendingCsv, setPendingCsv] = useState<PendingCsvRow[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('name-asc');
   const [courseFilter, setCourseFilter] = useState('');
@@ -1223,20 +1218,44 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     const reader = new FileReader();
     reader.onload = () => {
       const records = parseCsv(String(reader.result || ''))
-        .map(normalizeStudent)
-        .filter((r) => r.studentId && r.name);
+        // The raw record is kept alongside the normalised one: normalising fills
+        // every unmentioned field with '', and only the raw keys say which of
+        // those the file actually supplied.
+        .map((raw) => ({ raw, student: normalizeStudent(raw) }))
+        .filter((r) => r.student.studentId && r.student.name);
       setPendingCsv(records);
     };
     reader.readAsText(file);
+  }
+
+  /**
+   * What to send for one CSV row.
+   *
+   * A brand new student is written whole. An existing one is *merged*: only the
+   * columns the file carried are sent, so importing a roster that lists nothing
+   * but ID, course and year level cannot blank out the allergies, guardian,
+   * address and photo the clinic has been collecting all year.
+   */
+  function csvPayload(rec: PendingCsvRow, exists: boolean): Student {
+    if (!exists) return rec.student;
+    const merged: Record<string, unknown> = { studentId: rec.student.studentId };
+    for (const key of Object.keys(rec.raw)) {
+      merged[key] = rec.student[key as keyof Student];
+    }
+    // A name is rebuilt from whichever of the name columns were present, so a
+    // file with just a surname column does not resend a half-empty full name.
+    if (!('name' in rec.raw) && !('lastName' in rec.raw) && !('firstName' in rec.raw)) delete merged.name;
+    return merged as unknown as Student;
   }
 
   async function handleCsvImport() {
     if (!pendingCsv.length) { showToast('Choose a CSV file first'); return; }
     try {
       await Promise.all(
-        pendingCsv.map((rec) =>
-          saveStudentApi(rec, students.some((s) => s.studentId === rec.studentId) ? rec.studentId : null),
-        ),
+        pendingCsv.map((rec) => {
+          const exists = students.some((s) => s.studentId === rec.student.studentId);
+          return saveStudentApi(csvPayload(rec, exists), exists ? rec.student.studentId : null);
+        }),
       );
     } catch (error) {
       showToast(`${error instanceof Error ? error.message : 'API error'}. CSV was not imported.`);
@@ -1245,9 +1264,11 @@ export function StudentsModule({ students, setStudents, globalSearch, showToast,
     setStudents((prev) => {
       const updated = [...prev];
       pendingCsv.forEach((rec) => {
-        const idx = updated.findIndex((s) => s.studentId === rec.studentId);
-        if (idx >= 0) updated[idx] = { ...updated[idx], ...rec };
-        else updated.push(rec);
+        const idx = updated.findIndex((s) => s.studentId === rec.student.studentId);
+        // Mirrors the merge sent to the server: keep what is already known and
+        // lay only the file's own columns over the top.
+        if (idx >= 0) updated[idx] = { ...updated[idx], ...csvPayload(rec, true) };
+        else updated.push(rec.student);
       });
       return updated;
     });
