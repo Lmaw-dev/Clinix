@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   GraduationCap, Users, Stethoscope, FileText, Pill, Award,
   AlertTriangle, Clock, Download, Printer, RefreshCw,
@@ -15,6 +15,7 @@ import { Student, FacultyMember, MedRecord, MedForm, InventoryItem, Certificate,
 import { useTheme } from '../ThemeContext';
 import { Role, canExportReports, currentUsername } from '../auth';
 import { isoDate } from '../store';
+import { useColleges, EMPLOYMENT_CATEGORIES, officesInUse } from '../colleges';
 import {
   toCsv, toXlsx, toPrintHtml, printHtml, downloadBlob, reportFilename,
   type ReportTable, type ReportMeta,
@@ -80,6 +81,8 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
   const [lastRefresh, setLastRefresh] = useState(() => new Date());
   const [trendView, setTrendView] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
   const [diagRange, setDiagRange] = useState<'month' | 'all'>('month');
+  const [deptFilter, setDeptFilter] = useState('all');
+  const [programFilter, setProgramFilter] = useState('all');
   const [previewTables, setPreviewTables] = useState<ReportTable[] | null>(null);
   const [exportError, setExportError] = useState('');
 
@@ -127,6 +130,132 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
     boxShadow: '0 8px 24px rgba(13,18,48,0.14)',
     color: C.txtPrimary,
   };
+
+  // ── Who the report is about ───────────────────────────────────────────────
+  // The Department and Program filters. Where the date filter answers "when",
+  // these answer "whose", so they apply to every person-shaped figure on the
+  // page — including the Today / This Week cards and the trend charts, which
+  // the date filter deliberately leaves alone. "Today's consultations, CTECH
+  // only" is a coherent question in a way that "Today, but for last month" is
+  // not.
+  //
+  // Department covers both populations, from opposite directions:
+  //   · a student belongs to a college through their course;
+  //   · a faculty member has a college of their own, and an employment
+  //     category (Teaching / Non-teaching / Agency). Either can be picked, so
+  //     the dropdown offers colleges and staff categories as two groups.
+  // Program is a student attribute — a faculty member is not enrolled in one —
+  // so choosing a program takes faculty out of scope entirely.
+
+  const collegesList = useColleges();
+
+  /** course code → the college that owns it. */
+  const collegeOfCourse = useMemo(() => {
+    const m = new Map<string, string>();
+    collegesList.forEach(col => col.courses.forEach(course => m.set(course, col.name)));
+    return m;
+  }, [collegesList]);
+
+  /**
+   * The staff categories to offer.
+   *
+   * The clinic's own list comes first, so the group is there from the start
+   * rather than appearing only once somebody has been classified — deriving it
+   * purely from the data meant it was invisible on a roster where nobody had a
+   * category yet, which is exactly the state a new install is in. Any extra
+   * value already on a record (a CSV import with its own wording) is added
+   * after it, so nothing on file becomes unfilterable.
+   */
+  const staffCategories = useMemo(() => {
+    const extras = new Set<string>();
+    faculty.forEach(f => {
+      if (f.employmentCategory && !EMPLOYMENT_CATEGORIES.includes(f.employmentCategory)) {
+        extras.add(f.employmentCategory);
+      }
+    });
+    return [...EMPLOYMENT_CATEGORIES, ...Array.from(extras).sort()];
+  }, [faculty]);
+
+  /** True when no staff member carries a category yet — used to explain an empty result. */
+  const noFacultyClassified = useMemo(
+    () => faculty.length > 0 && faculty.every(f => !f.employmentCategory),
+    [faculty],
+  );
+
+  /**
+   * Offices on the roster. For everyone outside a college — registrar, guidance,
+   * accounting, the clinic itself — the office *is* the department, so it has to
+   * be selectable here or those staff can never be reported on by department.
+   */
+  const officeOptions = useMemo(() => officesInUse(faculty), [faculty]);
+
+  /** Programs offered by the chosen department, or all of them. */
+  const programOptions = useMemo(() => {
+    if (deptFilter === 'all') return collegesList.flatMap(c => c.courses);
+    return collegesList.find(c => c.name === deptFilter)?.courses ?? [];
+  }, [collegesList, deptFilter]);
+
+  // Picking a department can leave the chosen program stranded outside it
+  // (CTECH + BEED selects nobody, and looks broken rather than empty).
+  useEffect(() => {
+    if (programFilter !== 'all' && !programOptions.includes(programFilter)) setProgramFilter('all');
+  }, [programOptions, programFilter]);
+
+  const studentById = useMemo(() => new Map(students.map(s => [s.studentId, s])), [students]);
+  const facultyById = useMemo(() => new Map(faculty.map(f => [f.staffId, f])), [faculty]);
+  const personFilterOff = deptFilter === 'all' && programFilter === 'all';
+
+  const studentInScope = useCallback((s: Student) => {
+    if (programFilter !== 'all' && s.course !== programFilter) return false;
+    if (deptFilter !== 'all' && collegeOfCourse.get(s.course) !== deptFilter) return false;
+    return true;
+  }, [deptFilter, programFilter, collegeOfCourse]);
+
+  const facultyInScope = useCallback((f: FacultyMember) => {
+    if (programFilter !== 'all') return false; // nobody teaches *in* a program
+    if (deptFilter === 'all') return true;
+    // Three ways a staff member can belong to the selected department: the
+    // college they teach under, the office they work in, or their employment
+    // classification. All three are offered in the dropdown.
+    return f.college === deptFilter || f.office === deptFilter || f.employmentCategory === deptFilter;
+  }, [deptFilter, programFilter]);
+
+  /**
+   * A consultation belongs to whoever it was logged against.
+   *
+   * A walk-in with no record on file cannot be placed in a department at all,
+   * so it drops out of a narrowed view rather than being counted under every
+   * one of them. With no filter active nothing is resolved and everything
+   * counts, which keeps the common case free.
+   */
+  const consultInScope = useCallback((c: Consultation) => {
+    if (personFilterOff) return true;
+    if (c.personType === 'faculty') {
+      const f = facultyById.get(c.studentId);
+      return f ? facultyInScope(f) : false;
+    }
+    const s = studentById.get(c.studentId);
+    return s ? studentInScope(s) : false;
+  }, [personFilterOff, facultyById, studentById, facultyInScope, studentInScope]);
+
+  const certInScope = useCallback((c: Certificate) => {
+    if (personFilterOff) return true;
+    const s = studentById.get(c.studentId);
+    return s ? studentInScope(s) : false;
+  }, [personFilterOff, studentById, studentInScope]);
+
+  const scopedStudents = useMemo(() => students.filter(studentInScope), [students, studentInScope]);
+  const scopedFaculty = useMemo(() => faculty.filter(facultyInScope), [faculty, facultyInScope]);
+  const scopedConsultations = useMemo(() => consultations.filter(consultInScope), [consultations, consultInScope]);
+  const scopedCerts = useMemo(() => certificates.filter(certInScope), [certificates, certInScope]);
+
+  /** What the two filters currently say, for labels and export headers. */
+  const scopeLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (deptFilter !== 'all') parts.push(deptFilter);
+    if (programFilter !== 'all') parts.push(programFilter);
+    return parts.length ? parts.join(' · ') : 'All departments';
+  }, [deptFilter, programFilter]);
 
   // ── The reporting period ──────────────────────────────────────────────────
   // Set by the Date filter above the tabs, and applied to everything that
@@ -182,31 +311,31 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
   //     their own labels lie;
   //   · pending certificates are a work queue, not a statistic. Narrowing it
   //     would hide the oldest requests — exactly the ones needing attention.
-  const periodConsults = useMemo(() => consultations.filter(c => inRange(c.date)), [consultations, inRange]);
-  const periodCerts = useMemo(() => certificates.filter(c => inRange(c.date)), [certificates, inRange]);
+  const periodConsults = useMemo(() => scopedConsultations.filter(c => inRange(c.date)), [scopedConsultations, inRange]);
+  const periodCerts = useMemo(() => scopedCerts.filter(c => inRange(c.date)), [scopedCerts, inRange]);
 
   // ── Derived stats ────────────────────────────────────────────────────────
   // "Active population" means currently enrolled. Graduates and dropped
   // students are excluded from these counts but never from the data itself —
   // their consultations still appear in the historical, per-school-year figures
   // below, which is the whole reason the records are retained.
-  const enrolled = useMemo(() => students.filter(s => s.status === 'enrolled'), [students]);
-  const alumni = useMemo(() => students.filter(s => s.status === 'graduated'), [students]);
+  const enrolled = useMemo(() => scopedStudents.filter(s => s.status === 'enrolled'), [scopedStudents]);
+  const alumni = useMemo(() => scopedStudents.filter(s => s.status === 'graduated'), [scopedStudents]);
   const lowStock = useMemo(() => inventory.filter(i => i.qty >= 0 && i.qty < 5), [inventory]);
   // Pending is a work queue rather than a statistic, so it is deliberately NOT
   // narrowed to the period: the requests most needing attention are the oldest
   // ones, and a date filter would be exactly what hid them.
-  const pending = useMemo(() => certificates.filter(c => c.status === 'Pending'), [certificates]);
+  const pending = useMemo(() => scopedCerts.filter(c => c.status === 'Pending'), [scopedCerts]);
   // Approved and rejected are throughput — how many were dealt with in the
   // period — so these do follow the filter.
   const approved = useMemo(() => periodCerts.filter(c => c.status === 'Approved'), [periodCerts]);
   const rejected = useMemo(() => periodCerts.filter(c => c.status === 'Rejected'), [periodCerts]);
 
   const today = isoDate();
-  const consultToday = consultations.filter(c => c.date === today).length;
-  const consultWeek = consultations.filter(c => isThisWeek(c.date)).length;
-  const consultMonth = consultations.filter(c => isThisMonth(c.date)).length;
-  const consultLastMonth = consultations.filter(c => isLastMonth(c.date)).length;
+  const consultToday = scopedConsultations.filter(c => c.date === today).length;
+  const consultWeek = scopedConsultations.filter(c => isThisWeek(c.date)).length;
+  const consultMonth = scopedConsultations.filter(c => isThisMonth(c.date)).length;
+  const consultLastMonth = scopedConsultations.filter(c => isLastMonth(c.date)).length;
   const consultTrendPct = pctChange(consultMonth, consultLastMonth);
 
   // Unique patients served in the period, split by person type
@@ -245,11 +374,11 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
       const d = new Date(); d.setDate(d.getDate() - i);
       const key = isoDate(d);
       const label = d.toLocaleDateString('en', { weekday: 'short' });
-      const value = consultations.filter(c => c.date === key).length;
+      const value = scopedConsultations.filter(c => c.date === key).length;
       days.push({ date: key, label, value });
     }
     return days;
-  }, [consultations]);
+  }, [scopedConsultations]);
 
   // Consultations by department in the period (faculty grouped together)
   const deptData = useMemo(() => {
@@ -278,7 +407,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
   const trendSeries = useMemo(() => {
     const out: { label: string; value: number }[] = [];
     const nowD = new Date();
-    const count = (from: Date, to: Date) => consultations.filter(c => {
+    const count = (from: Date, to: Date) => scopedConsultations.filter(c => {
       const d = new Date(c.date);
       return d >= from && d < to;
     }).length;
@@ -288,7 +417,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
         const key = isoDate(d);
         out.push({
           label: d.toLocaleDateString('en', { month: 'short', day: 'numeric' }),
-          value: consultations.filter(c => c.date === key).length,
+          value: scopedConsultations.filter(c => c.date === key).length,
         });
       }
     } else if (trendView === 'weekly') {
@@ -312,7 +441,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
       }
     }
     return out;
-  }, [consultations, trendView]);
+  }, [scopedConsultations, trendView]);
 
   // Inventory health: expired → low stock → near expiry → healthy
   const invHealth = useMemo(() => {
@@ -331,7 +460,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
 
   // Top diagnoses from consultation reasons (this month or all time)
   const diagData = useMemo(() => {
-    const src = diagRange === 'month' ? consultations.filter(c => isThisMonth(c.date)) : consultations;
+    const src = diagRange === 'month' ? scopedConsultations.filter(c => isThisMonth(c.date)) : scopedConsultations;
     const m = new Map<string, number>();
     src.forEach(c => {
       const r = (c.reason || '').toLowerCase().trim();
@@ -341,7 +470,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
     });
     return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5)
       .map(([name, value]) => ({ name, value }));
-  }, [consultations, diagRange]);
+  }, [scopedConsultations, diagRange]);
 
   // Program bar data
   const programData = useMemo(() =>
@@ -656,7 +785,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
           <OverviewKpi icon={Stethoscope} accent={ACCENT.blue} title="Consultations"
             value={periodConsults.length.toLocaleString()}
             deltaPct={consultTrendPct}
-            note={`${dateRange.label} · ${consultations.length.toLocaleString()} all-time`} />
+            note={`${dateRange.label} · ${scopedConsultations.length.toLocaleString()} all-time`} />
           <OverviewKpi icon={Users} accent={ACCENT.green} title="Patients Served"
             value={served.total.toLocaleString()}
             rows={[
@@ -881,7 +1010,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
             <StatRow label="This Week" value={consultWeek} />
             <StatRow label="This Month" value={consultMonth} />
             <StatRow label={`Selected period (${dateRange.label})`} value={periodConsults.length} color={SERIES} />
-            <StatRow label="Total All-Time" value={consultations.length} />
+            <StatRow label="Total All-Time" value={scopedConsultations.length} />
             <StatRow label="Avg. Duration" value="11 mins" />
             <StatRow label="Avg. Wait Time" value="7 mins" />
             <StatRow label="Peak Hour" value="10:00 AM" />
@@ -910,11 +1039,11 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
           </div>
         </div>
         <SectionCard title="Recent Consultations" subtitle="Latest 10 visit records" icon={FileText}>
-          {consultations.length === 0 ? (
+          {scopedConsultations.length === 0 ? (
             <p style={{ fontSize: 13, color: C.txtMuted, textAlign: 'center', padding: '24px 0' }}>No consultations recorded yet.</p>
           ) : (
             <ReportTable headers={['ID', 'Student', 'Date', 'Summary', 'Outcome']}>
-              {consultations.slice(0, 10).map(c => (
+              {scopedConsultations.slice(0, 10).map(c => (
                 <Tr key={c.id}>
                   <td className="px-4 py-3" style={{ fontSize: 12, fontFamily: 'monospace', color: C.txtMuted }}>{c.id}</td>
                   <td className="px-4 py-3">
@@ -1007,12 +1136,12 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
             <StatRow label="Approved" value={approved.length} color={STATUS.good} />
             <StatRow label="Rejected" value={rejected.length} color={STATUS.bad} />
             <StatRow label="Pending (all dates)" value={pending.length} color={STATUS.warn} />
-            <StatRow label="Issued Today" value={certificates.filter(c => c.date === today).length} />
-            <StatRow label="Total All-Time" value={certificates.length} />
+            <StatRow label="Issued Today" value={scopedCerts.filter(c => c.date === today).length} />
+            <StatRow label="Total All-Time" value={scopedCerts.length} />
           </SectionCard>
           <div className="lg:col-span-2">
             <SectionCard title="Status Distribution" subtitle="Certificate requests by current status" icon={PieIcon}>
-              {certificates.length === 0 ? <EmptyChart title="No certificate data" hint="Issued certificates will be summarized here." /> : (
+              {scopedCerts.length === 0 ? <EmptyChart title="No certificate data" hint="Issued certificates will be summarized here." /> : (
                 <div className="flex flex-col sm:flex-row gap-6 items-center">
                   <div style={{ width: '100%', maxWidth: 220, minWidth: 170 }}>
                     <ResponsiveContainer width="100%" height={200}>
@@ -1025,7 +1154,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
                   </div>
                   <ul className="flex-1 w-full space-y-3 self-center">
                     {certStatusData.map(d => {
-                      const pct = certificates.length ? Math.round((d.value / certificates.length) * 100) : 0;
+                      const pct = scopedCerts.length ? Math.round((d.value / scopedCerts.length) * 100) : 0;
                       return (
                         <li key={d.name} className="flex items-center gap-2.5">
                           <span className="rounded-full shrink-0" style={{ width: 10, height: 10, background: d.fill }} />
@@ -1078,7 +1207,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
     const dash = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
     if (exportItems.consultation) {
-      const rows = consultations
+      const rows = scopedConsultations
         .filter((c) => inRange(c.date))
         .sort((a, b) => (a.date < b.date ? 1 : -1))
         .map((c) => [
@@ -1103,7 +1232,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
         title: 'Student Health',
         columns: ['Student ID', 'Name', 'Course', 'Year', 'Sex', 'Status', 'Blood Type',
           'Allergies', 'Medical Conditions', 'Current Medications', 'Contact', 'Guardian', 'Guardian Contact'],
-        rows: students.map((s) => [
+        rows: scopedStudents.map((s) => [
           dash(s.studentId), dash(s.name), dash(s.course), dash(s.yearLevel), dash(s.gender),
           dash(s.status), dash(s.bloodType), dash(s.allergies), dash(s.medicalConditions),
           dash(s.currentMedications), dash(s.contactNumber), dash(s.guardianName), dash(s.guardianContact),
@@ -1128,7 +1257,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
       tables.push({
         title: 'Medical Certificates',
         columns: ['Request ID', 'Student ID', 'Student Name', 'Date', 'Status'],
-        rows: certificates
+        rows: scopedCerts
           .filter((c) => inRange(c.date))
           .map((c) => [dash(c.id), dash(c.studentId), dash(c.studentName), dash(c.date), dash(c.status)]),
       });
@@ -1138,7 +1267,7 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
       tables.push({
         title: 'Faculty Health',
         columns: ['Staff ID', 'Name', 'College', 'Designation', 'Employment', 'Contact', 'Blood Type', 'Medical History'],
-        rows: faculty.map((f) => [
+        rows: scopedFaculty.map((f) => [
           dash(f.staffId), dash(f.name), dash(f.college), dash(f.role),
           [f.employmentCategory, f.employmentType].filter(Boolean).join(' — ') || '—',
           dash(f.contact), dash(f.bloodType), dash(f.medicalHistory),
@@ -1147,13 +1276,15 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
     }
 
     return tables;
-  }, [exportItems, consultations, students, inventory, certificates, faculty, inRange]);
+  }, [exportItems, scopedConsultations, scopedStudents, inventory, scopedCerts, scopedFaculty, inRange]);
 
+  // The period line carries the scope too. A spreadsheet of "CTECH only" that
+  // says nothing about it gets read as the whole clinic by whoever opens it next.
   const exportMeta = useCallback((): ReportMeta => ({
-    period: dateRange.label,
+    period: personFilterOff ? dateRange.label : `${dateRange.label} · ${scopeLabel}`,
     generatedAt: new Date(),
     generatedBy: currentUsername() || 'Clinix',
-  }), [dateRange]);
+  }), [dateRange, personFilterOff, scopeLabel]);
 
   function handleGenerate() {
     const tables = buildReportTables();
@@ -1474,22 +1605,40 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
           )}
           <label className="flex items-center gap-2" style={{ fontSize: 12, fontWeight: 600, color: C.txtMuted }}>
             Department
-            <select style={filterCtl}>
-              <option>All Departments</option>
-              <option>Clinic Staff</option>
-              <option>Teaching</option>
-              <option>Non-teaching</option>
+            {/* Two groups because a department means a different thing on each
+                side of the roster: students belong to a college, staff also
+                have an employment category. Both narrow the same page. */}
+            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} style={filterCtl}>
+              <option value="all">All Departments</option>
+              {collegesList.length > 0 && (
+                <optgroup label="Colleges (students & faculty)">
+                  {collegesList.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                </optgroup>
+              )}
+              {officeOptions.length > 0 && (
+                <optgroup label="Offices (faculty & staff)">
+                  {officeOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                </optgroup>
+              )}
+              <optgroup label="Faculty & Staff category">
+                {staffCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+              </optgroup>
             </select>
           </label>
           <label className="flex items-center gap-2" style={{ fontSize: 12, fontWeight: 600, color: C.txtMuted }}>
             Program
-            <select style={filterCtl}>
-              <option>All Programs</option>
-              {courseMap.map(([c]) => <option key={c}>{c}</option>)}
+            {/* Students only — a faculty member is not enrolled in a program,
+                so choosing one takes them out of the figures entirely. */}
+            <select value={programFilter} onChange={e => setProgramFilter(e.target.value)} style={filterCtl}>
+              <option value="all">All Programs</option>
+              {programOptions.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
-          {(dateFilter !== 'month' || customFrom || customTo) && (
-            <button onClick={() => { setDateFilter('month'); setCustomFrom(''); setCustomTo(''); }}
+          {(dateFilter !== 'month' || customFrom || customTo || !personFilterOff) && (
+            <button onClick={() => {
+              setDateFilter('month'); setCustomFrom(''); setCustomTo('');
+              setDeptFilter('all'); setProgramFilter('all');
+            }}
               className="transition-opacity hover:opacity-80"
               style={{ fontSize: 12, fontWeight: 600, color: SERIES }}>
               Clear
@@ -1505,12 +1654,27 @@ export function ReportsModule({ students, faculty, inventory, certificates, cons
         style={{ background: C.tableTh, border: `1px solid ${C.cardBorder}` }}>
         <CalendarDays size={13} style={{ color: SERIES }} />
         <span style={{ fontSize: 12, color: C.txtSecond, fontWeight: 600 }}>
-          Showing {dateRange.label}
+          Showing {dateRange.label}{personFilterOff ? '' : ` · ${scopeLabel}`}
         </span>
         <span style={{ fontSize: 12, color: C.txtMuted, lineHeight: 1.5 }}>
-          — consultations and certificates are counted within this period. Student
-          roster and medicine stock are current figures and do not change with it.
+          — consultations and certificates are counted within this period.
+          {personFilterOff
+            ? ' Student roster and medicine stock are current figures and do not change with it.'
+            : programFilter !== 'all'
+              ? ' Department and Program narrow every figure about people; a program has no faculty in it, so Faculty & Staff are excluded. Medicine stock is clinic-wide and never narrows.'
+              : ' Department narrows every figure about people, on both the student and the staff side. Medicine stock is clinic-wide and never narrows.'}
         </span>
+        {/* A category that matches nobody looks like a broken filter unless the
+            reason is stated. It is not broken — the roster simply has not been
+            classified yet, which is the normal state right after these fields
+            started being stored. */}
+        {noFacultyClassified && EMPLOYMENT_CATEGORIES.includes(deptFilter) && (
+          <span className="w-full" style={{ fontSize: 12, color: STATUS.warn, lineHeight: 1.5 }}>
+            No staff member has an employment category on record yet, so this selection
+            matches nobody. Set it per person in Faculty &amp; Staff, or bring it in with
+            the CSV import.
+          </span>
+        )}
       </div>
 
       {/* Tab Content */}

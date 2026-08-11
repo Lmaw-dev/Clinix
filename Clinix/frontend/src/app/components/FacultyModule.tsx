@@ -7,7 +7,7 @@ import { FacultyMember, normalizeFaculty } from '../App';
 import { Modal } from './Modal';
 import { PersonDocuments } from './PersonDocuments';
 import { PhotoCapture, cameraAvailable, cameraUnavailableReason } from './PhotoCapture';
-import { useColleges, normalizeCollegeName } from '../colleges';
+import { useColleges, normalizeCollegeName, EMPLOYMENT_CLASSIFICATIONS, employmentTypesFor, officesInUse, normalizeOffice } from '../colleges';
 import { canSeeConfidential } from '../auth';
 import { API_URL, apiFetch } from '../api';
 
@@ -31,13 +31,14 @@ const defaultForm = {
 
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
-// Employment classification: category → its employment types
-const CLASSIFICATIONS: { category: string; types: string[] }[] = [
-  { category: 'Non-teaching', types: ['Permanent', 'Casual', 'Contract of Service'] },
-  { category: 'Teaching', types: ['Permanent', 'Temporary', 'Contract of Service', 'Part time'] },
-  { category: 'Agency', types: ['Security guard'] },
-];
-const typesForCategory = (category: string) => CLASSIFICATIONS.find((c) => c.category === category)?.types ?? [];
+/** Sentinel value for the "add a new office" entry in the Office dropdown. */
+const ADD_OFFICE = '__add_office__';
+
+// Employment classification now lives in colleges.ts alongside the other
+// organisational vocabulary, so the Reports department filter can offer exactly
+// the categories this form writes.
+const CLASSIFICATIONS = EMPLOYMENT_CLASSIFICATIONS;
+const typesForCategory = employmentTypesFor;
 
 type CsvRecord = Record<string, string>;
 
@@ -220,6 +221,10 @@ async function saveFacultyApi(member: FacultyMember, editingId?: string | null) 
 
 export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, addActivity }: Props) {
   const colleges = useColleges();
+  // Offices already on the roster become the choices for the next record, so
+  // the same department is spelled one way across every staff member.
+  const officeOptions = useMemo(() => officesInUse(faculty), [faculty]);
+  const [officeNew, setOfficeNew] = useState(false);
   const isAdmin = canSeeConfidential();
   const [localSearch, setLocalSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -267,6 +272,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
 
   function openAdd() {
     setForm(defaultForm);
+    setOfficeNew(false);
     setEditingId(null);
     setShowModal(true);
   }
@@ -280,6 +286,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
       homeAddress: f.homeAddress || '', presentAddress: f.presentAddress || '',
       guardianName: f.guardianName || '', guardianContact: f.guardianContact || '', confidentialNotes: f.confidentialNotes || '',
     });
+    setOfficeNew(false);
     setEditingId(f.staffId);
     setShowModal(true);
   }
@@ -354,7 +361,9 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
       employmentType: form.employmentType.trim(),
       birthdate: form.birthdate.trim(),
       bloodType: form.bloodType.trim(),
-      office: form.office.trim(),
+      // Collapses "Registrar's Office" typed afresh onto the spelling already
+      // on file, so one department does not become two in the reports.
+      office: normalizeOffice(form.office, officeOptions),
       homeAddress: form.homeAddress.trim(),
       presentAddress: form.presentAddress.trim(),
       guardianName: form.guardianName.trim(),
@@ -599,7 +608,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
       <Modal
         isOpen={showModal}
         title={editingId ? 'Edit Faculty/Staff' : 'Add Faculty/Staff'}
-        onClose={() => { setShowModal(false); setForm(defaultForm); setEditingId(null); }}
+        onClose={() => { setShowModal(false); setForm(defaultForm); setEditingId(null); setOfficeNew(false); }}
         maxWidth="max-w-3xl"
         scrollBody
       >
@@ -747,13 +756,37 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           <div className="grid grid-cols-2 gap-4">
             <label>
               <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Office</span>
-              <input
-                value={form.office}
-                onChange={(e) => setForm((f) => ({ ...f, office: e.target.value }))}
-                placeholder="Office / department"
-                className={fieldClass}
-                style={{ fontSize: 13 }}
-              />
+              {/* A choice rather than a free-text box, because this is the
+                  department for everyone who does not belong to a college, and
+                  Reports has to be able to group by it. The list is the offices
+                  already on the roster; anything genuinely new is added through
+                  the last option rather than by retyping an existing one
+                  slightly differently. */}
+              {officeNew ? (
+                <input
+                  value={form.office}
+                  onChange={(e) => setForm((f) => ({ ...f, office: e.target.value }))}
+                  onBlur={() => { if (!form.office.trim()) setOfficeNew(false); }}
+                  placeholder="New office / department name"
+                  className={fieldClass}
+                  style={{ fontSize: 13 }}
+                  autoFocus
+                />
+              ) : (
+                <select
+                  value={form.office}
+                  onChange={(e) => {
+                    if (e.target.value === ADD_OFFICE) { setForm((f) => ({ ...f, office: '' })); setOfficeNew(true); return; }
+                    setForm((f) => ({ ...f, office: e.target.value }));
+                  }}
+                  className={fieldClass}
+                  style={{ fontSize: 13 }}
+                >
+                  <option value="">No office / department</option>
+                  {officeOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+                  <option value={ADD_OFFICE}>+ Add new office…</option>
+                </select>
+              )}
             </label>
             <label>
               <span className={labelClass} style={{ fontSize: 12, fontWeight: 500 }}>Birthdate</span>
@@ -861,7 +894,7 @@ export function FacultyModule({ faculty, setFaculty, globalSearch, showToast, ad
           <div className="flex justify-end gap-3">
             <button
               type="button"
-              onClick={() => { setShowModal(false); setForm(defaultForm); setEditingId(null); }}
+              onClick={() => { setShowModal(false); setForm(defaultForm); setEditingId(null); setOfficeNew(false); }}
               className="bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-600 transition-colors"
               style={{ fontSize: 13 }}
             >
