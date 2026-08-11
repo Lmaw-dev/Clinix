@@ -1198,6 +1198,244 @@ app.post('/api/students/year-end/commit', requireRole('admin'), async (req, res,
   }
 });
 
+// ── Registrar masterlist sync ────────────────────────────────────────────────
+// Each semester the registrar hands the clinic a masterlist of who is actually
+// enrolled, in what course, at what year level. That file is the authority on
+// enrolment — this endpoint reconciles the roster against it.
+//
+// Deliberately narrow: it writes year_level, course_code, status and school_year
+// and nothing else. The registrar's file has no allergies, no guardian, no
+// address, no photo, so treating it as a whole-record import would blank every
+// clinic field it happens not to carry. Those columns are never in the UPDATE.
+
+/** Registrar files write the year level a dozen ways. '2', 'II', 'Year 2' → '2nd Year'. */
+function normalizeYearLevel(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const exact = YEAR_LEVELS.find((y) => y.toLowerCase() === raw.toLowerCase());
+  if (exact) return exact;
+  const words = { first: 1, second: 2, third: 3, fourth: 4, i: 1, ii: 2, iii: 3, iv: 4 };
+  const cleaned = raw.toLowerCase().replace(/year|level|yr\.?|\s+/g, ' ').trim();
+  const digit = cleaned.match(/\d+/);
+  const n = digit ? Number(digit[0]) : words[cleaned];
+  return n >= 1 && n <= YEAR_LEVELS.length ? YEAR_LEVELS[n - 1] : '';
+}
+
+/**
+ * Map a registrar status word onto one of the three the system stores.
+ * Anything unrecognised returns '' so the row is reported rather than guessed
+ * at — 'LOA' quietly becoming 'dropped' is exactly the kind of silent mistake
+ * this whole preview step exists to prevent.
+ */
+function normalizeStatus(value) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return 'enrolled'; // a name on an enrolment masterlist is enrolled
+  if (['enrolled', 'enrolled ', 'active', 'regular', 'irregular', 'officially enrolled', 'e'].includes(raw)) return 'enrolled';
+  if (['graduated', 'graduate', 'alumni', 'completed', 'g'].includes(raw)) return 'graduated';
+  if (['dropped', 'dropout', 'drop', 'not enrolled', 'unenrolled', 'inactive', 'withdrawn', 'd'].includes(raw)) return 'dropped';
+  return '';
+}
+
+function personName(row) {
+  const full = String(row.name ?? '').trim();
+  const last = String(row.lastName ?? '').trim();
+  const first = String(row.firstName ?? '').trim();
+  const mi = String(row.middleName ?? row.middleInitial ?? '').trim().slice(0, 1).toUpperCase();
+  const composed = [first, mi ? `${mi}.` : '', last].filter(Boolean).join(' ');
+  return { full: composed || full, last: last || full, first, mi };
+}
+
+/**
+ * Compare the uploaded masterlist against the stored roster, changing nothing.
+ *
+ * Buckets are what the admin approves or rejects, so each one answers a
+ * different question: `update` is a real change, `unchanged` is proof the row
+ * was read, `invalid` needs the file fixed, and `missing` is the interesting
+ * one — enrolled here but absent from the registrar's file. Those are never
+ * auto-dropped: a per-college file, a late encoder or a student on leave all
+ * look identical from here, so the admin picks which ones to act on.
+ */
+async function planMasterlist(rawRows, schoolYear) {
+  const [courseRows] = await pool.query('SELECT code FROM courses');
+  const courseByKey = new Map(courseRows.map((c) => [c.code.toLowerCase(), c.code]));
+
+  const [studentRows] = await pool.query(
+    'SELECT student_id, name, last_name, first_name, course_code, year_level, status FROM students',
+  );
+  const stored = new Map(studentRows.map((s) => [s.student_id, s]));
+
+  const create = [];
+  const update = [];
+  const unchanged = [];
+  const invalid = [];
+  const seen = new Set();
+
+  for (const [index, raw] of (Array.isArray(rawRows) ? rawRows : []).entries()) {
+    const line = index + 2; // +1 for zero-based, +1 for the header row
+    const name = personName(raw || {});
+    const studentId = String(raw?.studentId ?? '').replace(/\D/g, '');
+    const entry = {
+      line,
+      studentId,
+      name: name.full,
+      course: String(raw?.course ?? '').trim(),
+      yearLevel: normalizeYearLevel(raw?.yearLevel),
+      status: normalizeStatus(raw?.status),
+    };
+    const reject = (reason) => invalid.push({ ...entry, reason });
+
+    if (studentId.length !== 6) { reject(`Student ID must be 6 digits (got "${raw?.studentId ?? ''}")`); continue; }
+    if (seen.has(studentId)) { reject('Duplicate student ID in this file'); continue; }
+    seen.add(studentId);
+
+    const course = courseByKey.get(entry.course.toLowerCase());
+    if (!course) { reject(entry.course ? `Unknown course "${entry.course}"` : 'No course in this row'); continue; }
+    entry.course = course;
+    if (!entry.yearLevel) { reject(`Unrecognised year level "${raw?.yearLevel ?? ''}"`); continue; }
+    if (!entry.status) { reject(`Unrecognised status "${raw?.status ?? ''}"`); continue; }
+
+    const before = stored.get(studentId);
+    if (!before) {
+      if (!name.full) { reject('New student with no name — cannot create the record'); continue; }
+      create.push({ ...entry, lastName: name.last, firstName: name.first, middleName: name.mi, gender: String(raw?.gender ?? '').trim() });
+      continue;
+    }
+
+    const changes = [];
+    if (before.year_level !== entry.yearLevel) changes.push(`${before.year_level || 'no year'} → ${entry.yearLevel}`);
+    if (before.course_code !== course) changes.push(`${before.course_code} → ${course}`);
+    if (before.status !== entry.status) changes.push(`${before.status} → ${entry.status}`);
+    const known = { ...entry, name: entry.name || decrypt(before.name) || studentId, from: { yearLevel: before.year_level, course: before.course_code, status: before.status } };
+    if (changes.length) update.push({ ...known, changes: changes.join(', ') });
+    else unchanged.push(known);
+  }
+
+  // Only students the system still believes are enrolled: a graduate or an
+  // already-dropped student being absent from this semester's file is expected.
+  const missing = studentRows
+    .filter((s) => s.status === 'enrolled' && !seen.has(s.student_id))
+    .map((s) => ({
+      studentId: s.student_id,
+      name: decrypt(s.name) || [decrypt(s.first_name), decrypt(s.last_name)].filter(Boolean).join(' ') || s.student_id,
+      course: s.course_code,
+      yearLevel: s.year_level,
+      status: s.status,
+      reason: 'Enrolled here but not in this masterlist',
+    }));
+
+  return { create, update, unchanged, invalid, missing, schoolYear: String(schoolYear ?? '').trim() };
+}
+
+function masterlistBody(req) {
+  return {
+    rows: Array.isArray(req.body?.rows) ? req.body.rows : [],
+    schoolYear: String(req.body?.schoolYear ?? '').trim(),
+  };
+}
+
+app.post('/api/students/masterlist/preview', requireRole('admin'), async (req, res, next) => {
+  try {
+    const { rows, schoolYear } = masterlistBody(req);
+    if (!rows.length) { res.status(400).json({ error: 'The file had no readable rows' }); return; }
+    res.json(await planMasterlist(rows, schoolYear));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// The commit re-plans from the same rows rather than trusting a plan posted back
+// by the browser: otherwise the "which students get dropped" list would be the
+// caller's to write, and the preview would be decoration rather than a control.
+// `dropMissing` carries only the IDs the admin ticked, and is intersected with
+// the freshly computed `missing` bucket.
+app.post('/api/students/masterlist/commit', requireRole('admin'), async (req, res, next) => {
+  const { rows, schoolYear } = masterlistBody(req);
+  const requestedDrops = new Set(
+    (Array.isArray(req.body?.dropMissing) ? req.body.dropMissing : []).map((id) => String(id)),
+  );
+  const conn = await pool.getConnection();
+  try {
+    const plan = await planMasterlist(rows, schoolYear);
+    if (!plan.create.length && !plan.update.length && !requestedDrops.size) {
+      res.json({ created: 0, updated: 0, dropped: 0, unchanged: plan.unchanged.length, invalid: plan.invalid.length });
+      return;
+    }
+    const now = new Date();
+    const by = req.user?.accountId ?? null;
+    const sy = plan.schoolYear ? encrypt(plan.schoolYear) : null;
+
+    await conn.beginTransaction();
+
+    for (const s of plan.create) {
+      await conn.query(
+        `INSERT INTO students
+           (student_id, name, last_name, first_name, middle_name, course_code, year_level, gender,
+            status, date_graduated, status_updated_at, status_updated_by, school_year)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          s.studentId, encrypt(s.name), encrypt(s.lastName), encrypt(s.firstName), encrypt(s.middleName),
+          s.course, s.yearLevel, encrypt(s.gender),
+          s.status, s.status === 'graduated' ? sqlToday() : null, now, by, sy,
+        ],
+      );
+    }
+
+    for (const s of plan.update) {
+      // school_year is only written when the admin supplied one, so a blank box
+      // does not wipe the term already recorded against each student.
+      const sets = ['year_level = ?', 'course_code = ?', 'status = ?'];
+      const values = [s.yearLevel, s.course, s.status];
+      if (sy !== null) { sets.push('school_year = ?'); values.push(sy); }
+      // The audit columns move only on a genuine status change — re-running the
+      // import must not rewrite who last graduated or dropped each student.
+      if (s.from.status !== s.status) {
+        sets.push('status_updated_at = ?', 'status_updated_by = ?', 'date_graduated = ?');
+        values.push(now, by, s.status === 'graduated' ? sqlToday() : null);
+      }
+      await conn.query(`UPDATE students SET ${sets.join(', ')} WHERE student_id = ?`, [...values, s.studentId]);
+    }
+
+    // Appearing in this term's masterlist is what sets a student's school year,
+    // whether or not their year level moved — so the ones that were already
+    // correct are stamped too. Without this, "already correct" students would be
+    // the only ones left showing last term, which reads as a bug in every report
+    // that groups by school year.
+    if (sy !== null && plan.unchanged.length) {
+      await conn.query(
+        `UPDATE students SET school_year = ? WHERE student_id IN (${plan.unchanged.map(() => '?').join(', ')})`,
+        [sy, ...plan.unchanged.map((s) => s.studentId)],
+      );
+    }
+
+    const drops = plan.missing.filter((s) => requestedDrops.has(s.studentId));
+    for (const s of drops) {
+      await conn.query(
+        `UPDATE students SET status = 'dropped', date_graduated = NULL, status_updated_at = ?, status_updated_by = ?
+         WHERE student_id = ? AND status = 'enrolled'`,
+        [now, by, s.studentId],
+      );
+    }
+
+    await conn.commit();
+    console.log(
+      `[students] masterlist: ${plan.create.length} created, ${plan.update.length} updated, ` +
+      `${drops.length} dropped by account ${by}`,
+    );
+    res.json({
+      created: plan.create.length,
+      updated: plan.update.length,
+      dropped: drops.length,
+      unchanged: plan.unchanged.length,
+      invalid: plan.invalid.length,
+    });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    next(error);
+  } finally {
+    conn.release();
+  }
+});
+
 app.get('/api/:resource', async (req, res, next) => {
   try {
     const config = routeConfig(req, res);
