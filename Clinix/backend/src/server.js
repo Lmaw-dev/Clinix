@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
 import rateLimit from 'express-rate-limit';
-import { ensureDbUpdates, pingDb, pool } from './db.js';
+import { DEFAULT_ACADEMICS, ensureDbUpdates, pingDb, pool } from './db.js';
 import { encrypt, decrypt } from './crypto.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { ensureMysqlRunning, autostartHint } from './mysql-autostart.js';
@@ -23,7 +23,13 @@ const port = Number(process.env.PORT || 4001);
 
 // Allow the configured origin, or reflect any origin (LAN devices) when unset.
 app.use(cors({ origin: process.env.CORS_ORIGIN || true }));
-app.use(express.json({ limit: '5mb' }));
+// 5 MB is generous for a single record — the largest thing anyone posts is a
+// student photo — but a whole-clinic restore is a different order of magnitude,
+// so that one route gets its own parser below and is skipped here. Letting the
+// global parser see it would reject the upload as 413 before the route ran.
+const RESTORE_PATH = '/api/backup/restore';
+const jsonParser = express.json({ limit: '5mb' });
+app.use((req, res, next) => (req.path === RESTORE_PATH ? next() : jsonParser(req, res, next)));
 
 // ── Rate limiting ────────────────────────────────────────────────────────────
 // Without a limit, anyone on the network can fire thousands of login attempts a
@@ -1452,6 +1458,320 @@ app.post('/api/students/masterlist/commit', requireRole('admin'), async (req, re
   } catch (error) {
     await conn.rollback().catch(() => {});
     next(error);
+  } finally {
+    conn.release();
+  }
+});
+
+// ── Colleges & courses ───────────────────────────────────────────────────────
+// Registered above the generic /api/:resource routes, which match any single
+// path segment and would otherwise swallow "academics" as an unknown resource.
+//
+// The clinic's academic structure is not a browser preference: students.course_code
+// is a foreign key into `courses`, so a course that exists only in one admin's
+// localStorage cannot have a student saved against it. Everything here is
+// admin-only to write and readable by anyone signed in, because every roster
+// screen needs the list to populate its dropdowns.
+
+/** The full structure, shaped the way the app's dropdowns consume it. */
+async function readAcademics() {
+  const [collegeRows] = await pool.query('SELECT code, name FROM colleges ORDER BY code');
+  const [courseRows] = await pool.query('SELECT code, college_code, name, years FROM courses ORDER BY code');
+  return collegeRows.map((c) => ({
+    code: c.code,
+    name: c.name,
+    courses: courseRows
+      .filter((k) => k.college_code === c.code)
+      .map((k) => ({ code: k.code, name: k.name, years: Number(k.years) || DEFAULT_COURSE_YEARS })),
+  }));
+}
+
+const DEFAULT_COURSE_YEARS = 4;
+const MAX_COURSE_YEARS = 4;
+
+/** A college/course code as it is stored: trimmed and upper-cased. */
+function academicCode(value, max) {
+  return String(value ?? '').trim().toUpperCase().slice(0, max);
+}
+
+app.get('/api/academics', async (_req, res, next) => {
+  try {
+    res.json(await readAcademics());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/academics/colleges', requireRole('admin'), async (req, res, next) => {
+  try {
+    const code = academicCode(req.body?.code, 16);
+    if (!code) { res.status(400).json({ error: 'Enter a college name' }); return; }
+    const name = String(req.body?.name ?? '').trim().slice(0, 100) || code;
+    const [existing] = await pool.query('SELECT code FROM colleges WHERE code = ?', [code]);
+    if (existing.length) { res.status(409).json({ error: `"${code}" already exists` }); return; }
+    await pool.query('INSERT INTO colleges (code, name) VALUES (?, ?)', [code, name]);
+    console.log(`[academics] college ${code} added by account ${req.user?.accountId ?? 'unknown'}`);
+    res.status(201).json(await readAcademics());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/academics/colleges/:code', requireRole('admin'), async (req, res, next) => {
+  try {
+    const code = academicCode(req.params.code, 16);
+    // The database would refuse this anyway (courses.college_code is RESTRICT),
+    // but as a 500 that says nothing. Name what is in the way instead.
+    const [courses] = await pool.query('SELECT code FROM courses WHERE college_code = ?', [code]);
+    if (courses.length) {
+      res.status(409).json({
+        error: `Remove its ${courses.length} course${courses.length === 1 ? '' : 's'} first (${courses.map((c) => c.code).join(', ')}).`,
+      });
+      return;
+    }
+    const [result] = await pool.query('DELETE FROM colleges WHERE code = ?', [code]);
+    if (!result.affectedRows) { res.status(404).json({ error: 'College not found' }); return; }
+    console.log(`[academics] college ${code} removed by account ${req.user?.accountId ?? 'unknown'}`);
+    res.json(await readAcademics());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/academics/courses', requireRole('admin'), async (req, res, next) => {
+  try {
+    const collegeCode = academicCode(req.body?.collegeCode, 16);
+    const code = academicCode(req.body?.code, 32);
+    if (!code) { res.status(400).json({ error: 'Enter a course name' }); return; }
+    const [college] = await pool.query('SELECT code FROM colleges WHERE code = ?', [collegeCode]);
+    if (!college.length) { res.status(404).json({ error: 'College not found' }); return; }
+    const [existing] = await pool.query('SELECT college_code FROM courses WHERE code = ?', [code]);
+    if (existing.length) {
+      res.status(409).json({ error: `"${code}" already exists in ${existing[0].college_code}` });
+      return;
+    }
+    const name = String(req.body?.name ?? '').trim().slice(0, 100) || code;
+    const years = Number(req.body?.years);
+    await pool.query(
+      'INSERT INTO courses (code, college_code, name, years) VALUES (?, ?, ?, ?)',
+      [code, collegeCode, name, Number.isFinite(years) && years >= 1 && years <= MAX_COURSE_YEARS ? Math.round(years) : DEFAULT_COURSE_YEARS],
+    );
+    console.log(`[academics] course ${code} added to ${collegeCode} by account ${req.user?.accountId ?? 'unknown'}`);
+    res.status(201).json(await readAcademics());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/academics/courses/:code', requireRole('admin'), async (req, res, next) => {
+  try {
+    const code = academicCode(req.params.code, 32);
+    const years = Number(req.body?.years);
+    if (!Number.isFinite(years) || years < 1 || years > MAX_COURSE_YEARS) {
+      res.status(400).json({ error: `Program length must be between 1 and ${MAX_COURSE_YEARS} years` });
+      return;
+    }
+    const [result] = await pool.query('UPDATE courses SET years = ? WHERE code = ?', [Math.round(years), code]);
+    if (!result.affectedRows) { res.status(404).json({ error: 'Course not found' }); return; }
+    res.json(await readAcademics());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/academics/courses/:code', requireRole('admin'), async (req, res, next) => {
+  try {
+    const code = academicCode(req.params.code, 32);
+    const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM students WHERE course_code = ?', [code]);
+    if (n) {
+      res.status(409).json({ error: `${n} student${n === 1 ? ' is' : 's are'} enrolled in ${code}. Move them to another course first.` });
+      return;
+    }
+    const [result] = await pool.query('DELETE FROM courses WHERE code = ?', [code]);
+    if (!result.affectedRows) { res.status(404).json({ error: 'Course not found' }); return; }
+    console.log(`[academics] course ${code} removed by account ${req.user?.accountId ?? 'unknown'}`);
+    res.json(await readAcademics());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/academics/reset', requireRole('admin'), async (req, res, next) => {
+  const conn = await pool.getConnection();
+  try {
+    const defaultCourses = new Set(DEFAULT_ACADEMICS.flatMap((c) => c.courses.map((k) => k.code)));
+    // Restoring the defaults means removing everything added since — but a
+    // course with students in it cannot go, and silently keeping it while
+    // reporting success would be a lie. Refuse the whole reset and say which.
+    const [inUse] = await conn.query(
+      `SELECT c.code, COUNT(s.student_id) AS n FROM courses c
+       JOIN students s ON s.course_code = c.code
+       GROUP BY c.code`,
+    );
+    const blocked = inUse.filter((r) => !defaultCourses.has(r.code));
+    if (blocked.length) {
+      res.status(409).json({
+        error: `Cannot reset: ${blocked.map((r) => `${r.code} (${r.n} student${r.n === 1 ? '' : 's'})`).join(', ')} still in use.`,
+      });
+      return;
+    }
+    await conn.beginTransaction();
+    await conn.query(`DELETE FROM courses WHERE code NOT IN (${[...defaultCourses].map(() => '?').join(', ')})`, [...defaultCourses]);
+    const defaultColleges = DEFAULT_ACADEMICS.map((c) => c.code);
+    await conn.query(`DELETE FROM colleges WHERE code NOT IN (${defaultColleges.map(() => '?').join(', ')})`, defaultColleges);
+    for (const college of DEFAULT_ACADEMICS) {
+      await conn.query('INSERT INTO colleges (code, name) VALUES (?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name)', [college.code, college.name]);
+      for (const course of college.courses) {
+        await conn.query(
+          `INSERT INTO courses (code, college_code, name, years) VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE college_code = VALUES(college_code), name = VALUES(name), years = VALUES(years)`,
+          [course.code, college.code, course.name, course.years],
+        );
+      }
+    }
+    await conn.commit();
+    console.log(`[academics] reset to defaults by account ${req.user?.accountId ?? 'unknown'}`);
+    res.json(await readAcademics());
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    next(error);
+  } finally {
+    conn.release();
+  }
+});
+
+// ── Backup & restore ─────────────────────────────────────────────────────────
+// Settings used to "back up" by writing out seven localStorage keys — a stale
+// mirror of one browser, not the clinic's data — and the Restore button showed
+// a toast and did nothing at all. Both now go through MySQL.
+//
+// Rows are dumped decrypted, in the same shape the API serves, so a backup
+// stays readable if DATA_ENC_KEY is ever rotated and re-encrypts on the way
+// back in. That makes the file itself sensitive: it is the whole clinic's
+// health records in plain text, and the UI says so before it downloads.
+//
+// Deliberately NOT included: accounts and sessions (restoring them could lock
+// every admin out or reinstate a revoked login) and documents (their metadata
+// is meaningless without the uploaded files, which live on disk — deploy/backup-clinix.ps1
+// is what captures those).
+const BACKUP_VERSION = 1;
+
+// Parents before children: courses need their college, students need their
+// course, and everything else hangs off students. Restore walks this forwards
+// and clears tables backwards.
+const BACKUP_ORDER = [
+  'faculty', 'students', 'medicalForms', 'formulary', 'inventory',
+  'medicalRecords', 'visits', 'certificates', 'consultations', 'prescriptions', 'activities',
+];
+
+app.get('/api/backup', requireRole('admin'), async (req, res, next) => {
+  try {
+    const collections = {};
+    for (const resource of BACKUP_ORDER) {
+      const config = tables[resource];
+      // dateStrings, and not the driver's default Date objects, because a
+      // backup has to survive the round trip. mysql2 builds a Date in local
+      // time; JSON.stringify then writes it in UTC, and MySQL reads that
+      // "2026-07-31T16:00:00.000Z" back as the literal date 2026-07-31 with the
+      // zone thrown away — so in Manila (UTC+8) every date in the clinic moved
+      // one day earlier on every restore, and kept moving on each one after.
+      // As strings the values go out and come back exactly as stored.
+      const [rows] = await pool.query({ sql: `SELECT * FROM ${config.table}`, dateStrings: true });
+      collections[resource] = rows.map((row) => fromDb(config, row));
+    }
+    const academics = await readAcademics();
+    const counts = Object.fromEntries(Object.entries(collections).map(([k, v]) => [k, v.length]));
+    console.log(`[backup] created by account ${req.user?.accountId ?? 'unknown'}: ${JSON.stringify(counts)}`);
+    res.json({
+      version: BACKUP_VERSION,
+      generatedAt: new Date().toISOString(),
+      database: process.env.DB_NAME || 'clinix',
+      excludes: ['accounts', 'sessions', 'documents'],
+      academics,
+      collections,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post(RESTORE_PATH, express.json({ limit: '256mb' }), requireRole('admin'), async (req, res) => {
+  const backup = req.body;
+  if (!backup || typeof backup !== 'object' || !backup.collections || typeof backup.collections !== 'object') {
+    res.status(400).json({ error: 'That file is not a Clinix backup.' });
+    return;
+  }
+  if (Number(backup.version) !== BACKUP_VERSION) {
+    res.status(400).json({ error: `That backup is version ${backup.version ?? 'unknown'}; this system reads version ${BACKUP_VERSION}.` });
+    return;
+  }
+  // Every listed collection must be an array before anything is deleted — half
+  // a restore is worse than none.
+  for (const resource of BACKUP_ORDER) {
+    const rows = backup.collections[resource];
+    if (rows !== undefined && !Array.isArray(rows)) {
+      res.status(400).json({ error: `The "${resource}" section of that backup is damaged.` });
+      return;
+    }
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    // Children first, so no delete trips a foreign key on its way out.
+    for (const resource of [...BACKUP_ORDER].reverse()) {
+      await conn.query(`DELETE FROM ${tables[resource].table}`);
+    }
+
+    const academics = Array.isArray(backup.academics) ? backup.academics : [];
+    if (academics.length) {
+      await conn.query('DELETE FROM courses');
+      await conn.query('DELETE FROM colleges');
+      for (const college of academics) {
+        const code = academicCode(college?.code, 16);
+        if (!code) continue;
+        await conn.query('INSERT INTO colleges (code, name) VALUES (?, ?)', [code, String(college?.name ?? code).slice(0, 100)]);
+        for (const course of Array.isArray(college?.courses) ? college.courses : []) {
+          const courseCode = academicCode(course?.code, 32);
+          if (!courseCode) continue;
+          const years = Number(course?.years);
+          await conn.query(
+            'INSERT INTO courses (code, college_code, name, years) VALUES (?, ?, ?, ?)',
+            [courseCode, code, String(course?.name ?? courseCode).slice(0, 100),
+              Number.isFinite(years) && years >= 1 && years <= MAX_COURSE_YEARS ? Math.round(years) : DEFAULT_COURSE_YEARS],
+          );
+        }
+      }
+    }
+
+    const restored = {};
+    for (const resource of BACKUP_ORDER) {
+      const config = tables[resource];
+      const rows = Array.isArray(backup.collections[resource]) ? backup.collections[resource] : [];
+      let written = 0;
+      for (const item of rows) {
+        if (!item || typeof item !== 'object') continue;
+        const row = toDb(config, item);
+        const columns = Object.keys(row);
+        if (!columns.length) continue;
+        await conn.query(
+          `INSERT INTO ${config.table} (${columns.map((c) => `\`${c}\``).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+          columns.map((c) => row[c]),
+        );
+        written += 1;
+      }
+      restored[resource] = written;
+    }
+
+    await conn.commit();
+    console.log(`[backup] restored by account ${req.user?.accountId ?? 'unknown'}: ${JSON.stringify(restored)}`);
+    res.json({ restored });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    // A malformed row surfaces here as a SQL error. The rollback means nothing
+    // changed, which is the one thing the admin needs to be told.
+    console.error(`[backup] restore failed, nothing changed: ${error.message}`);
+    res.status(400).json({ error: `Restore failed and nothing was changed: ${error.message}` });
   } finally {
     conn.release();
   }

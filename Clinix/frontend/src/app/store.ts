@@ -50,6 +50,37 @@ export async function deleteApi(resource: Resource, id: string): Promise<void> {
   await request(`/${resource}/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+// ── Backup & restore ─────────────────────────────────────────────────────────
+// Settings used to "back up" by writing out a handful of localStorage keys — a
+// stale mirror of whichever browser pressed the button, not the clinic's data —
+// and Restore was a toast attached to nothing. Both read and write MySQL now.
+
+export type BackupFile = {
+  version: number;
+  generatedAt: string;
+  database: string;
+  /** Tables deliberately left out, named so the UI can say what a restore will not bring back. */
+  excludes: string[];
+  academics: unknown;
+  collections: Record<string, unknown[]>;
+};
+
+export async function createBackupApi(): Promise<BackupFile> {
+  const res = await request('/backup');
+  return res.json();
+}
+
+/** Replaces the clinic's records with the file's. Resolves with per-collection row counts. */
+export async function restoreBackupApi(backup: unknown): Promise<Record<string, number>> {
+  const res = await request('/backup/restore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(backup),
+  });
+  const body = await res.json();
+  return (body?.restored ?? {}) as Record<string, number>;
+}
+
 /**
  * A MySQL DATE arrives as a timestamp at local midnight, which JSON serialises
  * in UTC: a date of 31 July in Manila comes back as "2026-07-30T16:00:00.000Z".

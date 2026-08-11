@@ -22,6 +22,7 @@ import {
   listPrescriptionsApi, type Prescription,
 } from './store';
 import { listDocumentsByForm } from './documents';
+import { loadColleges } from './colleges';
 import { ReportsModule } from './components/ReportsModule';
 import { SettingsModule } from './components/SettingsModule';
 import { API_URL, apiFetch, getToken, setUnauthorizedHandler } from './api';
@@ -575,7 +576,7 @@ export default function App() {
   const [booting, setBooting] = useState(isLoggedIn);
   const [bootStep, setBootStep] = useState(0);
   const [bootStatus, setBootStatus] = useState('Connecting to the clinic server');
-  const BOOT_STEPS = 10;
+  const BOOT_STEPS = 11;
   // Student profile requested from outside the Students module (e.g. Dashboard search)
   const [profileStudentId, setProfileStudentId] = useState<string | null>(null);
 
@@ -895,6 +896,18 @@ export default function App() {
       } catch {
         // There is no cached copy to fall back on by design — the sidebar shows
         // the username instead of somebody else's name.
+      }
+      finishStep();
+
+      // The colleges and courses every roster dropdown is built from. Shared
+      // rather than per-device, and the same list students.course_code points
+      // at — a stale copy here is what made a newly added course unsaveable.
+      step('Loading colleges & courses');
+      try {
+        await loadColleges();
+      } catch {
+        // The cached copy from the last successful load stays on screen; the
+        // alternative is empty course dropdowns.
       }
       finishStep();
 

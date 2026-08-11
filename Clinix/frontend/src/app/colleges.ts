@@ -1,10 +1,18 @@
 import { useSyncExternalStore } from 'react';
+import { API_URL, apiFetch } from './api';
 
-// ── Shared, persisted source of truth for colleges & their courses ──────────────
+// ── Shared source of truth for colleges & their courses ────────────────────────
 // Any component can read the current list with useColleges() (re-renders on change)
 // or getColleges() (one-off read). Admins add/remove entries from Settings, and the
-// changes flow to the Student & Faculty forms/filters automatically. Persisted in
-// localStorage so additions survive reloads.
+// changes flow to the Student & Faculty forms/filters automatically.
+//
+// This list used to live in localStorage, which made it a per-browser opinion
+// about what the clinic offers — while students.course_code carries a foreign
+// key into the `courses` table. A course added in Settings therefore existed
+// nowhere the save could see it: picking it in Add Student failed on the
+// constraint, and a second computer never saw the course at all. The database
+// owns the list now; localStorage stays only as a cache, so a reload with the
+// backend down still renders dropdowns instead of blank ones.
 
 export type College = { name: string; courses: string[] };
 
@@ -60,53 +68,40 @@ export function normalizeOffice(name: string, known: string[]): string {
   return known.find((o) => o.toLowerCase() === raw.toLowerCase()) || raw;
 }
 
-const STORAGE_KEY = 'clinixColleges';
-const YEARS_KEY = 'clinixCourseYears';
+const CACHE_KEY = 'clinixColleges';
+const YEARS_CACHE_KEY = 'clinixCourseYears';
 
 /** How many years a program runs when nobody has said otherwise. */
 export const DEFAULT_COURSE_YEARS = 4;
 
-const DEFAULT_COLLEGES: College[] = [
-  { name: 'CTECH', courses: ['BSCS', 'BSIT-FPST', 'BSIT-ELECT'] },
-  { name: 'CTE', courses: ['BEED', 'BSED-ENGLISH', 'BSED-MATH'] },
-  { name: 'COM', courses: ['BSM'] },
-  { name: 'COF', courses: ['BSF'] },
-];
+/** What the API returns: codes and display names, courses nested per college. */
+type ApiCollege = { code: string; name: string; courses: { code: string; name: string; years: number }[] };
 
-function clone(list: College[]): College[] {
-  return list.map((c) => ({ name: c.name, courses: [...c.courses] }));
-}
-
-function load(): College[] {
+function cachedColleges(): College[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return clone(DEFAULT_COLLEGES);
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return clone(DEFAULT_COLLEGES);
-    const cleaned = parsed
+    const parsed = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (!Array.isArray(parsed)) return [];
+    return parsed
       .filter((c: unknown): c is College => !!c && typeof (c as College).name === 'string')
       .map((c: College) => ({
         name: c.name,
         courses: Array.isArray(c.courses) ? c.courses.filter((x): x is string => typeof x === 'string') : [],
       }));
-    return cleaned.length ? cleaned : clone(DEFAULT_COLLEGES);
   } catch {
-    return clone(DEFAULT_COLLEGES);
+    return [];
   }
 }
 
 // ── Program length ──────────────────────────────────────────────────────────
 // Year-end processing needs to know when a student has reached the *end* of
 // their program, and that is not the same year level for everyone: a 2-year
-// course graduates at 2nd Year, a 4-year one at 4th. Kept as a course → years
-// map rather than a field on College.courses so nothing that already reads the
+// course graduates at 2nd Year, a 4-year one at 4th. Flattened out of the API's
+// nested shape into a course → years map so nothing that already reads the
 // plain string list has to change.
 
-function loadYears(): Record<string, number> {
+function cachedYears(): Record<string, number> {
   try {
-    const raw = localStorage.getItem(YEARS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(localStorage.getItem(YEARS_CACHE_KEY) || 'null');
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     const out: Record<string, number> = {};
     for (const [course, years] of Object.entries(parsed)) {
@@ -119,14 +114,21 @@ function loadYears(): Record<string, number> {
   }
 }
 
-// Reassigned (new reference) on every mutation so useSyncExternalStore detects change.
-let colleges: College[] = load();
-let courseYears: Record<string, number> = loadYears();
+// Reassigned (new reference) on every change so useSyncExternalStore detects it.
+let colleges: College[] = cachedColleges();
+let courseYears: Record<string, number> = cachedYears();
 const listeners = new Set<() => void>();
 
-function persist() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(colleges)); } catch { /* ignore quota errors */ }
-  try { localStorage.setItem(YEARS_KEY, JSON.stringify(courseYears)); } catch { /* ignore quota errors */ }
+/** Adopt a server response as the new truth, and cache it for the next reload. */
+function apply(rows: ApiCollege[]) {
+  colleges = rows.map((c) => ({ name: c.code, courses: c.courses.map((k) => k.code) }));
+  courseYears = {};
+  rows.forEach((c) => c.courses.forEach((k) => {
+    const n = Number(k.years);
+    if (Number.isFinite(n) && n >= 1 && n <= YEAR_OPTIONS.length) courseYears[k.code] = Math.round(n);
+  }));
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(colleges)); } catch { /* ignore quota errors */ }
+  try { localStorage.setItem(YEARS_CACHE_KEY, JSON.stringify(courseYears)); } catch { /* ignore quota errors */ }
   listeners.forEach((fn) => fn());
 }
 
@@ -134,6 +136,40 @@ function subscribe(cb: () => void) {
   listeners.add(cb);
   return () => { listeners.delete(cb); };
 }
+
+/**
+ * One request against the academics API, applying whatever comes back.
+ *
+ * Every mutating endpoint returns the full list, so a successful write leaves
+ * every open dropdown correct without a second round trip — and, more usefully,
+ * without the local copy drifting from the database when two admins are working
+ * at once.
+ */
+async function call(path: string, init?: RequestInit): Promise<Result> {
+  try {
+    const res = await apiFetch(`${API_URL}/academics${path}`, init);
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      return { ok: false, error: (body as { error?: string } | null)?.error || `Request failed (${res.status})` };
+    }
+    if (Array.isArray(body)) apply(body as ApiCollege[]);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Cannot reach the server — nothing was changed.' };
+  }
+}
+
+/** Pull the list from the database. Called once the user is signed in. */
+export async function loadColleges(): Promise<void> {
+  const res = await call('');
+  if (!res.ok) throw new Error(res.error || 'Could not load colleges');
+}
+
+const json = (body: unknown): RequestInit => ({
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
 // ── Reads ───────────────────────────────────────────────────────────────────────
 
@@ -161,19 +197,19 @@ export function useCourseYears(): Record<string, number> {
   return useSyncExternalStore(subscribe, getCourseYears, getCourseYears);
 }
 
-/** Set a program's length. Passing the default removes the override. */
-export function setCourseYears(course: string, years: number): Result {
+/** Set a program's length. */
+export async function setCourseYears(course: string, years: number): Promise<Result> {
   const key = (course || '').trim();
   if (!key) return { ok: false, error: 'No course given' };
   const n = Math.round(Number(years));
   if (!Number.isFinite(n) || n < 1 || n > YEAR_OPTIONS.length) {
     return { ok: false, error: `Program length must be between 1 and ${YEAR_OPTIONS.length} years` };
   }
-  const next = { ...courseYears };
-  if (n === DEFAULT_COURSE_YEARS) delete next[key]; else next[key] = n;
-  courseYears = next;
-  persist();
-  return { ok: true };
+  return call(`/courses/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ years: n }),
+  });
 }
 
 /** Normalize a stored/imported college name to its canonical casing, if known. */
@@ -187,55 +223,30 @@ export function normalizeCollegeName(name?: string): string {
 
 type Result = { ok: boolean; error?: string };
 
-export function addCollege(name: string): Result {
+export async function addCollege(name: string): Promise<Result> {
   const n = name.trim();
   if (!n) return { ok: false, error: 'Enter a college name' };
-  if (colleges.some((c) => c.name.toLowerCase() === n.toLowerCase())) {
-    return { ok: false, error: `"${n}" already exists` };
-  }
-  colleges = [...colleges, { name: n, courses: [] }];
-  persist();
-  return { ok: true };
+  return call('/colleges', json({ code: n, name: n }));
 }
 
-export function removeCollege(name: string): Result {
-  if (!colleges.some((c) => c.name === name)) return { ok: false, error: 'College not found' };
-  colleges = colleges.filter((c) => c.name !== name);
-  persist();
-  return { ok: true };
+export async function removeCollege(name: string): Promise<Result> {
+  return call(`/colleges/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
-export function addCourse(collegeName: string, course: string): Result {
+export async function addCourse(collegeName: string, course: string): Promise<Result> {
   const c = course.trim();
   if (!c) return { ok: false, error: 'Enter a course name' };
-  const college = colleges.find((x) => x.name === collegeName);
-  if (!college) return { ok: false, error: 'College not found' };
-  if (college.courses.some((x) => x.toLowerCase() === c.toLowerCase())) {
-    return { ok: false, error: `"${c}" already exists in ${collegeName}` };
-  }
-  colleges = colleges.map((x) =>
-    x.name === collegeName ? { ...x, courses: [...x.courses, c] } : x,
-  );
-  persist();
-  return { ok: true };
+  return call('/courses', json({ collegeCode: collegeName, code: c, name: c }));
 }
 
-export function removeCourse(collegeName: string, course: string): Result {
-  const college = colleges.find((x) => x.name === collegeName);
-  if (!college || !college.courses.includes(course)) return { ok: false, error: 'Course not found' };
-  colleges = colleges.map((x) =>
-    x.name === collegeName ? { ...x, courses: x.courses.filter((cc) => cc !== course) } : x,
-  );
-  const { [course]: _removed, ...rest } = courseYears;
-  courseYears = rest;
-  persist();
-  return { ok: true };
+export async function removeCourse(_collegeName: string, course: string): Promise<Result> {
+  // A course code is unique across every college, so the college is not needed
+  // to identify it — the parameter stays for the call sites that read naturally
+  // with it.
+  return call(`/courses/${encodeURIComponent(course)}`, { method: 'DELETE' });
 }
 
 /** Restore the built-in default colleges/courses. */
-export function resetColleges(): Result {
-  colleges = clone(DEFAULT_COLLEGES);
-  courseYears = {};
-  persist();
-  return { ok: true };
+export async function resetColleges(): Promise<Result> {
+  return call('/reset', { method: 'POST' });
 }

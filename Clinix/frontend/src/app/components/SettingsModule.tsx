@@ -19,7 +19,9 @@ import {
 import {
   previewYearEndApi, commitYearEndApi, YearEndCandidate, YearEndPlan,
   saveMyProfileApi, EMPTY_PROFILE, type UserProfile,
+  createBackupApi, restoreBackupApi,
 } from '../store';
+import { parseMasterlistCsv, MasterlistRow } from '../masterlist';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -134,37 +136,67 @@ function SectionHeading({ icon: Icon, label }: { icon: React.ComponentType<{ siz
 }
 
 /**
- * The preview list for one bucket of year-end changes. Collapsed to the first
- * few rows with a count, because "300 students will be affected" is the number
- * the admin needs to see before committing — not 300 lines to scroll past.
+ * The preview list for one bucket of pending roster changes, shared by year-end
+ * processing and the registrar masterlist import. Collapsed to the first few
+ * rows with a count, because "300 students will be affected" is the number the
+ * admin needs to see before committing — not 300 lines to scroll past.
+ *
+ * Passing `selected` turns the bucket into a pick list: the masterlist import
+ * uses that for students who are enrolled here but absent from the registrar's
+ * file, which are never acted on unless somebody ticks them.
  */
-function YearEndList({ title, rows, describe, tone = 'normal' }: {
+function PreviewList<T extends { studentId: string; name: string }>({
+  title, rows, describe, tone = 'normal', selected, onToggle,
+}: {
   title: string;
-  rows: YearEndCandidate[];
-  describe: (s: YearEndCandidate) => string;
+  rows: T[];
+  describe: (s: T) => string;
   tone?: 'normal' | 'warn';
+  selected?: Set<string>;
+  onToggle?: (ids: string[], on: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (!rows.length) return null;
   const shown = expanded ? rows : rows.slice(0, 8);
+  const pickable = !!selected && !!onToggle;
+  const allOn = pickable && rows.every(s => selected!.has(s.studentId));
   return (
     <div className={`rounded-xl border ${tone === 'warn' ? 'border-amber-200 dark:border-amber-900/50' : 'border-blue-100 dark:border-slate-600'}`}>
       <div className={`flex items-center justify-between px-4 py-2.5 ${tone === 'warn' ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-blue-50 dark:bg-slate-700/40'}`}>
         <p className="text-black dark:text-slate-200" style={{ fontSize: 12.5, fontWeight: 600 }}>
           {title} · {rows.length}
+          {pickable && <span className="text-slate-500 dark:text-slate-400" style={{ fontWeight: 500 }}> · {rows.filter(s => selected!.has(s.studentId)).length} selected</span>}
         </p>
-        {rows.length > 8 && (
-          <button onClick={() => setExpanded(v => !v)} className="text-blue-600 hover:text-blue-700 dark:text-blue-300" style={{ fontSize: 12, fontWeight: 600 }}>
-            {expanded ? 'Show less' : `Show all ${rows.length}`}
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {pickable && (
+            <button onClick={() => onToggle!(rows.map(s => s.studentId), !allOn)} className="text-blue-600 hover:text-blue-700 dark:text-blue-300" style={{ fontSize: 12, fontWeight: 600 }}>
+              {allOn ? 'Clear all' : 'Select all'}
+            </button>
+          )}
+          {rows.length > 8 && (
+            <button onClick={() => setExpanded(v => !v)} className="text-blue-600 hover:text-blue-700 dark:text-blue-300" style={{ fontSize: 12, fontWeight: 600 }}>
+              {expanded ? 'Show less' : `Show all ${rows.length}`}
+            </button>
+          )}
+        </div>
       </div>
       <ul className="divide-y divide-slate-100 dark:divide-slate-700 max-h-72 overflow-y-auto">
         {shown.map(s => (
           <li key={s.studentId} className="flex items-center justify-between gap-3 px-4 py-2">
-            <span className="min-w-0">
-              <span className="block truncate text-black dark:text-slate-200" style={{ fontSize: 12.5, fontWeight: 500 }}>{s.name || s.studentId}</span>
-              <span className="block truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{describe(s)}</span>
+            <span className="flex min-w-0 items-center gap-3">
+              {pickable && (
+                <input
+                  type="checkbox"
+                  checked={selected!.has(s.studentId)}
+                  onChange={e => onToggle!([s.studentId], e.target.checked)}
+                  className="shrink-0 h-4 w-4 accent-amber-600"
+                  aria-label={`Mark ${s.name || s.studentId} as dropped`}
+                />
+              )}
+              <span className="min-w-0">
+                <span className="block truncate text-black dark:text-slate-200" style={{ fontSize: 12.5, fontWeight: 500 }}>{s.name || s.studentId}</span>
+                <span className="block truncate text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{describe(s)}</span>
+              </span>
             </span>
             <span className="shrink-0 text-slate-400" style={{ fontSize: 11, fontFamily: 'monospace' }}>{s.studentId}</span>
           </li>
@@ -286,9 +318,14 @@ export function SettingsModule({ onNavigate, showToast, userProfile = EMPTY_PROF
   const [notifSaved, setNotifSaved] = useState(false);
 
   // ── Backup state
+  // lastBackup defaulted to a hardcoded date, so a clinic that had never taken
+  // one was told it had a backup from July 2026. Empty means "Never", which is
+  // what the panel renders when nobody has pressed the button.
   const [backupPrefs, setBackupPrefs] = useState<BackupPrefs>(() => ls('clinixBackupPrefs', {
-    frequency: 'daily', lastBackup: 'July 7, 2026 · 9:30 PM',
+    frequency: 'daily', lastBackup: '',
   }));
+  const [backupBusy, setBackupBusy] = useState(false);
+  const restoreRef = useRef<HTMLInputElement>(null);
 
   // ── Privacy state
   const [privacy, setPrivacy] = useState<PrivacyPrefs>(() => ls('clinixPrivacy', {
@@ -353,9 +390,105 @@ export function SettingsModule({ onNavigate, showToast, userProfile = EMPTY_PROF
     }
   }
 
-  function handleAddCollege() {
+  // ── Registrar masterlist state
+  const masterlistInput = useRef<HTMLInputElement>(null);
+  const [mlFileName, setMlFileName] = useState('');
+  const [mlRows, setMlRows] = useState<MasterlistRow[]>([]);
+  const [mlWarnings, setMlWarnings] = useState<string[]>([]);
+  const [mlSy, setMlSy] = useState(() => {
+    const y = new Date().getFullYear();
+    return `${y}-${y + 1}`;
+  });
+  const [mlPlan, setMlPlan] = useState<MasterlistPlan | null>(null);
+  const [mlDrops, setMlDrops] = useState<Set<string>>(new Set());
+  const [mlBusy, setMlBusy] = useState(false);
+
+  function toggleDrop(ids: string[], on: boolean) {
+    setMlDrops(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => (on ? next.add(id) : next.delete(id)));
+      return next;
+    });
+  }
+
+  function handleMasterlistFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Clearing the input means picking the same file twice in a row still fires
+    // a change event, which matters when the encoder fixes the file and re-picks.
+    e.target.value = '';
+    if (!file) return;
+    // Any previous preview describes the previous file and must not survive it.
+    setMlPlan(null);
+    setMlDrops(new Set());
+    setMlFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, ignoredColumns, missingColumns } = parseMasterlistCsv(String(reader.result || ''));
+      setMlRows(rows);
+      const warnings: string[] = [];
+      if (missingColumns.length) warnings.push(`Missing required column(s): ${missingColumns.join(', ')}`);
+      if (ignoredColumns.length) warnings.push(`Ignored column(s): ${ignoredColumns.join(', ')}`);
+      if (!rows.length) warnings.push('No data rows were found below the header.');
+      setMlWarnings(warnings);
+    };
+    reader.onerror = () => { setMlRows([]); setMlWarnings(['Could not read that file.']); };
+    reader.readAsText(file);
+  }
+
+  async function runMasterlistPreview() {
+    if (!mlRows.length) { showToast('Choose a registrar CSV file first'); return; }
+    setMlBusy(true);
+    try {
+      const plan = await previewMasterlistApi(mlRows, mlSy.trim());
+      setMlPlan(plan);
+      // Absent-from-the-file students start unticked on purpose. A per-college
+      // export or a late encoder looks exactly like a student who left, and
+      // pre-ticking them would make dropping the roster the default action.
+      setMlDrops(new Set());
+    } catch (err) {
+      setMlPlan(null);
+      showToast(err instanceof Error ? err.message : 'Could not read that masterlist');
+    } finally {
+      setMlBusy(false);
+    }
+  }
+
+  async function commitMasterlist() {
+    if (!mlPlan) return;
+    const total = mlPlan.create.length + mlPlan.update.length + mlDrops.size;
+    if (!total) { showToast('Nothing to apply — the roster already matches this file'); return; }
+    if (!(await confirmDialog({
+      title: `Apply the registrar masterlist for SY ${mlSy.trim() || '—'}?`,
+      message:
+        `${mlPlan.update.length} student record(s) updated, ${mlPlan.create.length} added, and ` +
+        `${mlDrops.size} marked dropped. Only year level, course, status and school year change — ` +
+        'medical records, guardian details and addresses are left exactly as they are. ' +
+        `${mlPlan.invalid.length} unreadable row(s) will be skipped.`,
+      confirmLabel: `Apply ${total} change${total !== 1 ? 's' : ''}`,
+    }))) return;
+
+    setMlBusy(true);
+    try {
+      const r = await commitMasterlistApi(mlRows, mlSy.trim(), [...mlDrops]);
+      showToast(`Masterlist applied — ${r.updated} updated, ${r.created} added, ${r.dropped} dropped`);
+      onRosterChanged?.();
+      setMlPlan(null);
+      setMlDrops(new Set());
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Import failed — nothing was changed');
+    } finally {
+      setMlBusy(false);
+    }
+  }
+
+  // Every one of these now writes to the database and waits for the answer:
+  // the list is shared, so "added" has to mean the server took it, not that
+  // this browser drew it. A rejection carries the server's own reason — which
+  // courses still hold students, which college is not empty — because those are
+  // the only ones the admin can act on.
+  async function handleAddCollege() {
     const name = newCollege.trim();
-    const res = addCollege(name);
+    const res = await addCollege(name);
     if (!res.ok) { showToast(res.error || 'Could not add college'); return; }
     showToast(`College "${name}" added`);
     setNewCollege('');
@@ -363,33 +496,33 @@ export function SettingsModule({ onNavigate, showToast, userProfile = EMPTY_PROF
   async function handleRemoveCollege(name: string) {
     if (!(await confirmDialog({
       title: `Remove "${name}"?`,
-      message: 'The college and its courses will be removed from the dropdowns. Existing student and faculty records keep their saved values.',
+      message: 'The college will be removed for everyone. It must have no courses left, and existing student and faculty records keep their saved values.',
       confirmLabel: 'Remove',
       danger: true,
     }))) return;
-    removeCollege(name);
-    showToast(`College "${name}" removed`);
+    const res = await removeCollege(name);
+    showToast(res.ok ? `College "${name}" removed` : res.error || 'Could not remove college');
   }
-  function handleAddCourse(college: string) {
+  async function handleAddCourse(college: string) {
     const course = (courseDrafts[college] || '').trim();
-    const res = addCourse(college, course);
+    const res = await addCourse(college, course);
     if (!res.ok) { showToast(res.error || 'Could not add course'); return; }
     showToast(`Course "${course}" added to ${college}`);
     setCourseDrafts((d) => ({ ...d, [college]: '' }));
   }
-  function handleRemoveCourse(college: string, course: string) {
-    removeCourse(college, course);
-    showToast(`Course "${course}" removed`);
+  async function handleRemoveCourse(college: string, course: string) {
+    const res = await removeCourse(college, course);
+    showToast(res.ok ? `Course "${course}" removed` : res.error || 'Could not remove course');
   }
   async function handleResetColleges() {
     if (!(await confirmDialog({
       title: 'Restore default colleges & courses?',
-      message: 'The built-in list will be restored and any custom colleges or courses you added will be removed.',
+      message: 'The built-in list will be restored for everyone, and any custom colleges or courses added since will be removed. Courses that still have students enrolled cannot be removed, and the reset will stop rather than change anything.',
       confirmLabel: 'Restore defaults',
       danger: true,
     }))) return;
-    resetColleges();
-    showToast('Colleges & courses reset to defaults');
+    const res = await resetColleges();
+    showToast(res.ok ? 'Colleges & courses reset to defaults' : res.error || 'Could not reset');
   }
 
   // ── Save helpers
@@ -468,20 +601,77 @@ export function SettingsModule({ onNavigate, showToast, userProfile = EMPTY_PROF
     reader.readAsDataURL(file);
   }
 
-  function createBackup() {
-    const keys = ['clinixStudents', 'clinixFaculty', 'clinixMedRecords', 'clinixVisits', 'clinixInventory', 'clinixCertificates', 'clinixConsultations'];
-    const data: Record<string, unknown> = {};
-    keys.forEach(k => { try { data[k] = JSON.parse(localStorage.getItem(k) || 'null'); } catch { data[k] = null; } });
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url;
-    a.download = `clinix-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
-    URL.revokeObjectURL(url);
-    const now = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    const time = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    const nb = { ...backupPrefs, lastBackup: `${now} · ${time}` };
-    setBackupPrefs(nb); lsSave('clinixBackupPrefs', nb);
-    showToast('Backup created and downloaded');
+  // ── Backup & restore ──────────────────────────────────────────────────────
+  // This used to dump seven localStorage keys, which was a copy of whatever
+  // this one browser happened to be caching — never the clinic's records, and
+  // different on every computer. It reads MySQL now, and Restore, which used to
+  // be a toast wired to nothing, actually writes it back.
+  async function createBackup() {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const backup = await createBackupApi();
+      const rows = Object.values(backup.collections).reduce((n, list) => n + list.length, 0);
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url;
+      a.download = `clinix-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+      URL.revokeObjectURL(url);
+      const now = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      const time = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      const nb = { ...backupPrefs, lastBackup: `${now} · ${time}` };
+      setBackupPrefs(nb); lsSave('clinixBackupPrefs', nb);
+      showToast(`Backup downloaded — ${rows.toLocaleString()} record${rows === 1 ? '' : 's'}`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not create the backup');
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
+  async function handleRestoreFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Cleared straight away so choosing the same file twice still fires onChange.
+    e.target.value = '';
+    if (!file || backupBusy) return;
+
+    let backup: { generatedAt?: string; collections?: Record<string, unknown[]> };
+    try {
+      backup = JSON.parse(await file.text());
+    } catch {
+      showToast('That file is not readable JSON.');
+      return;
+    }
+    if (!backup || typeof backup !== 'object' || !backup.collections) {
+      showToast('That file is not a Clinix backup.');
+      return;
+    }
+
+    // Restore replaces, it does not merge. Say the size of what is being thrown
+    // away before doing it, not after.
+    const rows = Object.values(backup.collections).reduce((n, list) => n + (Array.isArray(list) ? list.length : 0), 0);
+    const taken = backup.generatedAt ? new Date(backup.generatedAt).toLocaleString() : 'an unknown date';
+    if (!(await confirmDialog({
+      title: 'Replace all clinic records?',
+      message: `This backup was taken on ${taken} and holds ${rows.toLocaleString()} record${rows === 1 ? '' : 's'}. `
+        + 'Every student, staff member, consultation, medical record, certificate and stock item currently in the database will be deleted and replaced with the file\'s. '
+        + 'User accounts and uploaded document files are not touched. This cannot be undone — create a backup first if you have not.',
+      confirmLabel: 'Replace everything',
+      danger: true,
+    }))) return;
+
+    setBackupBusy(true);
+    try {
+      const restored = await restoreBackupApi(backup);
+      const total = Object.values(restored).reduce((n, v) => n + v, 0);
+      showToast(`Restored ${total.toLocaleString()} record${total === 1 ? '' : 's'} — reloading`);
+      // Every module is holding rows that no longer exist. A reload is blunt but
+      // it is the only thing that leaves nothing stale on screen.
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Restore failed — nothing was changed');
+      setBackupBusy(false);
+    }
   }
 
   const activities: Array<{ msg: string; ts: string }> = ls('clinixActivities', []);
@@ -864,8 +1054,8 @@ export function SettingsModule({ onNavigate, showToast, userProfile = EMPTY_PROF
                         min={1}
                         max={YEAR_OPTIONS.length}
                         value={courseYearsMap[course] ?? DEFAULT_COURSE_YEARS}
-                        onChange={e => {
-                          const r = setCourseYears(course, Number(e.target.value));
+                        onChange={async e => {
+                          const r = await setCourseYears(course, Number(e.target.value));
                           if (!r.ok) showToast(r.error || 'Could not set the program length');
                         }}
                         title={`${course} runs for this many years`}
@@ -900,10 +1090,152 @@ export function SettingsModule({ onNavigate, showToast, userProfile = EMPTY_PROF
           </div>
         </SectionCard>
 
-        <SectionHeading icon={CalendarClock} label="End of School Year" />
+        <SectionHeading icon={CalendarClock} label="Enrolment &amp; School Year" />
+        <SectionCard
+          title="Registrar Masterlist Import"
+          desc="Upload the registrar's enrolled-students file and let it update year levels, courses and enrolment status."
+        >
+          {/* The registrar's file is the authority on who is enrolled, so this is
+              the preferred way to roll the roster into a new term: it carries the
+              irregulars, shiftees and stop-outs that a blanket promotion gets
+              wrong. Preview first, same as year-end — nothing is written until
+              the counts have been read. */}
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 dark:border-slate-600 dark:bg-slate-700/40 mb-5">
+            <p className="text-slate-600 dark:text-slate-300" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+              Only <strong>year level, course, enrolment status and school year</strong> are
+              taken from the file. Medical records, allergies, guardian details, addresses
+              and photos are never touched — the registrar's file does not describe them,
+              so they are left exactly as the clinic recorded them.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="School Year / Term">
+              <input
+                value={mlSy}
+                onChange={e => setMlSy(e.target.value)}
+                placeholder="2026-2027"
+                className={INPUT}
+                style={{ fontSize: 13 }}
+              />
+            </Field>
+            <Field label="Masterlist file">
+              <button
+                onClick={() => masterlistInput.current?.click()}
+                className={`${INPUT} flex items-center gap-2 text-left`}
+                style={{ fontSize: 13 }}
+              >
+                <Upload size={14} className="shrink-0 text-slate-400" />
+                <span className="truncate">{mlFileName || 'Choose a CSV file…'}</span>
+              </button>
+              <input
+                ref={masterlistInput}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleMasterlistFile}
+                className="hidden"
+              />
+            </Field>
+          </div>
+          <p className="text-slate-400 mt-1.5" style={{ fontSize: 11.5 }}>
+            Save the registrar's Excel sheet as <strong>CSV</strong> first (File → Save As → CSV).
+            Columns read: Student ID, Name (or Last/First/Middle), Course, Year Level, Status, Sex.
+            The school year is stamped on everyone found in the file; leave it blank
+            to keep whatever each student already has.
+          </p>
+
+          {mlWarnings.length > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-900/20">
+              {mlWarnings.map(w => (
+                <p key={w} className="text-amber-800 dark:text-amber-200" style={{ fontSize: 12, lineHeight: 1.6 }}>{w}</p>
+              ))}
+            </div>
+          )}
+
+          {mlRows.length > 0 && (
+            <p className="text-slate-500 dark:text-slate-400 mt-3" style={{ fontSize: 12 }}>
+              {mlRows.length} row{mlRows.length !== 1 ? 's' : ''} read from {mlFileName}.
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3 mt-5">
+            <button
+              onClick={runMasterlistPreview}
+              disabled={mlBusy || !mlRows.length}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
+              style={{ fontSize: 13, fontWeight: 600 }}
+            >
+              <RefreshCw size={14} className={mlBusy ? 'animate-spin' : ''} />
+              {mlBusy ? 'Working…' : mlPlan ? 'Refresh preview' : 'Preview changes'}
+            </button>
+            {mlPlan && (
+              <button
+                onClick={commitMasterlist}
+                disabled={mlBusy || !(mlPlan.create.length + mlPlan.update.length + mlDrops.size)}
+                className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-5 py-2.5 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 transition-colors"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                <Check size={14} />
+                Apply {mlPlan.create.length + mlPlan.update.length + mlDrops.size} change
+                {mlPlan.create.length + mlPlan.update.length + mlDrops.size !== 1 ? 's' : ''}
+              </button>
+            )}
+          </div>
+
+          {mlPlan && (
+            <div className="mt-5 space-y-4">
+              <div className="grid grid-cols-4 gap-3">
+                {([
+                  ['Updated', mlPlan.update.length, '#2563EB'],
+                  ['New', mlPlan.create.length, '#0E7490'],
+                  ['Already correct', mlPlan.unchanged.length, '#64748B'],
+                  ['Needs fixing', mlPlan.invalid.length, '#B45309'],
+                ] as const).map(([label, n, colour]) => (
+                  <div key={label} className="rounded-xl border border-blue-100 px-4 py-3 dark:border-slate-600">
+                    <p style={{ fontSize: 22, fontWeight: 700, color: colour }}>{n}</p>
+                    <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5 }}>{label}</p>
+                  </div>
+                ))}
+              </div>
+
+              <PreviewList
+                title="Updated from the masterlist"
+                rows={mlPlan.update}
+                describe={s => s.changes || 'Changed'}
+              />
+              <PreviewList
+                title="New students to be added"
+                rows={mlPlan.create}
+                describe={s => `${s.course} · ${s.yearLevel} · ${s.status} — medical details still blank`}
+              />
+              <PreviewList
+                title="Rows that could not be read — fix the file and re-upload"
+                rows={mlPlan.invalid}
+                describe={s => `Line ${s.line}: ${s.reason || 'Unreadable'}`}
+                tone="warn"
+              />
+              <PreviewList
+                title="Enrolled here but not in this file — tick to mark dropped"
+                rows={mlPlan.missing}
+                describe={s => `${s.course} · ${s.yearLevel} — stays enrolled unless ticked`}
+                tone="warn"
+                selected={mlDrops}
+                onToggle={toggleDrop}
+              />
+              {mlPlan.missing.length > 0 && (
+                <p className="text-slate-500 dark:text-slate-400" style={{ fontSize: 11.5, lineHeight: 1.6 }}>
+                  Nobody in this list is changed unless you tick them. If the file covers only
+                  one college, or the registrar is still encoding, leave them alone — they stay
+                  enrolled and the import can be run again later.
+                </p>
+              )}
+            </div>
+          )}
+        </SectionCard>
+
         <SectionCard
           title="Year-End Processing"
-          desc="Move every enrolled student up one year level, and graduate the ones who have finished their program."
+          desc="No registrar file? Move every enrolled student up one year level, and graduate the ones who have finished their program."
         >
           {/* Deliberately two steps. This touches the whole roster at once, and
               the roster is never as tidy as the rule assumes — irregulars,
@@ -982,17 +1314,17 @@ export function SettingsModule({ onNavigate, showToast, userProfile = EMPTY_PROF
                 ))}
               </div>
 
-              <YearEndList
+              <PreviewList
                 title="Graduating"
                 rows={yearEndPlan.graduate}
                 describe={s => `${s.course} · ${s.yearLevel} → Graduated`}
               />
-              <YearEndList
+              <PreviewList
                 title="Promoted"
                 rows={yearEndPlan.promote}
                 describe={s => `${s.course} · ${s.yearLevel} → ${s.nextYearLevel}`}
               />
-              <YearEndList
+              <PreviewList
                 title="Skipped — fix these first"
                 rows={yearEndPlan.skipped}
                 describe={s => s.reason || 'Cannot be processed'}
@@ -1179,25 +1511,29 @@ export function SettingsModule({ onNavigate, showToast, userProfile = EMPTY_PROF
               </div>
             </div>
             <div className="flex gap-3">
-              <button onClick={createBackup} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>
-                <Download size={15} />Create Backup
+              <button onClick={createBackup} disabled={backupBusy} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-60" style={{ fontSize: 13, fontWeight: 600 }}>
+                <Download size={15} />{backupBusy ? 'Working…' : 'Create Backup'}
               </button>
-              <button onClick={() => showToast('Restore: select a backup file to continue')} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors" style={{ fontSize: 13, fontWeight: 600 }}>
+              <input ref={restoreRef} type="file" accept="application/json,.json" onChange={handleRestoreFile} className="hidden" />
+              <button onClick={() => restoreRef.current?.click()} disabled={backupBusy} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-blue-100 dark:border-slate-600 text-black dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-60" style={{ fontSize: 13, fontWeight: 600 }}>
                 <Upload size={15} />Restore Backup
               </button>
             </div>
+            {/* The file holds every record in readable form, and a restore is a
+                replacement rather than a merge. Both are worth knowing before
+                the button is pressed rather than after. */}
+            <p className="text-slate-500 dark:text-slate-400 mt-4" style={{ fontSize: 11.5, lineHeight: 1.55 }}>
+              The backup covers students, staff, consultations, medical records, certificates, stock and the college list, straight from the database.
+              User accounts and uploaded document files are not included. Records are stored unencrypted inside the file, so keep it somewhere private.
+              Restoring <strong>replaces</strong> everything currently in the database.
+            </p>
           </SectionCard>
-          <SectionCard title="Automatic Backup" desc="Schedule regular backups of clinic data">
-            <div className="flex gap-3">
-              {(['daily', 'weekly', 'monthly'] as const).map(f => (
-                <button key={f} onClick={() => { setBackupPrefs(p => ({ ...p, frequency: f })); lsSave('clinixBackupPrefs', { ...backupPrefs, frequency: f }); showToast(`Auto backup set to ${f}`); }}
-                  className="flex-1 py-3 rounded-xl border-2 transition-all"
-                  style={{ fontSize: 13, fontWeight: 500, borderColor: backupPrefs.frequency === f ? '#4C5CAE' : '#DEE3F5', color: backupPrefs.frequency === f ? '#4C5CAE' : '#64748B', background: backupPrefs.frequency === f ? '#EEF1FA' : 'transparent' }}>
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
-                </button>
-              ))}
-            </div>
-          </SectionCard>
+          {/* The daily/weekly/monthly picker is left out on purpose: nothing in
+              the app runs on a schedule, so the buttons only ever saved a
+              preference and would have promised backups that never happened.
+              Scheduled backups are set up on the server — see
+              deploy/install-backup-task.ps1, which registers backup-clinix.ps1
+              as a Windows task and captures the uploaded files too. */}
         </>}
 
         <SectionHeading icon={Clock} label="Audit Log" />

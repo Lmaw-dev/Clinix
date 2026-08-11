@@ -349,4 +349,71 @@ export async function ensureDbUpdates() {
   await widen('ALTER TABLE documents MODIFY file_name TEXT, MODIFY form_name TEXT');
   await widen('ALTER TABLE admin_profile MODIFY name TEXT');
   await widen('ALTER TABLE prescriptions MODIFY item_name TEXT');
+
+  // ── Colleges & courses ──────────────────────────────────────────────────────
+  // The last list the app still kept per-browser. Settings wrote it to
+  // localStorage while students.course_code carries a foreign key into
+  // `courses`, so a course added on one computer existed nowhere the save could
+  // see it: the student save failed on the constraint, and a second computer
+  // never saw the course at all. The tables are created here as well as in
+  // schema.sql so an installation that predates them is repaired on startup.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS colleges (
+      code VARCHAR(16) PRIMARY KEY,
+      name VARCHAR(100) NOT NULL
+    ) ENGINE = InnoDB
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS courses (
+      code VARCHAR(32) PRIMARY KEY,
+      college_code VARCHAR(16) NOT NULL,
+      name VARCHAR(100) NOT NULL,
+      CONSTRAINT fk_courses_college FOREIGN KEY (college_code) REFERENCES colleges (code)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+    ) ENGINE = InnoDB
+  `);
+  // Year-end processing graduates a student at the end of *their* program, and
+  // that is not the 4th year for everyone — a 2-year course ends at 2nd Year.
+  // Came across from the same local store as the course list itself.
+  await widen('ALTER TABLE courses ADD COLUMN IF NOT EXISTS years TINYINT NOT NULL DEFAULT 4');
+  await seedAcademics();
+}
+
+// The list the app shipped with, as a fresh install's starting point. Only ever
+// written when the tables are empty — an existing clinic's edits are never
+// overwritten by a restart.
+export const DEFAULT_ACADEMICS = [
+  {
+    code: 'CTECH', name: 'College of Technology',
+    courses: [
+      { code: 'BSCS', name: 'Bachelor of Science in Computer Science', years: 4 },
+      { code: 'BSIT-FPST', name: 'Bachelor of Science in Industrial Technology - Food Preparation and Service Technology', years: 4 },
+      { code: 'BSIT-ELECT', name: 'Bachelor of Science in Industrial Technology - Electrical Technology', years: 4 },
+    ],
+  },
+  {
+    code: 'CTE', name: 'College of Teacher Education',
+    courses: [
+      { code: 'BEED', name: 'Bachelor of Elementary Education', years: 4 },
+      { code: 'BSED-ENGLISH', name: 'Bachelor of Secondary Education - English', years: 4 },
+      { code: 'BSED-MATH', name: 'Bachelor of Secondary Education - Mathematics', years: 4 },
+    ],
+  },
+  { code: 'COM', name: 'College of Management', courses: [{ code: 'BSM', name: 'Bachelor of Science in Management', years: 4 }] },
+  { code: 'COF', name: 'College of Fisheries', courses: [{ code: 'BSF', name: 'Bachelor of Science in Fisheries', years: 4 }] },
+];
+
+async function seedAcademics() {
+  const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM colleges');
+  if (n > 0) return;
+  for (const college of DEFAULT_ACADEMICS) {
+    await pool.query('INSERT IGNORE INTO colleges (code, name) VALUES (?, ?)', [college.code, college.name]);
+    for (const course of college.courses) {
+      await pool.query(
+        'INSERT IGNORE INTO courses (code, college_code, name, years) VALUES (?, ?, ?, ?)',
+        [course.code, college.code, course.name, course.years],
+      );
+    }
+  }
+  console.log(`[db] seeded ${DEFAULT_ACADEMICS.length} default colleges and their courses`);
 }
