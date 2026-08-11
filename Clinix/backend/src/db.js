@@ -40,6 +40,30 @@ export async function ensureDbUpdates() {
     ALTER TABLE faculty
       ADD COLUMN IF NOT EXISTS photo LONGTEXT NULL
   `);
+  // The faculty form has been collecting these all along and the table had
+  // nowhere to put them, so every save quietly dropped them: a staff member's
+  // college, employment classification, blood type and next of kin were typed
+  // in, accepted, and gone on the next reload. TEXT throughout because the
+  // personal ones are stored as ciphertext (see the `encrypted` list in
+  // server.js) and ciphertext is longer than what it encrypts.
+  await pool.query(`
+    ALTER TABLE faculty
+      ADD COLUMN IF NOT EXISTS college VARCHAR(32) NULL,
+      ADD COLUMN IF NOT EXISTS employment_category VARCHAR(40) NULL,
+      ADD COLUMN IF NOT EXISTS employment_type VARCHAR(40) NULL,
+      ADD COLUMN IF NOT EXISTS birthdate TEXT NULL,
+      ADD COLUMN IF NOT EXISTS blood_type TEXT NULL,
+      ADD COLUMN IF NOT EXISTS office TEXT NULL,
+      ADD COLUMN IF NOT EXISTS home_address TEXT NULL,
+      ADD COLUMN IF NOT EXISTS present_address TEXT NULL,
+      ADD COLUMN IF NOT EXISTS guardian_name TEXT NULL,
+      ADD COLUMN IF NOT EXISTS guardian_contact TEXT NULL,
+      ADD COLUMN IF NOT EXISTS confidential_notes TEXT NULL
+  `);
+  // College and employment category drive the Reports department filter and
+  // the Faculty screen's own filters, so they stay queryable — the same reason
+  // students keep course_code and status in the clear.
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_faculty_college ON faculty (college)').catch(() => {});
   // Per-person document attachments (files stored on disk, metadata here)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS documents (

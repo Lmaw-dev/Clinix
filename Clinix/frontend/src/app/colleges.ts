@@ -10,6 +10,56 @@ export type College = { name: string; courses: string[] };
 
 export const YEAR_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 
+// ── How a staff member is employed ──────────────────────────────────────────
+// The clinic's own classification: a category, and the employment types valid
+// within it. This lived privately inside the Faculty screen, which meant the
+// Reports department filter had no way to offer the same list and had to guess
+// it from whatever categories happened to be present in the data — so the
+// option group vanished entirely while no staff member had been classified yet.
+// One list, used by the form that writes it and every screen that reads it.
+
+export const EMPLOYMENT_CLASSIFICATIONS: { category: string; types: string[] }[] = [
+  { category: 'Non-teaching', types: ['Permanent', 'Casual', 'Contract of Service'] },
+  { category: 'Teaching', types: ['Permanent', 'Temporary', 'Contract of Service', 'Part time'] },
+  { category: 'Agency', types: ['Security guard'] },
+];
+
+/** Just the category names, in the order the clinic lists them. */
+export const EMPLOYMENT_CATEGORIES = EMPLOYMENT_CLASSIFICATIONS.map((c) => c.category);
+
+export function employmentTypesFor(category: string): string[] {
+  return EMPLOYMENT_CLASSIFICATIONS.find((c) => c.category === category)?.types ?? [];
+}
+
+/**
+ * The offices/departments currently in use across a roster.
+ *
+ * A college covers teaching faculty, but a registrar, a guidance counsellor or
+ * an accounting clerk belongs to an office instead — that office *is* their
+ * department. It was a free-text box, so "Registrar", "Registrar's Office" and
+ * "registrar" were three different departments as far as any filter could tell,
+ * and none of them could be offered as a choice.
+ *
+ * Rather than a separate list somebody has to maintain, the vocabulary is the
+ * set already on the records: matched case-insensitively so the same office
+ * cannot appear twice, keeping the spelling it was first entered with.
+ */
+export function officesInUse(people: { office?: string }[]): string[] {
+  const seen = new Map<string, string>();
+  people.forEach((p) => {
+    const name = (p.office || '').trim();
+    if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
+  });
+  return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+}
+
+/** Reuse the existing spelling of an office when one already matches. */
+export function normalizeOffice(name: string, known: string[]): string {
+  const raw = (name || '').trim();
+  if (!raw) return '';
+  return known.find((o) => o.toLowerCase() === raw.toLowerCase()) || raw;
+}
+
 const STORAGE_KEY = 'clinixColleges';
 const YEARS_KEY = 'clinixCourseYears';
 

@@ -203,8 +203,29 @@ const tables = {
       contact: 'contact',
       medicalHistory: 'medical_history',
       photo: 'photo',
+      // Organisational placement.
+      college: 'college',
+      employmentCategory: 'employment_category',
+      employmentType: 'employment_type',
+      // Clinic consultation record — the same details kept for a student.
+      birthdate: 'birthdate',
+      bloodType: 'blood_type',
+      office: 'office',
+      homeAddress: 'home_address',
+      presentAddress: 'present_address',
+      guardianName: 'guardian_name',
+      guardianContact: 'guardian_contact',
+      confidentialNotes: 'confidential_notes',
     },
-    encrypted: ['name', 'role', 'contact', 'medicalHistory', 'photo'],
+    // Same split as students: anything describing the person or their health is
+    // encrypted, while the college and employment classification stay readable
+    // so departments can be filtered and reported on without decrypting the
+    // whole table first.
+    encrypted: [
+      'name', 'role', 'contact', 'medicalHistory', 'photo',
+      'birthdate', 'bloodType', 'office', 'homeAddress', 'presentAddress',
+      'guardianName', 'guardianContact', 'confidentialNotes',
+    ],
   },
   medicalRecords: {
     table: 'medical_records',
